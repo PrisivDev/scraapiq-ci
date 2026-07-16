@@ -24,7 +24,7 @@
  *  - Skip des ressources non essentielles
  */
 
-import { chromium, type Browser, type BrowserContext, type Page, type Request } from "playwright"
+import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright"
 import type {
   ScrapedPlace,
   SearchQuery,
@@ -41,7 +41,7 @@ import { deduplicatePlaces } from "./dedup"
 import { detectBlock, acceptConsent, BlockError } from "./block-detector"
 import { RateLimiter, ProxyPool, randomUserAgent, humanDelay, exponentialBackoff, USER_AGENTS } from "./rate-limiter"
 
-const GOOGLE_MAPS_BASE = "https://www.google.com/maps/search/"
+const GOOGLE_MAPS_BASE = "https://www.google.com/maps"
 
 export class GoogleMapsScraper {
   private browser: Browser | null = null
@@ -370,16 +370,16 @@ export class GoogleMapsScraper {
     page.setDefaultTimeout(this.config.pageTimeout)
 
     // Bloque les ressources non essentielles pour accélérer
-    await page.route("**/*", (route: Request) => {
-      const type = route.resourceType()
-      const url = route.url()
+    await page.route("**/*", (route: Route) => {
+      const type = route.request().resourceType()
+      const url = route.request().url()
 
       // Garde : document, xhr, fetch, script (nécessaires pour Google Maps SPA)
       // Bloque : images (sauf photos lieu), fonts, media, websocket inutiles
       if (["media", "font"].includes(type)) {
         return route.abort()
       }
-      // Bloque les trackers et analytics
+      // Bloque les tracker et analytics
       if (
         url.includes("doubleclick.net") ||
         url.includes("google-analytics") ||
@@ -428,8 +428,11 @@ export class GoogleMapsScraper {
     if (query.city) parts.push(query.city)
     const q = parts.join(" ")
 
+    // Format /maps?q=... — c'est le format qui déclenche réellement
+    // la recherche et affiche la liste des résultats (le format /search/?query=
+    // redirige vers la carte vide sans résultats)
     const params = new URLSearchParams({
-      query: q,
+      q,
       hl: query.language || "fr",
       gl: query.country || "ci",
     })
@@ -439,21 +442,26 @@ export class GoogleMapsScraper {
 
   /** Attend que la liste des résultats apparaisse */
   private async waitForResultsList(page: Page): Promise<void> {
-    // Google Maps utilise role="feed" pour la liste des résultats
+    // Google Maps est une SPA lourde : domcontentloaded ne suffit pas,
+    // il faut attendre que le JS rende la liste des résultats.
     const selectors = [
       'div[role="feed"]',
+      '[aria-label*="Résultats" i]',
       '[aria-label*="Results" i]',
-      'div[jstcache]',
+      'a[href*="/maps/place/"]', // liens vers les fiches lieu
+      '.qBF1Pd', // nom du lieu dans la liste
     ]
     for (const sel of selectors) {
       try {
-        await page.waitForSelector(sel, { timeout: 10000 })
+        await page.waitForSelector(sel, { timeout: 15000, state: "visible" })
+        // Une fois le premier sélecteur trouvé, attend un peu que le reste se rende
+        await humanDelay(1500, 2500)
         return
       } catch {
-        // continue
+        // continue avec le suivant
       }
     }
-    // Si aucun sélecteur ne matche, on continue quand même
+    // Si aucun sélecteur ne matche, on continue quand même (la suite gérera l'absence)
   }
 
   /**
@@ -465,21 +473,35 @@ export class GoogleMapsScraper {
     const seenNames = new Set<string>()
 
     for (let scroll = 0; scroll < this.config.maxScrolls && !this.cancelled; scroll++) {
-      // Sélecteurs pour les items de la liste (évoluent avec le temps)
-      const items = await page.$$('div[role="feed"] > div, [aria-label*="Results" i] > div').catch(() => [])
+      // Plusieurs sélecteurs possibles pour les items de la liste Google Maps
+      const items = await page.$$(
+        'div[role="feed"] > div[role="article"], ' +
+        'div[role="feed"] a[href*="/maps/place/"], ' +
+        'a[href*="/maps/place/"][role="article"], ' +
+        '.Nv2PK, .bfdYNd'
+      ).catch(() => [])
 
       for (const item of items) {
         if (places.length >= maxResults) break
         try {
+          // Le nom est dans .qBF1Pd, .fontHeadlineSmall, ou [role="heading"]
           const name = await item.$eval(
-            '.qBF1Pd-haAclf, [role="heading"], .fontHeadlineSmall',
+            '.qBF1Pd, .qBF1Pd-haAclf, .fontHeadlineSmall, [role="heading"], .NrDZNb',
             (el) => (el as HTMLElement).textContent?.trim() || ""
           ).catch(() => "")
 
-          if (name && !seenNames.has(name)) {
-            seenNames.add(name)
-            const href = await item.$eval("a", (el) => (el as HTMLAnchorElement).href).catch(() => "")
-            places.push({ name, element: item, href })
+          // Si pas de nom trouvé, tente via l'attribut aria-label
+          const finalName = name || await item.getAttribute("aria-label") || ""
+
+          if (finalName && !seenNames.has(finalName) && finalName.length > 2) {
+            seenNames.add(finalName)
+            const href = await item.$eval("a", (el) => (el as HTMLAnchorElement).href).catch(() =>
+              item.evaluate((el) => {
+                const a = el.querySelector("a") || (el as HTMLAnchorElement)
+                return a?.href || ""
+              }).catch(() => "")
+            )
+            places.push({ name: finalName, element: item, href })
           }
         } catch {
           // skip
@@ -489,16 +511,21 @@ export class GoogleMapsScraper {
       this.emit({ type: "scroll", scrollIndex: scroll + 1, totalResults: places.length })
 
       if (places.length >= maxResults) break
+      // Si on n'a trouvé aucun item après 3 scrolls, on abandonne
+      if (scroll >= 3 && places.length === 0) break
 
       // Scroll la liste
       try {
         await page.evaluate(() => {
+          // Cherche le conteneur scrollable de la liste de résultats
           const feed = document.querySelector('div[role="feed"]')
+            || document.querySelector('[aria-label*="Résultats" i]')
+            || document.querySelector('[aria-label*="Results" i]')
           if (feed) {
             feed.scrollTop = feed.scrollHeight
-          } else {
-            window.scrollTo(0, document.body.scrollHeight)
           }
+          // Aussi scroll sur la fenêtre au cas où
+          window.scrollBy(0, 800)
         })
       } catch {
         // ignore
@@ -516,143 +543,178 @@ export class GoogleMapsScraper {
   }
 
   /**
-   * Extrait les détails d'un lieu en cliquant sur son item
+   * Extrait les détails d'un lieu en naviguant vers sa fiche
+   * (plus fiable que le clic qui peut ne pas ouvrir le panneau)
    */
   private async extractPlaceDetails(page: Page, listedPlace: ListedPlace): Promise<ScrapedPlace | null> {
     const place: ScrapedPlace = {
       name: listedPlace.name,
       scrapedAt: new Date().toISOString(),
-      sourceUrl: page.url(),
+      sourceUrl: listedPlace.href || page.url(),
     }
 
     try {
-      // Clic sur l'item pour ouvrir le panneau détail
-      await listedPlace.element.click({ timeout: 5000 })
-      await humanDelay(800, 1500)
+      // Si on a l'URL de la fiche, navigue directement dessus (plus fiable que le clic)
+      if (listedPlace.href) {
+        const url = listedPlace.href.startsWith("http")
+          ? listedPlace.href
+          : `https://www.google.com${listedPlace.href}`
+        await this.rateLimiter.waitForNextSlot()
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: this.config.pageTimeout })
+        // Attend que le panneau de détail se charge (h1 = nom du lieu)
+        await page.waitForSelector("h1", { timeout: 10000 }).catch(() => {})
+        await humanDelay(2000, 3000) // Laisse le JS rendre les data-item-id
+      } else {
+        // Fallback : clic sur l'item
+        await listedPlace.element.click({ timeout: 5000 }).catch(() => {})
+        await humanDelay(1500, 2500)
+        await page.waitForSelector("h1", { timeout: 8000 }).catch(() => {})
+      }
 
-      // Attend que le panneau de détail s'affiche
-      await page.waitForSelector('div[role="main"], [jstcache]', { timeout: 8000 }).catch(() => {})
-
-      // Extraction via evaluate (plus rapide que les querySelector chainés)
-      const extracted = await page.evaluate((maxPhotos, maxReviews) => {
-        const getText = (sel: string): string | undefined => {
-          const el = document.querySelector(sel)
-          return el?.textContent?.trim() || undefined
-        }
-
+      // Extraction via evaluate — utilise les data-item-id qui sont la structure officielle Google
+      const extracted = await page.evaluate((maxPhotos) => {
         const result: Record<string, unknown> = {}
 
-        // Nom
-        result.name = getText('h1.DUwDvf, h1.fontHeadlineLarge, [jstcache="1133"] h1')
+        // Nom — h1 dans le panneau de détail
+        const h1 = document.querySelector("h1")
+        result.name = h1?.textContent?.trim() || undefined
 
-        // Catégorie
-        result.category = getText('button[jsaction*="pane.rating.category"] .YhemCb, .YhemCb')
+        // Parcourt TOUS les [data-item-id] — c'est la clé de l'extraction Google Maps
+        // Chaque champ (address, phone, website, hours...) a un data-item-id spécifique
+        const dataItems = document.querySelectorAll("[data-item-id]")
+        const fields: Record<string, { text: string; href?: string }> = {}
+        dataItems.forEach((el) => {
+          const key = el.getAttribute("data-item-id") || ""
+          if (!key) return
+          // Le texte est dans .Io6YVf (sous-classe) ou directement dans l'élément
+          const textEl = el.querySelector(".Io6YVf") || el
+          const text = textEl.textContent?.trim() || ""
+          // Pour les liens, récupère aussi le href
+          const href = (el as HTMLAnchorElement).href || el.querySelector("a")?.href || undefined
+          if (text && text.length < 300) {
+            fields[key] = { text, href }
+          }
+        })
 
-        // Note (rating)
-        const ratingEl = document.querySelector('span[role="img"][aria-label*="étoile"], div.F7nice span')
+        // Map les champs connus
+        // Adresse
+        if (fields["address"]) result.address = fields["address"].text
+        // Téléphone — data-item-id commence par "phone:tel:+XXXX"
+        const phoneKey = Object.keys(fields).find((k) => k.startsWith("phone:"))
+        if (phoneKey) {
+          result.phone = fields[phoneKey].text
+          // Extrait aussi le numéro normalisé depuis la clé
+          const telMatch = phoneKey.match(/tel:(.+)$/)
+          if (telMatch) result.phoneRaw = telMatch[1]
+        }
+        // Site web — data-item-id="authority"
+        if (fields["authority"]) {
+          result.website = fields["authority"].text
+          result.websiteUrl = fields["authority"].href
+        }
+        // Horaires — data-item-id="oh"
+        if (fields["oh"]) result.hoursText = fields["oh"].text
+        // Plus code — data-item-id="oloc"
+        if (fields["oloc"]) result.plusCode = fields["oloc"].text
+
+        // Catégorie — bouton avec jsaction pane.rating.category
+        const catBtn = document.querySelector("button[jsaction*='pane.rating.category']")
+        if (catBtn) result.category = catBtn.textContent?.trim()
+
+        // Note (rating) — span avec aria-label contenant "étoile" ou "star"
+        const ratingEl = document.querySelector("[role='img'][aria-label*='toile'], [role='img'][aria-label*='star'], .F7nice [role='img']")
         if (ratingEl) {
           result.ratingText = ratingEl.textContent?.trim() || ratingEl.getAttribute("aria-label") || ""
         }
 
-        // Nombre d'avis
-        const reviewCountEl = document.querySelector('span[role="img"][aria-label*="étoile"] + span, .F7nice span + span, button[jsaction*="pane.rating.reviews"] span')
-        if (reviewCountEl) {
-          result.reviewCountText = reviewCountEl.textContent?.trim() || ""
+        // Nombre d'avis — span à côté de la note, ou bouton avec jsaction pane.rating.reviews
+        const reviewBtn = document.querySelector("button[jsaction*='pane.rating.reviews'], [aria-label*='avis' i]")
+        if (reviewBtn) {
+          result.reviewCountText = reviewBtn.textContent?.trim() || reviewBtn.getAttribute("aria-label") || ""
         }
-
-        // Adresse
-        const addressEl = document.querySelector('button[data-item-id="address"] .Io6YVf, [data-item-id="address"] .Io6YVf')
-        if (addressEl) result.address = addressEl.textContent?.trim()
-
-        // Téléphone
-        const phoneEl = document.querySelector('button[data-item-id^="phone:"] .Io6YVf, [data-item-id^="phone:"] .Io6YVf, button[data-item-id*="phone"] .Io6YVf')
-        if (phoneEl) result.phone = phoneEl.textContent?.trim()
-
-        // Site web
-        const websiteEl = document.querySelector('a[data-item-id="authority"] .Io6YVf, [data-item-id="authority"] .Io6YVf, a[jsaction*="website"]')
-        if (websiteEl) {
-          result.website = websiteEl.textContent?.trim() || (websiteEl as HTMLAnchorElement).href
+        // Alternative : le span qui suit la note dans .F7nice
+        if (!result.reviewCountText) {
+          const f7 = document.querySelector(".F7nice")
+          if (f7) {
+            const spans = f7.querySelectorAll("span")
+            spans.forEach((s) => {
+              const t = s.textContent?.trim() || ""
+              if (t.match(/\d/) && t.length < 30 && !t.includes("étoile") && !t.includes("star")) {
+                result.reviewCountText = t
+              }
+            })
+          }
         }
 
         // Statut ouvert/fermé
-        const openEl = document.querySelector('span[aria-label*="ouvert" i], span[aria-label*="Ouvert" i], span[aria-label*="Fermé" i], span[aria-label*="closed" i]')
+        const openEl = document.querySelector("[data-item-id='oh'] + * , span[aria-label*='ouvert' i], span[aria-label*='Ouvert' i], span[aria-label*='Fermé' i], span[aria-label*='Open' i], span[aria-label*='Closed' i]")
         if (openEl) result.isOpenText = openEl.textContent?.trim()
 
-        // Horaires
-        const hoursEl = document.querySelector('button[data-item-id="oh"] .Io6YVf, [aria-label*="Horaires" i] .Io6YVf, table.y0sTtd')
-        if (hoursEl) result.hoursText = hoursEl.textContent?.trim()
-
-        // Place ID depuis l'URL courante
+        // Place ID depuis l'URL
         const url = window.location.href
         const placeIdMatch = url.match(/0x[a-f0-9]+:0x([a-f0-9]+)/i)
         if (placeIdMatch) result.placeId = "0x" + placeIdMatch[1]
         else {
-          // ChIJ... format
           const chijMatch = url.match(/(ChIJ[a-zA-Z0-9_-]+)/)
           if (chijMatch) result.placeId = chijMatch[1]
+          else {
+            // Format data=!1s0xXXX:0xYYY
+            const dataIdMatch = url.match(/!1s(0x[a-f0-9]+:0x[a-f0-9]+)/i)
+            if (dataIdMatch) result.placeId = dataIdMatch[1]
+          }
         }
 
-        // GPS depuis l'URL
+        // GPS depuis l'URL (@lat,lng)
         const gpsMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
         if (gpsMatch) {
           result.lat = parseFloat(gpsMatch[1])
           result.lng = parseFloat(gpsMatch[2])
         }
+        // Alternative : GPS dans la data URL (!8m2!3dLAT!4dLNG)
+        if (!result.lat) {
+          const dataGpsMatch = url.match(/!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
+          if (dataGpsMatch) {
+            result.lat = parseFloat(dataGpsMatch[1])
+            result.lng = parseFloat(dataGpsMatch[2])
+          }
+        }
 
         // Photos
         if (maxPhotos > 0) {
-          const photoEls = document.querySelectorAll('button[jsaction*="pane.photo"] img, img[src*="googleusercontent"], .RxNLqc img')
+          const photoEls = document.querySelectorAll("img[src*='googleusercontent']")
           const photos: Array<{ url: string; alt?: string }> = []
           photoEls.forEach((el) => {
             if (photos.length >= maxPhotos) return
             const img = el as HTMLImageElement
-            if (img.src && img.src.startsWith("http")) {
+            if (img.src && img.src.startsWith("http") && img.naturalWidth > 50) {
               photos.push({ url: img.src, alt: img.alt })
             }
           })
           result.photos = photos
         }
 
-        // Reviews
-        if (maxReviews > 0) {
-          const reviewEls = document.querySelectorAll('.jftiEf, .MyEned, [data-review-id]')
-          const reviews: Array<{ author: string; text: string; rating?: number; date?: string }> = []
-          reviewEls.forEach((el) => {
-            if (reviews.length >= maxReviews) return
-            const author = el.querySelector(".TSUjbe, .d4r55")?.textContent?.trim() || ""
-            const text = el.querySelector(".MyEned, .Jtu6Td")?.textContent?.trim() || ""
-            const ratingEl = el.querySelector(".kvMYJc, [role='img'][aria-label*='étoile']")
-            const ratingText = ratingEl?.textContent?.trim() || ratingEl?.getAttribute("aria-label") || ""
-            const dateEl = el.querySelector(".rsqaWe, .xRkPPb")?.textContent?.trim()
-            reviews.push({
-              author,
-              text,
-              date: dateEl || "",
-              rating: ratingText ? parseInt(ratingText) || undefined : undefined,
-            })
-          })
-          result.reviews = reviews
-        }
+        // Prix / niveau de prix
+        const priceBtn = document.querySelector("button[jsaction*='pane.price']")
+        if (priceBtn) result.priceLevel = priceBtn.textContent?.trim()
 
         return result
-      }, this.config.maxPhotos, this.config.maxReviews).catch(() => ({}))
+      }, this.config.maxPhotos).catch(() => ({}))
 
       // Mapping vers l'objet ScrapedPlace
       if (extracted.name) place.name = extracted.name as string
       place.category = extracted.category as string | undefined
       place.address = extracted.address as string | undefined
-      place.phone = extracted.phone as string | undefined
+      place.phone = (extracted.phoneRaw as string) || (extracted.phone as string) || undefined
       if (place.phone) place.phoneNormalized = normalizePhone(place.phone) || undefined
-      if (extracted.website) place.website = normalizeUrl(extracted.website as string) || undefined
-      if (extracted.email) {
-        const email = normalizeEmail(extracted.email as string)
-        if (email) place.email = email
+      if (extracted.websiteUrl) {
+        place.website = normalizeUrl(extracted.websiteUrl as string) || undefined
+      } else if (extracted.website) {
+        place.website = normalizeUrl(extracted.website as string) || undefined
       }
       if (extracted.placeId) place.placeId = extracted.placeId as string
       if (extracted.lat && extracted.lng) {
         place.gps = { lat: extracted.lat as number, lng: extracted.lng as number }
       } else {
-        // Tente depuis l'URL courante
         const gps = parseGpsFromUrl(page.url())
         if (gps) place.gps = gps
       }
@@ -671,11 +733,9 @@ export class GoogleMapsScraper {
           alt: p.alt,
         })) as Photo[]
       }
-      if (extracted.reviews && Array.isArray(extracted.reviews)) {
-        place.reviews = extracted.reviews as Review[]
-      }
+      if (extracted.priceLevel) place.priceLevel = extracted.priceLevel as string
 
-      // Tente d'extraire l'email depuis le site web (si pas déjà trouvé)
+      // Tente d'extraire l'email depuis le site web (si pas déjà trouvé et si site présent)
       if (!place.email && place.website) {
         const email = await this.tryExtractEmailFromWebsite(page, place.website)
         if (email) place.email = email

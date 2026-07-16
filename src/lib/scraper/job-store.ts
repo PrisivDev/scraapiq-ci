@@ -22,7 +22,18 @@ interface JobState {
   createdAt: string
 }
 
-const jobs = new Map<string, JobState>()
+// Utilise une variable globale pour persister entre les rechargements du dev server
+// (même pattern que PrismaClient dans lib/db.ts)
+const globalForScraper = globalThis as unknown as {
+  __scraperJobs?: Map<string, JobState>
+}
+
+const jobs = globalForScraper.__scraperJobs ?? new Map<string, JobState>()
+
+if (process.env.NODE_ENV !== "production") {
+  globalForScraper.__scraperJobs = jobs
+}
+
 const MAX_EVENTS_KEPT = 50
 
 /**
