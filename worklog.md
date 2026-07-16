@@ -126,3 +126,43 @@ Stage Summary:
 - Routes protégées vérifiées : redirect vers /auth/login avec ?redirect= ✅
 - 2FA setup vérifié : QR code + backup codes générés ✅
 - Système prêt pour utilisation
+
+---
+Task ID: 9
+Agent: Main (Architect)
+Task: Corriger la sidebar non fonctionnelle — chaque item doit afficher une vue dédiée
+
+Work Log:
+- Diagnostic : la sidebar mettait à jour activeNav mais page.tsx affichait toujours le même contenu (dashboard)
+- Créé 9 vues dédiées dans src/components/dashboard/views/ :
+  * dashboard-home.tsx — vue originale (KPIs, search panel, charts, map, jobs, table, sources, export banner)
+  * search-view.tsx — recherche multicritère pleine page + sidebar (templates, sources, conseils IA)
+  * companies-view.tsx — liste entreprises multi-vues (grid/list/map) + filtres + tri
+  * map-view-full.tsx — cartographie plein écran avec carte SVG agrandie
+  * sources-view.tsx — 6 sources en cards + stats + boutons sync/diagnostiquer
+  * jobs-view.tsx — jobs avec onglets filtre + liste/détail + log streaming + actions
+  * exports-view.tsx — historique exports + stats quota + boutons télécharger
+  * team-view.tsx — membres + organisation + matrice RBAC complète
+  * settings-view.tsx — profil, apparence, notifications, facturation, sécurité, conformité
+- Modifié page.tsx : routing conditionnel selon activeNav, scroll-to-top au changement de vue
+- handleNavSelect : set activeNav + close mobile sheet + scroll main to top
+- Lint : 0 erreur, 0 warning
+- Vérifications Agent Browser + VLM (9 vues testées) :
+  * Tableau de bord ✅ (KPIs + graphiques + carte + tableau)
+  * Recherche multicritère ✅ (formulaire + sidebar templates/sources/conseils)
+  * Entreprises ✅ (toggle grid/list/map + filtres + cartes)
+  * Cartographie ✅ (carte SVG plein écran + 13 communes + marqueurs)
+  * Sources ✅ (6 cards + stats + boutons sync)
+  * Jobs ✅ (onglets + liste/détail + log streaming)
+  * Exports ✅ (historique + stats + téléchargements)
+  * Équipe ✅ (membres + org + matrice permissions)
+  * Paramètres ✅ (6 cards: profil/apparence/notif/facturation/sécurité/conformité)
+- Retour dashboard ✅
+- Aucune erreur console/runtime
+
+Stage Summary:
+- Sidebar 100% fonctionnelle : chaque bouton affiche une vue dédiée et différenciée
+- 9 vues modulaires créées, prêtes pour brancher le backend réel
+- Navigation testée end-to-end via Agent Browser (9 clics → 9 vues différentes)
+- Scroll-to-top au changement de vue pour UX propre
+- Mobile : Sheet sidebar se ferme automatiquement après sélection

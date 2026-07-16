@@ -3,15 +3,8 @@
 import { useState } from "react"
 import { Sidebar, type NavKey } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
-import { KpiCards } from "@/components/dashboard/kpi-cards"
-import { Charts } from "@/components/dashboard/charts"
-import { SearchPanel, type SearchFilters } from "@/components/dashboard/search-panel"
-import { MapView } from "@/components/dashboard/map-view"
-import { ResultsTable } from "@/components/dashboard/results-table"
 import { CompanyDetailDialog } from "@/components/dashboard/company-detail-dialog"
 import { NewJobDialog } from "@/components/dashboard/new-job-dialog"
-import { JobsList } from "@/components/dashboard/jobs-list"
-import { SourcesList } from "@/components/dashboard/sources-list"
 import { Footer } from "@/components/dashboard/footer"
 import { companies, type Company } from "@/lib/mock-data"
 import { toast } from "sonner"
@@ -19,8 +12,18 @@ import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { FileSpreadsheet, CheckCircle2, Download } from "lucide-react"
+
+// Views
+import { DashboardHome } from "@/components/dashboard/views/dashboard-home"
+import { SearchView } from "@/components/dashboard/views/search-view"
+import { CompaniesView } from "@/components/dashboard/views/companies-view"
+import { MapViewFull } from "@/components/dashboard/views/map-view-full"
+import { SourcesView } from "@/components/dashboard/views/sources-view"
+import { JobsView } from "@/components/dashboard/views/jobs-view"
+import { ExportsView } from "@/components/dashboard/views/exports-view"
+import { TeamView } from "@/components/dashboard/views/team-view"
+import { SettingsView } from "@/components/dashboard/views/settings-view"
+import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState<NavKey>("dashboard")
@@ -52,31 +55,27 @@ export default function Home() {
       setExporting(false)
       toast.success("Export Excel prêt !", {
         description: "Le fichier entreprises_ci.xlsx est disponible.",
-        icon: <FileSpreadsheet className="h-4 w-4" />,
-        action: {
-          label: "Télécharger",
-          onClick: () => toast.success("Téléchargement démarré"),
-        },
       })
     }, 1800)
+  }
+
+  const handleNavSelect = (key: NavKey) => {
+    setActiveNav(key)
+    setMobileNavOpen(false)
+    // Scroll en haut lors du changement de vue
+    const main = document.querySelector("main")
+    if (main) main.scrollTop = 0
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar */}
-      <Sidebar active={activeNav} onSelect={setActiveNav} />
+      <Sidebar active={activeNav} onSelect={handleNavSelect} />
 
       {/* Mobile sidebar (Sheet) */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-[260px] p-0">
-          <Sidebar
-            active={activeNav}
-            mobile
-            onSelect={(k) => {
-              setActiveNav(k)
-              setMobileNavOpen(false)
-            }}
-          />
+          <Sidebar active={activeNav} mobile onSelect={handleNavSelect} />
         </SheetContent>
       </Sheet>
 
@@ -89,90 +88,43 @@ export default function Home() {
 
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 lg:p-6 space-y-5 max-w-[1800px] mx-auto">
-            {/* Page title */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  Tableau de bord
-                </h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Vue d'ensemble de l'activité de scraping et d'enrichissement — Abidjan & Côte d'Ivoire
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5">
-                  <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-xs font-medium">Système opérationnel</span>
-                </div>
-              </div>
-            </div>
+            {activeNav === "dashboard" && (
+              <DashboardHome
+                onSelectCompany={handleSelectCompany}
+                highlightedId={highlightedId}
+                onExport={handleExport}
+                exporting={exporting}
+                onSearch={handleSearch}
+              />
+            )}
 
-            {/* KPIs */}
-            <KpiCards />
+            {activeNav === "search" && (
+              <SearchView onSearch={handleSearch} />
+            )}
 
-            {/* Search panel */}
-            <SearchPanel onSearch={handleSearch} />
+            {activeNav === "companies" && (
+              <CompaniesView
+                onSelectCompany={handleSelectCompany}
+                onExport={handleExport}
+              />
+            )}
 
-            {/* Charts */}
-            <Charts />
+            {activeNav === "map" && (
+              <MapViewFull
+                onSelectCompany={handleSelectCompany}
+                highlightedId={highlightedId}
+              />
+            )}
 
-            {/* Map + Jobs side by side */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <div className="xl:col-span-2">
-                <MapView onSelectCompany={handleSelectCompany} highlightedId={highlightedId} />
-              </div>
-              <div className="xl:col-span-1">
-                <JobsList />
-              </div>
-            </div>
+            {activeNav === "sources" && <SourcesView />}
 
-            {/* Results table */}
-            <ResultsTable
-              onSelectCompany={handleSelectCompany}
-              highlightedId={highlightedId}
-              onExport={handleExport}
-            />
+            {activeNav === "jobs" && <JobsView />}
 
-            {/* Sources */}
-            <SourcesList />
+            {activeNav === "exports" && <ExportsView />}
 
-            {/* Export banner */}
-            <div className="rounded-xl border bg-gradient-to-r from-primary/10 via-accent/10 to-primary/5 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shrink-0">
-                <FileSpreadsheet className="h-6 w-6" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold">Export Enterprise</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Exportez l'ensemble de vos entreprises en Excel, CSV, JSON ou via l'API REST.
-                  Format adapté à Excel, Google Sheets et aux CRM (Salesforce, HubSpot).
-                </p>
-                <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-primary" /> Champs normalisés (+225)
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-primary" /> Coordonnées complètes
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-primary" /> Géolocalisation incluse
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-primary" /> Multi-format
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={handleExport} disabled={exporting} className="gap-2">
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Génération…" : "CSV"}
-                </Button>
-                <Button onClick={handleExport} disabled={exporting} className="gap-2">
-                  <FileSpreadsheet className="h-4 w-4" />
-                  {exporting ? "Génération…" : "Exporter Excel"}
-                </Button>
-              </div>
-            </div>
+            {activeNav === "team" && <TeamView />}
+
+            {activeNav === "settings" && <SettingsView />}
           </div>
         </main>
 
