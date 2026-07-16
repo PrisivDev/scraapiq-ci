@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ScrapIQ CI — Schéma Auth Enterprise
+// Multi-tenant · JWT · OAuth Google/Microsoft · 2FA TOTP · RBAC · Sessions · Blacklist JWT
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +10,245 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ============================================================================
+// ORGANISATIONS & WORKSPACES (Multi-tenant)
+// ============================================================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  plan        String   @default("starter") // starter | pro | enterprise | custom
+  ownerId     String
+  settings    String   @default("{}") // JSON
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     Member[]
+  workspaces Workspace[]
+  owner       User     @relation("OrgOwner", fields: [ownerId], references: [id])
+
+  @@index([slug])
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Workspace {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members         Member[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+// ============================================================================
+// USERS & MEMBERSHIPS (RBAC)
+// ============================================================================
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  emailVerified   DateTime?
+  passwordHash    String?  // null si OAuth-only
+  name            String?
+  avatarUrl       String?
+  locale          String   @default("fr")
+  timezone        String   @default("Africa/Abidjan")
+
+  // 2FA
+  twoFactorEnabled    Boolean  @default(false)
+  twoFactorSecret     String?  // TOTP secret (encrypted at rest)
+  twoFactorBackupCodes String? // JSON array of hashed codes
+  twoFactorEnabledAt  DateTime?
+
+  // Status
+  status          String   @default("active") // active | suspended | pending
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
+  failedLoginAttempts Int   @default(0)
+  lockedUntil     DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  ownedOrgs       Organization[] @relation("OrgOwner")
+  memberships     Member[]
+  accounts        Account[]         // OAuth providers
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  refreshTokens   RefreshToken[]
+  jwtBlacklist    JwtBlacklist[]
+  apiKeys         ApiKey[]
+
+  @@index([email])
+  @@index([status])
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  AGENT
+  VIEWER
+}
+
+model Member {
+  id              String   @id @default(cuid())
+  userId          String
+  organizationId  String
+  workspaceId     String?
+  role            MemberRole @default(VIEWER)
+  permissions     String   @default("[]") // JSON array of permission strings
+  invitedBy       String?
+  invitedAt       DateTime @default(now())
+  acceptedAt      DateTime?
+  status          String   @default("pending") // pending | active | revoked
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId, workspaceId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+// ============================================================================
+// OAUTH ACCOUNTS (Google, Microsoft, ...)
+// ============================================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String  // google | microsoft | github | ...
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  tokenType         String?
+  scope             String?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// ============================================================================
+// SESSIONS (Server-side, used alongside JWT)
+// ============================================================================
+
+model Session {
+  id            String   @id @default(cuid())
+  userId        String
+  token         String   @unique // opaque session token (separate from JWT)
+  userAgent     String?
+  ip            String?
+  location      String?  // "Abidjan, CI"
+  device        String?  // parsed from UA
+  lastSeenAt    DateTime @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?  // logout | expired | security | admin
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// REFRESH TOKENS (Rotating, with family for replay detection)
+// ============================================================================
+
+model RefreshToken {
+  id            String   @id @default(cuid())
+  userId        String
+  token         String   @unique // hashed refresh token
+  family        String   // family ID (rotating tokens share a family)
+  session       String?  // linked session id
+  userAgent     String?
+  ip            String?
+  expiresAt     DateTime
+  usedAt        DateTime?
+  revokedAt     DateTime?
+  revokedReason String?  // used | rotated | logout | replay_detected | admin
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// JWT BLACKLIST (Revoked access tokens before expiry)
+// ============================================================================
+
+model JwtBlacklist {
+  id            String   @id @default(cuid())
+  userId        String
+  jti           String   @unique // JWT ID (claim)
+  reason        String   @default("logout") // logout | breach | admin | password_change
+  expiresAt     DateTime // when the original JWT would have expired (auto-purge)
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// API KEYS (programmatic access, separate from JWT)
+// ============================================================================
+
+model ApiKey {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  keyHash       String   @unique
+  keyPrefix     String   // first 8 chars for display
+  scopes        String   @default("[]") // JSON array
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================================================
+// AUDIT LOGS (immutable security events)
+// ============================================================================
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  action        String   // login | logout | login_failed | 2fa_enable | token_revoked | ...
+  category      String   // auth | security | oauth | twofactor | session | api
+  severity      String   @default("info") // debug | info | warn | error | critical
+  ip            String?
+  userAgent     String?
+  metadata      String   @default("{}") // JSON
+  createdAt     DateTime @default(now())
+
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([category, createdAt])
 }
