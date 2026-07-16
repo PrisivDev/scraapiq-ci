@@ -1,0 +1,624 @@
+     1→"use client"
+     2→
+     3→import { useState, useEffect, useCallback } from "react"
+     4→import {
+     5→  Radar, Play, Square, RefreshCw, Download, MapPin, Phone, Mail, Globe,
+     6→  Star, Clock, Tag, Building2, AlertCircle, CheckCircle2, Loader2,
+     7→  XCircle, Eye, ChevronRight, ExternalLink, Activity, Sparkles
+     8→} from "lucide-react"
+     9→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+    10→import { Button } from "@/components/ui/button"
+    11→import { Input } from "@/components/ui/input"
+    12→import { Label } from "@/components/ui/label"
+    13→import { Badge } from "@/components/ui/badge"
+    14→import { Progress } from "@/components/ui/progress"
+    15→import { Separator } from "@/components/ui/separator"
+    16→import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+    17→import {
+    18→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    19→} from "@/components/ui/select"
+    20→import { toast } from "sonner"
+    21→import { cn } from "@/lib/utils"
+    22→
+    23→interface ScrapedPlace {
+    24→  name: string
+    25→  category?: string
+    26→  address?: string
+    27→  phone?: string
+    28→  phoneNormalized?: string
+    29→  email?: string
+    30→  website?: string
+    31→  gps?: { lat: number; lng: number }
+    32→  rating?: number
+    33→  reviewCount?: number
+    34→  isOpenNow?: boolean
+    35→  hours?: Array<{ day: string; hours: string }>
+    36→  photos?: Array<{ url: string; alt?: string }>
+    37→  placeId?: string
+    38→  sourceUrl?: string
+    39→  scrapedAt: string
+    40→}
+    41→
+    42→interface JobProgress {
+    43→  jobId: string
+    44→  status: "queued" | "running" | "completed" | "failed" | "cancelled"
+    45→  phase: string
+    46→  progress: number
+    47→  resultsCount: number
+    48→  processedCount: number
+    49→  duplicatesDetected: number
+    50→  errors: string[]
+    51→  currentPlace?: string
+    52→  startedAt: string
+    53→}
+    54→
+    55→interface ScrapeResult {
+    56→  jobId: string
+    57→  status: string
+    58→  places: ScrapedPlace[]
+    59→  duplicates: Array<{ canonicalName: string; duplicates: Array<{ name: string; similarity: number; reason: string }>; confidence: number }>
+    60→  stats: {
+    61→    totalExtracted: number
+    62→    uniqueCount: number
+    63→    duplicatesCount: number
+    64→    durationMs: number
+    65→    pagesScraped: number
+    66→    blocksEncountered: number
+    67→    retries: number
+    68→  }
+    69→  errors: string[]
+    70→}
+    71→
+    72→interface JobState {
+    73→  id: string
+    74→  query: { keyword: string; city?: string; commune?: string; neighborhood?: string; maxResults?: number }
+    75→  progress: JobProgress
+    76→  result?: ScrapeResult
+    77→  events: Array<{ type: string; [key: string]: unknown }>
+    78→  createdAt: string
+    79→}
+    80→
+    81→export function ScraperView() {
+    82→  const [keyword, setKeyword] = useState("restaurant")
+    83→  const [city, setCity] = useState("Abidjan")
+    84→  const [commune, setCommune] = useState("Cocody")
+    85→  const [neighborhood, setNeighborhood] = useState("")
+    86→  const [maxResults, setMaxResults] = useState(10)
+    87→  const [currentJob, setCurrentJob] = useState<JobState | null>(null)
+    88→  const [polling, setPolling] = useState(false)
+    89→  const [launching, setLaunching] = useState(false)
+    90→  const [recentJobs, setRecentJobs] = useState<JobState[]>([])
+    91→  const [selectedPlace, setSelectedPlace] = useState<ScrapedPlace | null>(null)
+    92→
+    93→  // Polling de l'état du job
+    94→  const pollJob = useCallback(async (jobId: string) => {
+    95→    try {
+    96→      const res = await fetch(`/api/scraper/jobs/${jobId}`, { credentials: "include" })
+    97→      if (!res.ok) return
+    98→      const data: JobState = await res.json()
+    99→      setCurrentJob(data)
+   100→
+   101→      // Continue à poller si le job est en cours
+   102→      if (data.progress.status === "running" || data.progress.status === "queued") {
+   103→        setTimeout(() => pollJob(jobId), 1500)
+   104→      } else {
+   105→        setPolling(false)
+   106→        if (data.progress.status === "completed" && data.result) {
+   107→          toast.success("Scraping terminé", {
+   108→            description: `${data.result.stats.uniqueCount} lieu(x) unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
+   109→          })
+   110→        } else if (data.progress.status === "failed") {
+   111→          toast.error("Scraping échoué", {
+   112→            description: data.progress.errors[0] || "Erreur inconnue",
+   113→          })
+   114→        }
+   115→      }
+   116→    } catch (err) {
+   117→      console.error("[poll] error:", err)
+   118→      setPolling(false)
+   119→    }
+   120→  }, [])
+   121→
+   122→  // Lance un job
+   123→  const launchJob = async () => {
+   124→    if (!keyword.trim()) {
+   125→      toast.error("Veuillez saisir un mot-clé")
+   126→      return
+   127→    }
+   128→
+   129→    setLaunching(true)
+   130→    try {
+   131→      const res = await fetch("/api/scraper/google-maps", {
+   132→        method: "POST",
+   133→        headers: { "Content-Type": "application/json" },
+   134→        credentials: "include",
+   135→        body: JSON.stringify({
+   136→          keyword: keyword.trim(),
+   137→          city: city.trim() || undefined,
+   138→          commune: commune.trim() || undefined,
+   139→          neighborhood: neighborhood.trim() || undefined,
+   140→          maxResults,
+   141→        }),
+   142→      })
+   143→
+   144→      if (!res.ok) {
+   145→        const err = await res.json().catch(() => ({}))
+   146→        throw new Error(err.error || "Échec du lancement")
+   147→      }
+   148→
+   149→      const { jobId } = await res.json()
+   150→      toast.info("Job de scraping lancé", {
+   151→        description: `Recherche "${keyword}" à ${commune || city}`,
+   152→      })
+   153→
+   154→      setPolling(true)
+   155→      pollJob(jobId)
+   156→    } catch (err) {
+   157→      toast.error("Erreur", { description: (err as Error).message })
+   158→    } finally {
+   159→      setLaunching(false)
+   160→    }
+   161→  }
+   162→
+   163→  // Annule le job courant
+   164→  const cancelJob = async () => {
+   165→    if (!currentJob) return
+   166→    try {
+   167→      await fetch(`/api/scraper/jobs/${currentJob.id}`, {
+   168→        method: "DELETE",
+   169→        credentials: "include",
+   170→      })
+   171→      toast.info("Job annulé")
+   172→      pollJob(currentJob.id)
+   173→    } catch {
+   174→      toast.error("Erreur lors de l'annulation")
+   175→    }
+   176→  }
+   177→
+   178→  // Récupère les jobs récents au montage
+   179→  useEffect(() => {
+   180→    fetch("/api/scraper/jobs", { credentials: "include" })
+   181→      .then((r) => r.json())
+   182→      .then((data) => {
+   183→        if (data.jobs && data.jobs.length > 0) {
+   184→          // Charge le dernier job en détail
+   185→          pollJob(data.jobs[0].id)
+   186→        }
+   187→      })
+   188→      .catch(() => {})
+   189→  }, [pollJob])
+   190→
+   191→  const isRunning = currentJob?.progress.status === "running" || currentJob?.progress.status === "queued"
+   192→
+   193→  return (
+   194→    <div className="space-y-4">
+   195→      {/* Header */}
+   196→      <div className="flex flex-wrap items-center justify-between gap-3">
+   197→        <div>
+   198→          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   199→            <Radar className="h-6 w-6 text-primary" />
+   200→            Moteur de scraping Google Maps
+   201→          </h1>
+   202→          <p className="text-sm text-muted-foreground mt-0.5">
+   203→            Playwright · Extraction complète · Déduplication IA · Anti-blocage
+   204→          </p>
+   205→        </div>
+   206→        {isRunning && (
+   207→          <Badge variant="outline" className="bg-primary/10 text-primary gap-1.5">
+   208→            <Loader2 className="h-3 w-3 animate-spin" />
+   209→            Scraping en cours…
+   210→          </Badge>
+   211→        )}
+   212→      </div>
+   213→
+   214→      {/* Formulaire de recherche */}
+   215→      <Card>
+   216→        <CardHeader className="pb-3">
+   217→          <CardTitle className="text-base flex items-center gap-2">
+   218→            <Tag className="h-4 w-4 text-primary" />
+   219→            Critères de recherche
+   220→          </CardTitle>
+   221→          <CardDescription className="text-xs">
+   222→            Le moteur va ouvrir Google Maps, scroller les résultats et extraire chaque fiche détaillée
+   223→          </CardDescription>
+   224→        </CardHeader>
+   225→        <CardContent className="space-y-4">
+   226→          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+   227→            <div className="md:col-span-4 space-y-1.5">
+   228→              <Label className="text-xs flex items-center gap-1.5">
+   229→                <Tag className="h-3 w-3" /> Mot-clé *
+   230→              </Label>
+   231→              <Input
+   232→                value={keyword}
+   233→                onChange={(e) => setKeyword(e.target.value)}
+   234→                placeholder="restaurant, pharmacie, banque…"
+   235→                disabled={isRunning}
+   236→              />
+   237→            </div>
+   238→            <div className="md:col-span-2 space-y-1.5">
+   239→              <Label className="text-xs flex items-center gap-1.5">
+   240→                <Building2 className="h-3 w-3" /> Ville
+   241→              </Label>
+   242→              <Input
+   243→                value={city}
+   244→                onChange={(e) => setCity(e.target.value)}
+   245→                placeholder="Abidjan"
+   246→                disabled={isRunning}
+   247→              />
+   248→            </div>
+   249→            <div className="md:col-span-2 space-y-1.5">
+   250→              <Label className="text-xs flex items-center gap-1.5">
+   251→                <MapPin className="h-3 w-3" /> Commune
+   252→              </Label>
+   253→              <Input
+   254→                value={commune}
+   255→                onChange={(e) => setCommune(e.target.value)}
+   256→                placeholder="Cocody"
+   257→                disabled={isRunning}
+   258→              />
+   259→            </div>
+   260→            <div className="md:col-span-2 space-y-1.5">
+   261→              <Label className="text-xs flex items-center gap-1.5">
+   262→                <MapPin className="h-3 w-3" /> Quartier
+   263→              </Label>
+   264→              <Input
+   265→                value={neighborhood}
+   266→                onChange={(e) => setNeighborhood(e.target.value)}
+   267→                placeholder="Riviera 2"
+   268→                disabled={isRunning}
+   269→              />
+   270→            </div>
+   271→            <div className="md:col-span-2 space-y-1.5">
+   272→              <Label className="text-xs">Max résultats</Label>
+   273→              <Select value={String(maxResults)} onValueChange={(v) => setMaxResults(Number(v))} disabled={isRunning}>
+   274→                <SelectTrigger><SelectValue /></SelectTrigger>
+   275→                <SelectContent>
+   276→                  {[5, 10, 20, 50].map((n) => (
+   277→                    <SelectItem key={n} value={String(n)}>{n} lieux</SelectItem>
+   278→                  ))}
+   279→                </SelectContent>
+   280→              </Select>
+   281→            </div>
+   282→          </div>
+   283→
+   284→          <div className="flex items-center justify-between">
+   285→            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+   286→              <span className="flex items-center gap-1">
+   287→                <CheckCircle2 className="h-3 w-3 text-primary" /> Anti-blocage (CAPTCHA, 429, consent)
+   288→              </span>
+   289→              <span className="flex items-center gap-1">
+   290→                <Sparkles className="h-3 w-3 text-primary" /> Dédup IA (Jaro-Winkler + GPS)
+   291→              </span>
+   292→              <span className="hidden sm:flex items-center gap-1">
+   293→                <Activity className="h-3 w-3 text-primary" /> Backoff exponentiel
+   294→              </span>
+   295→            </div>
+   296→            <div className="flex gap-2">
+   297→              {isRunning ? (
+   298→                <Button variant="destructive" onClick={cancelJob} className="gap-2">
+   299→                  <Square className="h-4 w-4" />
+   300→                  Annuler
+   301→                </Button>
+   302→              ) : (
+   303→                <Button onClick={launchJob} disabled={launching} className="gap-2">
+   304→                  {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+   305→                  Lancer le scraping
+   306→                </Button>
+   307→              )}
+   308→            </div>
+   309→          </div>
+   310→        </CardContent>
+   311→      </Card>
+   312→
+   313→      {/* Progression en temps réel */}
+   314→      {currentJob && (
+   315→        <Card>
+   316→          <CardHeader className="pb-3">
+   317→            <div className="flex items-center justify-between">
+   318→              <CardTitle className="text-base flex items-center gap-2">
+   319→                <Activity className="h-4 w-4 text-primary" />
+   320→                Progression — Job <span className="font-mono text-xs text-muted-foreground">{currentJob.id}</span>
+   321→              </CardTitle>
+   322→              <StatusBadge status={currentJob.progress.status} />
+   323→            </div>
+   324→          </CardHeader>
+   325→          <CardContent className="space-y-4">
+   326→            {/* Barre de progression */}
+   327→            <div className="space-y-2">
+   328→              <div className="flex justify-between text-xs">
+   329→                <span className="font-medium capitalize">{currentJob.progress.phase}</span>
+   330→                <span className="text-muted-foreground">{currentJob.progress.progress}%</span>
+   331→              </div>
+   332→              <Progress value={currentJob.progress.progress} className="h-2" />
+   333→            </div>
+   334→
+   335→            {/* Stats live */}
+   336→            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+   337→              <StatCard label="Extraits" value={currentJob.progress.processedCount} icon={CheckCircle2} />
+   338→              <StatCard label="Doublons" value={currentJob.progress.duplicatesDetected} icon={AlertCircle} />
+   339→              <StatCard label="Uniques" value={currentJob.progress.resultsCount - currentJob.progress.duplicatesDetected} icon={Sparkles} />
+   340→              <StatCard label="Erreurs" value={currentJob.progress.errors.length} icon={XCircle} />
+   341→              <StatCard label="Durée" value={currentJob.result ? `${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s` : "…"} icon={Clock} />
+   342→            </div>
+   343→
+   344→            {currentJob.progress.currentPlace && isRunning && (
+   345→              <div className="rounded-lg bg-muted/40 p-2.5 text-xs flex items-center gap-2">
+   346→                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+   347→                <span className="text-muted-foreground">Extraction en cours :</span>
+   348→                <span className="font-medium truncate">{currentJob.progress.currentPlace}</span>
+   349→              </div>
+   350→            )}
+   351→
+   352→            {/* Log streaming */}
+   353→            {currentJob.events.length > 0 && (
+   354→              <div>
+   355→                <p className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+   356→                  <Activity className="h-3 w-3" /> Log streaming
+   357→                </p>
+   358→                <div className="rounded-lg bg-slate-950 text-slate-100 p-3 font-mono text-[11px] space-y-0.5 max-h-48 overflow-y-auto">
+   359→                  {currentJob.events.slice(-30).map((event, i) => (
+   360→                    <div key={i} className={cn(
+   361→                      event.type === "error" && "text-red-400",
+   362→                      event.type === "block-detected" && "text-amber-400",
+   363→                      event.type === "place-extracted" && "text-emerald-400",
+   364→                      event.type === "duplicate-detected" && "text-cyan-400",
+   365→                      event.type === "complete" && "text-emerald-400 font-semibold",
+   366→                      !["error", "block-detected", "place-extracted", "duplicate-detected", "complete"].includes(event.type) && "text-slate-400",
+   367→                    )}>
+   368→                      [{new Date().toLocaleTimeString("fr-FR")}] {formatEvent(event)}
+   369→                    </div>
+   370→                  ))}
+   371→                  {isRunning && <div className="text-slate-500 animate-pulse">▋</div>}
+   372→                </div>
+   373→              </div>
+   374→            )}
+   375→
+   376→            {/* Erreurs */}
+   377→            {currentJob.progress.errors.length > 0 && (
+   378→              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+   379→                <p className="text-xs font-semibold text-destructive mb-1">Erreurs ({currentJob.progress.errors.length})</p>
+   380→                <ul className="space-y-0.5 text-[11px] text-muted-foreground max-h-32 overflow-y-auto">
+   381→                  {currentJob.progress.errors.slice(-10).map((err, i) => (
+   382→                    <li key={i} className="font-mono">• {err}</li>
+   383→                  ))}
+   384→                </ul>
+   385→              </div>
+   386→            )}
+   387→          </CardContent>
+   388→        </Card>
+   389→      )}
+   390→
+   391→      {/* Résultats */}
+   392→      {currentJob?.result && currentJob.result.places.length > 0 && (
+   393→        <Tabs defaultValue="grid">
+   394→          <div className="flex items-center justify-between">
+   395→            <TabsList>
+   396→              <TabsTrigger value="grid">Résultats ({currentJob.result.places.length})</TabsTrigger>
+   397→              <TabsTrigger value="duplicates">Doublons ({currentJob.result.duplicates.length})</TabsTrigger>
+   398→              <TabsTrigger value="stats">Stats</TabsTrigger>
+   399→            </TabsList>
+   400→            <a href={`/api/scraper/jobs/${currentJob.id}?format=csv`} target="_blank" rel="noreferrer">
+   401→              <Button variant="outline" size="sm" className="gap-2">
+   402→                <Download className="h-3.5 w-3.5" />
+   403→                Export CSV
+   404→              </Button>
+   405→            </a>
+   406→          </div>
+   407→
+   408→          <TabsContent value="grid" className="mt-4">
+   409→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+   410→              {currentJob.result.places.map((place, i) => (
+   411→                <PlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+   412→              ))}
+   413→            </div>
+   414→          </TabsContent>
+   415→
+   416→          <TabsContent value="duplicates" className="mt-4">
+   417→            {currentJob.result.duplicates.length === 0 ? (
+   418→              <Card>
+   419→                <CardContent className="p-8 text-center text-muted-foreground text-sm">
+   420→                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-primary" />
+   421→                  Aucun doublon détecté
+   422→                </CardContent>
+   423→              </Card>
+   424→            ) : (
+   425→              <div className="space-y-3">
+   426→                {currentJob.result.duplicates.map((group, i) => (
+   427→                  <Card key={i}>
+   428→                    <CardContent className="p-4">
+   429→                      <div className="flex items-center gap-2 mb-3">
+   430→                        <Sparkles className="h-4 w-4 text-primary" />
+   431→                        <p className="text-sm font-semibold">{group.canonicalName}</p>
+   432→                        <Badge variant="outline" className="text-[10px] ml-auto">
+   433→                          Confiance {(group.confidence * 100).toFixed(0)}%
+   434→                        </Badge>
+   435→                      </div>
+   436→                      <Separator className="mb-3" />
+   437→                      <div className="space-y-1.5">
+   438→                        {group.duplicates.map((dup, j) => (
+   439→                          <div key={j} className="flex items-center justify-between text-xs">
+   440→                            <span className="flex items-center gap-2">
+   441→                              <AlertCircle className="h-3 w-3 text-amber-500" />
+   442→                              {dup.name}
+   443→                            </span>
+   444→                            <div className="flex items-center gap-2">
+   445→                              <Badge variant="outline" className="text-[9px]">{dup.reason}</Badge>
+   446→                              <span className="text-muted-foreground tabular-nums">{(dup.similarity * 100).toFixed(0)}%</span>
+   447→                            </div>
+   448→                          </div>
+   449→                        ))}
+   450→                      </div>
+   451→                    </CardContent>
+   452→                  </Card>
+   453→                ))}
+   454→              </div>
+   455→            )}
+   456→          </TabsContent>
+   457→
+   458→          <TabsContent value="stats" className="mt-4">
+   459→            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+   460→              <StatCard label="Lieux extraits (total)" value={currentJob.result.stats.totalExtracted} icon={CheckCircle2} />
+   461→              <StatCard label="Lieux uniques" value={currentJob.result.stats.uniqueCount} icon={Sparkles} />
+   462→              <StatCard label="Doublons fusionnés" value={currentJob.result.stats.duplicatesCount} icon={AlertCircle} />
+   463→              <StatCard label="Pages scrapées" value={currentJob.result.stats.pagesScraped} icon={Activity} />
+   464→              <StatCard label="Blocages rencontrés" value={currentJob.result.stats.blocksEncountered} icon={XCircle} />
+   465→              <StatCard label="Retries" value={currentJob.result.stats.retries} icon={RefreshCw} />
+   466→              <StatCard label="Durée totale" value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+   467→              <StatCard label="Vitesse moyenne" value={`${(currentJob.result.stats.totalExtracted / (currentJob.result.stats.durationMs / 1000)).toFixed(2)} lieu/s`} icon={Activity} />
+   468→              <StatCard label="Taux de succès" value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`} icon={CheckCircle2} />
+   469→            </div>
+   470→          </TabsContent>
+   471→        </Tabs>
+   472→      )}
+   473→
+   474→      {/* État initial : pas de job */}
+   475→      {!currentJob && !launching && (
+   476→        <Card>
+   477→          <CardContent className="p-12 text-center">
+   478→            <Radar className="h-12 w-12 mx-auto mb-3 text-primary opacity-50" />
+   479→            <p className="font-semibold mb-1">Prêt à scraper</p>
+   480→            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+   481→              Configurez vos critères ci-dessus puis cliquez sur « Lancer le scraping ».
+   482→              Le moteur ouvrira Google Maps en mode headless, extraira chaque fiche et
+   483→              dédupliquera les résultats automatiquement.
+   484→            </p>
+   485→            <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-muted-foreground">
+   486→              <Badge variant="outline" className="gap-1"><CheckCircle2 className="h-2.5 w-2.5 text-primary" /> Playwright + Chromium</Badge>
+   487→              <Badge variant="outline" className="gap-1"><Sparkles className="h-2.5 w-2.5 text-primary" /> pgvector ready</Badge>
+   488→              <Badge variant="outline" className="gap-1"><Activity className="h-2.5 w-2.5 text-primary" /> Anti-CAPTCHA</Badge>
+   489→            </div>
+   490→          </CardContent>
+   491→        </Card>
+   492→      )}
+   493→    </div>
+   494→  )
+   495→}
+   496→
+   497→// ============================================================================
+   498→// SOUS-COMPOSANTS
+   499→// ============================================================================
+   500→
+   501→function StatusBadge({ status }: { status: string }) {
+   502→  const meta: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+   503→    queued: { label: "En file", icon: Clock, className: "bg-muted text-muted-foreground" },
+   504→    running: { label: "En cours", icon: Loader2, className: "bg-primary/10 text-primary" },
+   505→    completed: { label: "Terminé", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700" },
+   506→    failed: { label: "Échec", icon: XCircle, className: "bg-destructive/10 text-destructive" },
+   507→    cancelled: { label: "Annulé", icon: Square, className: "bg-muted text-muted-foreground" },
+   508→  }
+   509→  const m = meta[status] || meta.queued
+   510→  const Icon = m.icon
+   511→  return (
+   512→    <Badge variant="outline" className={cn("text-[10px] gap-1", m.className)}>
+   513→      <Icon className={cn("h-2.5 w-2.5", status === "running" && "animate-spin")} />
+   514→      {m.label}
+   515→    </Badge>
+   516→  )
+   517→}
+   518→
+   519→function StatCard({ label, value, icon: Icon }: { label: string; value: number | string; icon: React.ElementType }) {
+   520→  return (
+   521→    <div className="rounded-lg border p-3">
+   522→      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+   523→        <Icon className="h-3 w-3" />
+   524→        {label}
+   525→      </div>
+   526→      <p className="text-xl font-bold tabular-nums">{value}</p>
+   527→    </div>
+   528→  )
+   529→}
+   530→
+   531→function PlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => void }) {
+   532→  return (
+   533→    <Card className="hover:shadow-md transition-shadow cursor-pointer" >
+   534→      <CardContent className="p-4" onClick={onClick}>
+   535→        <div className="flex items-start gap-2 mb-2">
+   536→          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs shrink-0">
+   537→            {place.name.charAt(0)}
+   538→          </div>
+   539→          <div className="min-w-0 flex-1">
+   540→            <p className="font-semibold text-sm leading-tight line-clamp-2">{place.name}</p>
+   541→            {place.category && (
+   542→              <p className="text-[11px] text-muted-foreground mt-0.5">{place.category}</p>
+   543→            )}
+   544→          </div>
+   545→          {place.rating && (
+   546→            <Badge variant="outline" className="text-[10px] gap-1 shrink-0">
+   547→              <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
+   548→              {place.rating}
+   549→            </Badge>
+   550→          )}
+   551→        </div>
+   552→
+   553→        <div className="space-y-1 text-[11px]">
+   554→          {place.address && (
+   555→            <div className="flex items-start gap-1.5 text-muted-foreground">
+   556→              <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+   557→              <span className="line-clamp-2">{place.address}</span>
+   558→            </div>
+   559→          )}
+   560→          {place.phone && (
+   561→            <div className="flex items-center gap-1.5 text-muted-foreground">
+   562→              <Phone className="h-3 w-3 shrink-0" />
+   563→              {place.phone}
+   564→            </div>
+   565→          )}
+   566→          {place.website && (
+   567→            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+   568→              <Globe className="h-3 w-3 shrink-0" />
+   569→              <span className="truncate">{place.website.replace(/^https?:\/\//, "")}</span>
+   570→            </div>
+   571→          )}
+   572→          {place.email && (
+   573→            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+   574→              <Mail className="h-3 w-3 shrink-0" />
+   575→              <span className="truncate">{place.email}</span>
+   576→            </div>
+   577→          )}
+   578→        </div>
+   579→
+   580→        <div className="flex items-center justify-between mt-2 pt-2 border-t text-[10px]">
+   581→          <div className="flex items-center gap-2">
+   582→            {place.reviewCount && (
+   583→              <span className="text-muted-foreground">{place.reviewCount} avis</span>
+   584→            )}
+   585→            {place.isOpenNow !== undefined && (
+   586→              <Badge variant="outline" className={cn("text-[9px] h-4 px-1", place.isOpenNow ? "text-emerald-600 border-emerald-200" : "text-red-600 border-red-200")}>
+   587→                {place.isOpenNow ? "Ouvert" : "Fermé"}
+   588→              </Badge>
+   589→            )}
+   590→          </div>
+   591→          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+   592→        </div>
+   593→      </CardContent>
+   594→    </Card>
+   595→  )
+   596→}
+   597→
+   598→function formatEvent(event: { type: string; [key: string]: unknown }): string {
+   599→  switch (event.type) {
+   600→    case "start":
+   601→      return `🚀 Démarrage du scraping`
+   602→    case "search-loaded":
+   603→      return `🔍 Page de recherche chargée (${event.resultsOnPage} résultats visibles)`
+   604→    case "scroll":
+   605→      return `📜 Scroll ${event.scrollIndex} → ${event.totalResults} résultats`
+   606→    case "place-extracted":
+   607→      return `✓ Extrait: ${(event.place as { name?: string })?.name || ""} (#${event.index})`
+   608→    case "duplicate-detected":
+   609→      return `↺ Doublon détecté: ${(event.place as { name?: string })?.name || ""} → ${event.duplicateOf}`
+   610→    case "block-detected":
+   611→      return `⚠️ Blocage (${event.reason}) ${event.retrying ? "— retry en cours" : ""}`
+   612→    case "error":
+   613→      return `✗ Erreur: ${event.message}`
+   614→    case "progress":
+   615→      return `📊 Phase: ${event.phase} (${event.progress}%)`
+   616→    case "complete":
+   617→      return `✅ Terminé : ${event.results ? (event.results as unknown[]).length : 0} lieux, ${event.duplicates} doublons, en ${(Number(event.durationMs) / 1000).toFixed(1)}s`
+   618→    case "cancelled":
+   619→      return `⏹️ Annulé`
+   620→    default:
+   621→      return event.type
+   622→  }
+   623→}
+   624→

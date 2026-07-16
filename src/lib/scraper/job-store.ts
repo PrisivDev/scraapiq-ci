@@ -121,6 +121,14 @@ export function startScrapeJob(jobId: string, query: SearchQuery): JobState {
     .scrape(jobId, query)
     .then((result) => {
       state.result = result
+      if (result.status === "failed") {
+        state.progress.status = "failed"
+        state.progress.phase = "done"
+      } else if (result.status === "completed") {
+        state.progress.status = "completed"
+        state.progress.phase = "done"
+        state.progress.progress = 100
+      }
     })
     .catch((err) => {
       state.progress.status = "failed"
