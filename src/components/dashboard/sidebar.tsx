@@ -14,6 +14,7 @@ import {
   Radar,
   ChevronLeft,
   Sparkles,
+  Cpu,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,7 @@ export type NavKey =
   | "map"
   | "sources"
   | "jobs"
+  | "scraper"
   | "exports"
   | "team"
   | "settings"
@@ -49,6 +51,7 @@ const navItems: {
   { key: "map", label: "Cartographie", icon: Map, section: "Données" },
   { key: "sources", label: "Sources de données", icon: Database, section: "Données" },
   { key: "jobs", label: "Jobs de scraping", icon: Activity, badge: "12", section: "Opérations" },
+  { key: "scraper", label: "Moteur Google Maps", icon: Cpu, badge: "Nouveau", section: "Opérations" },
   { key: "exports", label: "Exports", icon: Download, section: "Opérations" },
   { key: "team", label: "Équipe & tenants", icon: Users, section: "Administration" },
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },

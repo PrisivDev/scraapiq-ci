@@ -20,6 +20,7 @@ import { CompaniesView } from "@/components/dashboard/views/companies-view"
 import { MapViewFull } from "@/components/dashboard/views/map-view-full"
 import { SourcesView } from "@/components/dashboard/views/sources-view"
 import { JobsView } from "@/components/dashboard/views/jobs-view"
+import { ScraperView } from "@/components/dashboard/views/scraper-view"
 import { ExportsView } from "@/components/dashboard/views/exports-view"
 import { TeamView } from "@/components/dashboard/views/team-view"
 import { SettingsView } from "@/components/dashboard/views/settings-view"
@@ -119,6 +120,8 @@ export default function Home() {
             {activeNav === "sources" && <SourcesView />}
 
             {activeNav === "jobs" && <JobsView />}
+
+            {activeNav === "scraper" && <ScraperView />}
 
             {activeNav === "exports" && <ExportsView />}
 
