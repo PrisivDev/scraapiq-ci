@@ -5,7 +5,7 @@ import {
   Radar, Play, Square, RefreshCw, Download, MapPin, Phone, Mail, Globe,
   Star, Clock, Tag, Building2, AlertCircle, AlertTriangle, CheckCircle2,
   Loader2, XCircle, Eye, ChevronRight, ExternalLink, Activity, Sparkles,
-  MessageCircle, BadgeCheck, Heart, Users
+  MessageCircle, BadgeCheck, Heart, Users, Briefcase, Crown, UserCheck, Award
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -27,7 +28,7 @@ import { cn } from "@/lib/utils"
 // Types
 // ---------------------------------------------------------------------------
 
-type Engine = "google-maps" | "facebook"
+type Engine = "google-maps" | "facebook" | "business"
 
 interface ScrapedPlace {
   name: string
@@ -57,6 +58,31 @@ interface ScrapedPlace {
   likesCount?: number
   followersCount?: number
   isVerified?: boolean
+  // Business/LinkedIn-specific
+  linkedinSlug?: string
+  linkedinUrl?: string
+  companySize?: string
+  companyType?: string
+  foundedYear?: number
+  specialties?: string[]
+  executives?: Array<{
+    name: string
+    title?: string
+    linkedinUrl?: string
+    photoUrl?: string
+    role: "executive"
+    bio?: string
+    location?: string
+  }>
+  employees?: Array<{
+    name: string
+    title?: string
+    linkedinUrl?: string
+    photoUrl?: string
+    role: "employee"
+  }>
+  employeesOnLinkedin?: number
+  identificationScore?: number
 }
 
 interface JobProgress {
@@ -121,6 +147,10 @@ const ENDPOINTS: Record<Engine, { launch: string; job: (id: string) => string; l
     launch: "/api/scraper/facebook",
     job: (id) => `/api/scraper/facebook/jobs/${id}`,
   },
+  business: {
+    launch: "/api/scraper/business",
+    job: (id) => `/api/scraper/business/jobs/${id}`,
+  },
 }
 
 function formatCount(n: number): string {
@@ -132,6 +162,12 @@ function formatCount(n: number): string {
 const FacebookIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+  </svg>
+)
+
+const LinkedinIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/>
   </svg>
 )
 
@@ -149,10 +185,17 @@ export function ScraperView() {
   // Facebook-only fields
   const [cookies, setCookies] = useState("")
   const [pageUrl, setPageUrl] = useState("")
+  // Business/LinkedIn-only fields
+  const [linkedinSlug, setLinkedinSlug] = useState("")
+  const [linkedinUrl, setLinkedinUrl] = useState("")
+  const [linkedinCookies, setLinkedinCookies] = useState("")
+  const [maxPeople, setMaxPeople] = useState(20)
+  const [extractEmployees, setExtractEmployees] = useState(true)
 
   const [jobs, setJobs] = useState<Record<Engine, JobState | null>>({
     "google-maps": null,
     facebook: null,
+    business: null,
   })
   const [pollingEngine, setPollingEngine] = useState<Engine | null>(null)
   const [launching, setLaunching] = useState(false)
@@ -174,8 +217,8 @@ export function ScraperView() {
       } else {
         setPollingEngine((cur) => (cur === eng ? null : cur))
         if (data.progress.status === "completed" && data.result) {
-          toast.success("Scraping terminé", {
-            description: `${data.result.stats.uniqueCount} lieu(s) unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
+          toast.success(eng === "business" ? "Identification terminée" : "Scraping terminé", {
+            description: `${data.result.stats.uniqueCount} ${eng === "business" ? "entreprise(s)" : "lieu(s)"} unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
           })
         } else if (data.progress.status === "failed") {
           toast.error("Scraping échoué", {
@@ -192,7 +235,15 @@ export function ScraperView() {
   // Lance un job
   const launchJob = async () => {
     const isDirectPage = engine === "facebook" && pageUrl.trim().length > 0
-    if (!isDirectPage && !keyword.trim()) {
+    const isBusinessDirect =
+      engine === "business" && (linkedinSlug.trim().length > 0 || linkedinUrl.trim().length > 0)
+
+    if (engine === "business") {
+      if (!keyword.trim() && !linkedinSlug.trim() && !linkedinUrl.trim()) {
+        toast.error("Veuillez saisir un nom, un slug LinkedIn ou une URL LinkedIn")
+        return
+      }
+    } else if (!isDirectPage && !keyword.trim()) {
       toast.error(engine === "facebook"
         ? "Veuillez saisir un mot-clé ou une URL de page Facebook"
         : "Veuillez saisir un mot-clé")
@@ -201,16 +252,37 @@ export function ScraperView() {
 
     setLaunching(true)
     try {
-      const body: Record<string, unknown> = {
-        keyword: keyword.trim() || undefined,
-        city: city.trim() || undefined,
-        commune: commune.trim() || undefined,
-        neighborhood: neighborhood.trim() || undefined,
-        maxResults,
-      }
-      if (engine === "facebook") {
-        if (cookies.trim()) body.cookies = cookies.trim()
-        if (pageUrl.trim()) body.pageUrl = pageUrl.trim()
+      let body: Record<string, unknown>
+      let description: string
+
+      if (engine === "business") {
+        body = {
+          query: keyword.trim() || undefined,
+          location: city.trim() || undefined,
+          linkedinSlug: linkedinSlug.trim() || undefined,
+          linkedinUrl: linkedinUrl.trim() || undefined,
+          cookies: linkedinCookies.trim() || undefined,
+          maxPeople,
+          extractEmployees,
+        }
+        description = isBusinessDirect
+          ? `Entreprise LinkedIn : ${linkedinSlug.trim() || linkedinUrl.trim()}`
+          : `Recherche entreprise « ${keyword} »${city.trim() ? ` à ${city.trim()}` : ""}`
+      } else {
+        body = {
+          keyword: keyword.trim() || undefined,
+          city: city.trim() || undefined,
+          commune: commune.trim() || undefined,
+          neighborhood: neighborhood.trim() || undefined,
+          maxResults,
+        }
+        if (engine === "facebook") {
+          if (cookies.trim()) body.cookies = cookies.trim()
+          if (pageUrl.trim()) body.pageUrl = pageUrl.trim()
+        }
+        description = isDirectPage
+          ? `Page Facebook : ${pageUrl.trim()}`
+          : `Recherche « ${keyword} » à ${commune || city}`
       }
 
       const res = await fetch(ENDPOINTS[engine].launch, {
@@ -232,11 +304,13 @@ export function ScraperView() {
         toast.warning("Cookies non validés", {
           description: "Le moteur n'a pas pu vérifier les cookies. Le scraping peut échouer ou être limité.",
         })
+      } else if (engine === "business" && data.authenticated === false) {
+        toast.info("Lancement sans cookies LinkedIn", {
+          description: "Fonctionne pour les grandes entreprises publiques (Orange, MTN…). Pour les PME, fournissez des cookies (li_at).",
+        })
       } else {
-        toast.info("Job de scraping lancé", {
-          description: isDirectPage
-            ? `Page Facebook : ${pageUrl.trim()}`
-            : `Recherche « ${keyword} » à ${commune || city}`,
+        toast.info(engine === "business" ? "Job d'identification lancé" : "Job de scraping lancé", {
+          description,
         })
       }
 
@@ -291,6 +365,8 @@ export function ScraperView() {
           <p className="text-sm text-muted-foreground mt-0.5">
             {engine === "facebook"
               ? "Facebook · Playwright · Extraction pages & recherche · Déduplication IA"
+              : engine === "business"
+              ? "Business / LinkedIn · Identification entreprises · Dirigeants & employés · Multi-sources"
               : "Google Maps · Playwright · Extraction complète · Déduplication IA · Anti-blocage"}
           </p>
         </div>
@@ -311,6 +387,10 @@ export function ScraperView() {
                 <FacebookIcon className="h-3.5 w-3.5" />
                 Facebook
               </TabsTrigger>
+              <TabsTrigger value="business" className="gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />
+                Business / LinkedIn
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -322,14 +402,18 @@ export function ScraperView() {
           <CardTitle className="text-base flex items-center gap-2">
             {engine === "facebook" ? (
               <FacebookIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            ) : engine === "business" ? (
+              <Building2 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             ) : (
               <Tag className="h-4 w-4 text-primary" />
             )}
-            Critères de recherche{engine === "facebook" ? " — Facebook" : " — Google Maps"}
+            Critères de recherche{engine === "facebook" ? " — Facebook" : engine === "business" ? " — Business / LinkedIn" : " — Google Maps"}
           </CardTitle>
           <CardDescription className="text-xs">
             {engine === "facebook"
               ? "Le moteur va ouvrir Facebook, charger les pages et extraire les coordonnées (Messenger, WhatsApp, site, etc.)"
+              : engine === "business"
+              ? "Le moteur va identifier l'entreprise sur LinkedIn, extraire dirigeants et employés, avec fallbacks (Google, Pages Jaunes)"
               : "Le moteur va ouvrir Google Maps, scroller les résultats et extraire chaque fiche détaillée"}
           </CardDescription>
         </CardHeader>
@@ -345,6 +429,20 @@ export function ScraperView() {
                 Facebook nécessite des cookies de session (<code className="font-mono">c_user</code>,{" "}
                 <code className="font-mono">xs</code>) pour accéder à la plupart des pages.
                 Récupérez-les depuis votre navigateur → DevTools → Application → Cookies → facebook.com
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Alerte cookies LinkedIn (business) */}
+          {engine === "business" && (
+            <Alert className="border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-950/40">
+              <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+              <AlertTitle className="text-orange-800 dark:text-orange-200">
+                🔐 Authentification LinkedIn
+              </AlertTitle>
+              <AlertDescription className="text-orange-700 dark:text-orange-300">
+                LinkedIn nécessite des cookies (<code className="font-mono">li_at</code>) pour les PME.
+                Les grandes entreprises publiques (Orange, MTN, etc.) sont accessibles sans authentification.
               </AlertDescription>
             </Alert>
           )}
@@ -367,7 +465,104 @@ export function ScraperView() {
             </div>
           )}
 
+          {/* Champs business/LinkedIn */}
+          {engine === "business" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-5 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Tag className="h-3 w-3" /> Nom ou mot-clé {!linkedinSlug && !linkedinUrl && "*"}
+                  </Label>
+                  <Input
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder="Orange, MTN Côte d'Ivoire…"
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="md:col-span-3 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <MapPin className="h-3 w-3" /> Localisation
+                  </Label>
+                  <Input
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Abidjan, CI"
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="md:col-span-2 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <UserCheck className="h-3 w-3" /> Max personnes
+                  </Label>
+                  <Select value={String(maxPeople)} onValueChange={(v) => setMaxPeople(Number(v))} disabled={isRunning}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[5, 10, 20, 50].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n} personnes</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Users className="h-3 w-3" /> Extraire employés
+                  </Label>
+                  <div className="flex items-center gap-2 h-9">
+                    <Switch
+                      checked={extractEmployees}
+                      onCheckedChange={setExtractEmployees}
+                      disabled={isRunning}
+                      aria-label="Extraire les employés"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      {extractEmployees ? "Oui" : "Non"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-3 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <LinkedinIcon className="h-3 w-3" /> Slug LinkedIn (optionnel)
+                  </Label>
+                  <Input
+                    value={linkedinSlug}
+                    onChange={(e) => setLinkedinSlug(e.target.value)}
+                    placeholder="orange"
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="md:col-span-4 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <LinkedinIcon className="h-3 w-3" /> URL LinkedIn (optionnel)
+                  </Label>
+                  <Input
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    placeholder="https://www.linkedin.com/company/orange/"
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="md:col-span-5 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <AlertCircle className="h-3 w-3" /> Cookies LinkedIn (optionnel)
+                  </Label>
+                  <Textarea
+                    value={linkedinCookies}
+                    onChange={(e) => setLinkedinCookies(e.target.value)}
+                    placeholder="li_at=XXXX; JSESSIONID=YYYY"
+                    disabled={isRunning}
+                    className="min-h-[42px] text-[11px] font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Champs standards (masqués en mode pageUrl direct) */}
+          {engine !== "business" && (
           <div className={cn("grid grid-cols-1 md:grid-cols-12 gap-3", isDirectPageMode && "opacity-50 pointer-events-none")}>
             <div className="md:col-span-4 space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
@@ -425,6 +620,7 @@ export function ScraperView() {
               </Select>
             </div>
           </div>
+          )}
 
           {/* Champs Facebook spécifiques */}
           {engine === "facebook" && (
@@ -463,14 +659,23 @@ export function ScraperView() {
             <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="h-3 w-3 text-primary" />
-                {engine === "facebook" ? "Auth par cookies" : "Anti-blocage (CAPTCHA, 429, consent)"}
+                {engine === "facebook"
+                  ? "Auth par cookies"
+                  : engine === "business"
+                  ? "Identification multi-sources"
+                  : "Anti-blocage (CAPTCHA, 429, consent)"}
               </span>
               <span className="flex items-center gap-1">
-                <Sparkles className="h-3 w-3 text-primary" /> Dédup IA (Jaro-Winkler + GPS)
+                <Sparkles className="h-3 w-3 text-primary" />
+                {engine === "business" ? "Dirigeants & employés" : "Dédup IA (Jaro-Winkler + GPS)"}
               </span>
               <span className="hidden sm:flex items-center gap-1">
                 <Activity className="h-3 w-3 text-primary" />
-                {engine === "facebook" ? "Extraction Messenger/WhatsApp" : "Backoff exponentiel"}
+                {engine === "facebook"
+                  ? "Extraction Messenger/WhatsApp"
+                  : engine === "business"
+                  ? "Score de confiance 0-100"
+                  : "Backoff exponentiel"}
               </span>
             </div>
             <div className="flex gap-2">
@@ -482,7 +687,7 @@ export function ScraperView() {
               ) : (
                 <Button onClick={launchJob} disabled={launching} className="gap-2">
                   {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Lancer le scraping
+                  {engine === "business" ? "Lancer l'identification" : "Lancer le scraping"}
                 </Button>
               )}
             </div>
@@ -502,6 +707,8 @@ export function ScraperView() {
                 <Badge variant="outline" className="text-[10px] gap-1 ml-1">
                   {engine === "facebook" ? (
                     <><FacebookIcon className="h-2.5 w-2.5" /> Facebook</>
+                  ) : engine === "business" ? (
+                    <><Building2 className="h-2.5 w-2.5" /> Business</>
                   ) : (
                     <><MapPin className="h-2.5 w-2.5" /> Google Maps</>
                   )}
@@ -546,12 +753,12 @@ export function ScraperView() {
                 <div className="rounded-lg bg-slate-950 text-slate-100 p-3 font-mono text-[11px] space-y-0.5 max-h-48 overflow-y-auto">
                   {currentJob.events.slice(-30).map((event, i) => (
                     <div key={i} className={cn(
-                      (event.type === "error" || event.type === "fb-error") && "text-red-400",
-                      (event.type === "block-detected" || event.type === "fb-login-required" || event.type === "fb-consent-required") && "text-amber-400",
-                      (event.type === "place-extracted" || event.type === "fb-extracted") && "text-emerald-400",
-                      (event.type === "duplicate-detected" || event.type === "fb-page-loaded" || event.type === "fb-search-loaded") && "text-cyan-400",
+                      (event.type === "error" || event.type === "fb-error" || event.type === "biz-error") && "text-red-400",
+                      (event.type === "block-detected" || event.type === "fb-login-required" || event.type === "fb-consent-required" || event.type === "biz-fallback") && "text-amber-400",
+                      (event.type === "place-extracted" || event.type === "fb-extracted" || event.type === "biz-extracted") && "text-emerald-400",
+                      (event.type === "duplicate-detected" || event.type === "fb-page-loaded" || event.type === "fb-search-loaded" || event.type === "biz-page-loaded" || event.type === "biz-search-loaded" || event.type === "biz-people-found") && "text-cyan-400",
                       event.type === "complete" && "text-emerald-400 font-semibold",
-                      !["error", "fb-error", "block-detected", "fb-login-required", "fb-consent-required", "place-extracted", "fb-extracted", "duplicate-detected", "fb-page-loaded", "fb-search-loaded", "complete"].includes(event.type) && "text-slate-400",
+                      !["error", "fb-error", "biz-error", "block-detected", "fb-login-required", "fb-consent-required", "biz-fallback", "place-extracted", "fb-extracted", "biz-extracted", "duplicate-detected", "fb-page-loaded", "fb-search-loaded", "biz-page-loaded", "biz-search-loaded", "biz-people-found", "complete"].includes(event.type) && "text-slate-400",
                     )}>
                       [{new Date().toLocaleTimeString("fr-FR")}] {formatEvent(event)}
                     </div>
@@ -582,7 +789,7 @@ export function ScraperView() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList>
               <TabsTrigger value="grid">
-                {engine === "facebook" ? "Pages" : "Résultats"} ({currentJob.result.places.length})
+                {engine === "facebook" ? "Pages" : engine === "business" ? "Entreprises" : "Résultats"} ({currentJob.result.places.length})
               </TabsTrigger>
               <TabsTrigger value="duplicates">Doublons ({currentJob.result.duplicates.length})</TabsTrigger>
               <TabsTrigger value="stats">Stats</TabsTrigger>
@@ -602,7 +809,11 @@ export function ScraperView() {
           <TabsContent value="grid" className="mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {currentJob.result.places.map((place, i) => (
-                <PlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+                engine === "business" ? (
+                  <BusinessPlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+                ) : (
+                  <PlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+                )
               ))}
             </div>
           </TabsContent>
@@ -650,37 +861,86 @@ export function ScraperView() {
           </TabsContent>
 
           <TabsContent value="stats" className="mt-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <StatCard
-                label={engine === "facebook" ? "Pages extraites (total)" : "Lieux extraits (total)"}
-                value={currentJob.result.stats.totalExtracted}
-                icon={CheckCircle2}
-              />
-              <StatCard
-                label={engine === "facebook" ? "Pages uniques" : "Lieux uniques"}
-                value={currentJob.result.stats.uniqueCount}
-                icon={Sparkles}
-              />
-              <StatCard label="Doublons fusionnés" value={currentJob.result.stats.duplicatesCount} icon={AlertCircle} />
-              <StatCard
-                label={engine === "facebook" ? "Pages visitées" : "Pages scrapées"}
-                value={currentJob.result.stats.pagesScraped}
-                icon={Activity}
-              />
-              <StatCard label="Blocages rencontrés" value={currentJob.result.stats.blocksEncountered} icon={XCircle} />
-              <StatCard label="Retries" value={currentJob.result.stats.retries} icon={RefreshCw} />
-              <StatCard label="Durée totale" value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
-              <StatCard
-                label="Vitesse moyenne"
-                value={`${currentJob.result.stats.totalExtracted > 0 && currentJob.result.stats.durationMs > 0 ? (currentJob.result.stats.totalExtracted / (currentJob.result.stats.durationMs / 1000)).toFixed(2) : "0.00"} /s`}
-                icon={Activity}
-              />
-              <StatCard
-                label="Taux de succès"
-                value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
-                icon={CheckCircle2}
-              />
-            </div>
+            {engine === "business" ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <StatCard
+                  label="Entreprises identifiées"
+                  value={currentJob.result.stats.totalExtracted}
+                  icon={Building2}
+                />
+                <StatCard
+                  label="Dirigeants extraits"
+                  value={currentJob.result.places.reduce((sum, p) => sum + (p.executives?.length || 0), 0)}
+                  icon={Crown}
+                />
+                <StatCard
+                  label="Employés extraits"
+                  value={currentJob.result.places.reduce((sum, p) => sum + (p.employees?.length || 0), 0)}
+                  icon={UserCheck}
+                />
+                <StatCard
+                  label="Score moyen"
+                  value={`${(() => {
+                    const scores = currentJob.result.places
+                      .map((p) => p.identificationScore)
+                      .filter((s): s is number => typeof s === "number")
+                    return scores.length > 0
+                      ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(0)
+                      : "0"
+                  })()}%`}
+                  icon={Award}
+                />
+                <StatCard
+                  label="Followers LinkedIn"
+                  value={formatCount(currentJob.result.places.reduce((sum, p) => sum + (p.followersCount || 0), 0))}
+                  icon={Users}
+                />
+                <StatCard
+                  label="Employés sur LinkedIn"
+                  value={formatCount(currentJob.result.places.reduce((sum, p) => sum + (p.employeesOnLinkedin || 0), 0))}
+                  icon={Briefcase}
+                />
+                <StatCard label="Doublons fusionnés" value={currentJob.result.stats.duplicatesCount} icon={AlertCircle} />
+                <StatCard label="Durée totale" value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+                <StatCard
+                  label="Taux de succès"
+                  value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
+                  icon={CheckCircle2}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <StatCard
+                  label={engine === "facebook" ? "Pages extraites (total)" : "Lieux extraits (total)"}
+                  value={currentJob.result.stats.totalExtracted}
+                  icon={CheckCircle2}
+                />
+                <StatCard
+                  label={engine === "facebook" ? "Pages uniques" : "Lieux uniques"}
+                  value={currentJob.result.stats.uniqueCount}
+                  icon={Sparkles}
+                />
+                <StatCard label="Doublons fusionnés" value={currentJob.result.stats.duplicatesCount} icon={AlertCircle} />
+                <StatCard
+                  label={engine === "facebook" ? "Pages visitées" : "Pages scrapées"}
+                  value={currentJob.result.stats.pagesScraped}
+                  icon={Activity}
+                />
+                <StatCard label="Blocages rencontrés" value={currentJob.result.stats.blocksEncountered} icon={XCircle} />
+                <StatCard label="Retries" value={currentJob.result.stats.retries} icon={RefreshCw} />
+                <StatCard label="Durée totale" value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+                <StatCard
+                  label="Vitesse moyenne"
+                  value={`${currentJob.result.stats.totalExtracted > 0 && currentJob.result.stats.durationMs > 0 ? (currentJob.result.stats.totalExtracted / (currentJob.result.stats.durationMs / 1000)).toFixed(2) : "0.00"} /s`}
+                  icon={Activity}
+                />
+                <StatCard
+                  label="Taux de succès"
+                  value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
+                  icon={CheckCircle2}
+                />
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       )}
@@ -691,15 +951,19 @@ export function ScraperView() {
           <CardContent className="p-12 text-center">
             {engine === "facebook" ? (
               <FacebookIcon className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
+            ) : engine === "business" ? (
+              <Building2 className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
             ) : (
               <Radar className="h-12 w-12 mx-auto mb-3 text-primary opacity-50" />
             )}
             <p className="font-semibold mb-1">
-              Prêt à scraper {engine === "facebook" ? "Facebook" : "Google Maps"}
+              Prêt à {engine === "facebook" ? "scraper Facebook" : engine === "business" ? "identifier des entreprises" : "scraper Google Maps"}
             </p>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
               {engine === "facebook"
                 ? "Configurez vos critères (ou une URL de page) ci-dessus, ajoutez vos cookies Facebook si possible, puis cliquez sur « Lancer le scraping »."
+                : engine === "business"
+                ? "Renseignez un nom d'entreprise, un slug ou une URL LinkedIn, ajoutez des cookies (li_at) pour les PME, puis lancez l'identification. Dirigeants et employés seront extraits automatiquement."
                 : "Configurez vos critères ci-dessus puis cliquez sur « Lancer le scraping ». Le moteur ouvrira Google Maps en mode headless, extraira chaque fiche et dédupliquera les résultats automatiquement."}
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-muted-foreground">
@@ -713,6 +977,18 @@ export function ScraperView() {
                   </Badge>
                   <Badge variant="outline" className="gap-1">
                     <MessageCircle className="h-2.5 w-2.5 text-primary" /> Messenger / WhatsApp
+                  </Badge>
+                </>
+              ) : engine === "business" ? (
+                <>
+                  <Badge variant="outline" className="gap-1">
+                    <LinkedinIcon className="h-2.5 w-2.5" /> LinkedIn + fallbacks
+                  </Badge>
+                  <Badge variant="outline" className="gap-1">
+                    <Crown className="h-2.5 w-2.5 text-primary" /> Dirigeants & employés
+                  </Badge>
+                  <Badge variant="outline" className="gap-1">
+                    <Award className="h-2.5 w-2.5 text-primary" /> Score d'identification
                   </Badge>
                 </>
               ) : (
@@ -1042,6 +1318,225 @@ function PlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => voi
   )
 }
 
+function BusinessPlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => void }) {
+  const [expandedDesc, setExpandedDesc] = useState(false)
+  const [showAllEmployees, setShowAllEmployees] = useState(false)
+
+  const description = place.description || ""
+  const isLongDesc = description.length > 200
+  const score = place.identificationScore
+  const scoreColor =
+    score === undefined
+      ? ""
+      : score >= 70
+      ? "text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30"
+      : score >= 40
+      ? "text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30"
+      : "text-red-600 border-red-200 bg-red-50 dark:bg-red-950/30"
+
+  const executives = place.executives || []
+  const employees = place.employees || []
+  const shownEmployees = showAllEmployees ? employees : employees.slice(0, 3)
+  const hiddenEmployeesCount = Math.max(0, employees.length - 3)
+
+  return (
+    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+      <CardContent className="p-4" onClick={onClick}>
+        {/* Header: name + LinkedIn link + score */}
+        <div className="flex items-start gap-2 mb-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg font-bold text-xs shrink-0 bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-sm leading-tight line-clamp-2 flex items-center gap-1">
+              <span className="truncate">{place.name}</span>
+              {place.linkedinUrl && (
+                <a
+                  href={place.linkedinUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Page LinkedIn"
+                  className="shrink-0 text-orange-600 hover:text-orange-700 dark:text-orange-400"
+                >
+                  <LinkedinIcon className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </p>
+            {place.category && (
+              <Badge variant="outline" className="text-[9px] mt-0.5 gap-1">
+                <Tag className="h-2.5 w-2.5" /> {place.category}
+              </Badge>
+            )}
+          </div>
+          {score !== undefined && (
+            <Badge
+              variant="outline"
+              className={cn("text-[10px] gap-1 shrink-0", scoreColor)}
+              title="Score d'identification"
+            >
+              <Award className="h-2.5 w-2.5" />
+              {score}%
+            </Badge>
+          )}
+        </div>
+
+        {/* Company meta: size + type + founded + location + website + followers */}
+        <div className="space-y-1 text-[11px]">
+          {(place.companySize || place.companyType) && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Briefcase className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {[place.companySize, place.companyType].filter(Boolean).join(" · ")}
+              </span>
+            </div>
+          )}
+          {place.foundedYear !== undefined && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Clock className="h-3 w-3 shrink-0" />
+              <span>Fondée en {place.foundedYear}</span>
+            </div>
+          )}
+          {place.address && (
+            <div className="flex items-start gap-1.5 text-muted-foreground">
+              <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+              <span className="line-clamp-2">{place.address}</span>
+            </div>
+          )}
+          {place.website && (
+            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+              <Globe className="h-3 w-3 shrink-0" />
+              <a
+                href={place.website}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="truncate hover:text-primary"
+              >
+                {place.website.replace(/^https?:\/\//, "")}
+              </a>
+            </div>
+          )}
+          {place.followersCount !== undefined && place.followersCount > 0 && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Users className="h-3 w-3 shrink-0" />
+              <span>{formatCount(place.followersCount)} abonnés LinkedIn</span>
+            </div>
+          )}
+        </div>
+
+        {/* Description */}
+        {description && (
+          <div className="text-[11px] text-muted-foreground mt-2 pt-2 border-t border-dashed">
+            <p className={cn(!expandedDesc && "line-clamp-3")}>{description}</p>
+            {isLongDesc && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setExpandedDesc((v) => !v) }}
+                className="text-primary hover:underline mt-0.5 text-[10px]"
+              >
+                {expandedDesc ? "Voir moins" : "Voir plus"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Executives */}
+        {executives.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1">
+              <Crown className="h-3 w-3 text-amber-500" /> Dirigeants ({executives.length})
+            </p>
+            <ul className="space-y-1">
+              {executives.slice(0, 5).map((exec, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <span aria-hidden="true">👑</span>
+                  <span className="font-medium truncate">{exec.name}</span>
+                  {exec.title && (
+                    <span className="text-muted-foreground truncate">— {exec.title}</span>
+                  )}
+                  {exec.linkedinUrl && (
+                    <a
+                      href={exec.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Profil LinkedIn"
+                      className="shrink-0 text-orange-600 hover:text-orange-700 dark:text-orange-400 ml-auto"
+                    >
+                      <LinkedinIcon className="h-3 w-3" />
+                    </a>
+                  )}
+                </li>
+              ))}
+              {executives.length > 5 && (
+                <li className="text-[10px] text-muted-foreground">+ {executives.length - 5} autres</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Employees */}
+        {employees.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1">
+              <UserCheck className="h-3 w-3 text-primary" /> Employés ({employees.length})
+            </p>
+            <ul className="space-y-1">
+              {shownEmployees.map((emp, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <span aria-hidden="true">👤</span>
+                  <span className="font-medium truncate">{emp.name}</span>
+                  {emp.title && (
+                    <span className="text-muted-foreground truncate">— {emp.title}</span>
+                  )}
+                </li>
+              ))}
+              {hiddenEmployeesCount > 0 && !showAllEmployees && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowAllEmployees(true) }}
+                    className="text-primary hover:underline text-[10px]"
+                  >
+                    + {hiddenEmployeesCount} autres
+                  </button>
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Specialties */}
+        {place.specialties && place.specialties.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t">
+            {place.specialties.slice(0, 6).map((spec, i) => (
+              <Badge key={i} variant="secondary" className="text-[9px]">
+                {spec}
+              </Badge>
+            ))}
+            {place.specialties.length > 6 && (
+              <span className="text-[9px] text-muted-foreground self-center">
+                +{place.specialties.length - 6}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between mt-2 pt-2 text-[10px]">
+          <span className="text-muted-foreground">
+            {place.employeesOnLinkedin !== undefined && place.employeesOnLinkedin > 0
+              ? `${formatCount(place.employeesOnLinkedin)} employés LinkedIn`
+              : `Identifié ${new Date(place.scrapedAt).toLocaleDateString("fr-FR")}`}
+          </span>
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function formatEvent(event: { type: string; [key: string]: unknown }): string {
   switch (event.type) {
     // Google Maps events
@@ -1077,6 +1572,19 @@ function formatEvent(event: { type: string; [key: string]: unknown }): string {
     case "fb-extracted":
       return `✓ Extrait: ${(event.place as { name?: string })?.name || event.name || ""}`
     case "fb-error":
+      return `✗ Erreur: ${event.message}`
+    // Business/LinkedIn events
+    case "biz-search-loaded":
+      return `🔍 Recherche: ${event.resultsCount || 0} entreprises`
+    case "biz-page-loaded":
+      return `🏢 Page chargée: ${event.companyName || ""}`
+    case "biz-extracted":
+      return `✓ Identifié: ${(event.entity as { name?: string })?.name || ""}`
+    case "biz-people-found":
+      return `👥 ${event.executivesCount || 0} dirigeant(s), ${event.employeesCount || 0} employé(s)`
+    case "biz-fallback":
+      return `🔄 Fallback: ${event.source || ""} — ${event.reason || ""}`
+    case "biz-error":
       return `✗ Erreur: ${event.message}`
     default:
       return event.type
