@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Sidebar, type NavKey } from "@/components/dashboard/sidebar"
-import { Header } from "@/components/dashboard/header"
+import { DashboardHeader } from "@/components/dashboard/analytics/dashboard-header"
 import { CompanyDetailDialog } from "@/components/dashboard/company-detail-dialog"
 import { NewJobDialog } from "@/components/dashboard/new-job-dialog"
 import { Footer } from "@/components/dashboard/footer"
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sheet"
 
 // Views
-import { DashboardHome } from "@/components/dashboard/views/dashboard-home"
+import { AnalyticsDashboard } from "@/components/dashboard/analytics/analytics-dashboard"
 import { SearchView } from "@/components/dashboard/views/search-view"
 import { CompaniesView } from "@/components/dashboard/views/companies-view"
 import { MapViewFull } from "@/components/dashboard/views/map-view-full"
@@ -25,6 +25,19 @@ import { ExportsView } from "@/components/dashboard/views/exports-view"
 import { TeamView } from "@/components/dashboard/views/team-view"
 import { SettingsView } from "@/components/dashboard/views/settings-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
+
+const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
+  dashboard: { title: "Tableau de bord", subtitle: "Vue d'ensemble — Abidjan & Côte d'Ivoire" },
+  search: { title: "Recherche multicritère", subtitle: "Découvrez des entreprises ivoiriennes" },
+  companies: { title: "Entreprises", subtitle: "Toutes les entreprises indexées" },
+  map: { title: "Cartographie", subtitle: "Géolocalisation sur Abidjan" },
+  sources: { title: "Sources de données", subtitle: "6 sources connectées" },
+  jobs: { title: "Jobs de scraping", subtitle: "File d'attente et historique" },
+  scraper: { title: "Moteur de scraping", subtitle: "Google Maps · Facebook · LinkedIn · Sites web · IA" },
+  exports: { title: "Exports", subtitle: "Historique des exports générés" },
+  team: { title: "Équipe & tenants", subtitle: "Membres et permissions" },
+  settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
+}
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState<NavKey>("dashboard")
@@ -63,17 +76,26 @@ export default function Home() {
   const handleNavSelect = (key: NavKey) => {
     setActiveNav(key)
     setMobileNavOpen(false)
-    // Scroll en haut lors du changement de vue
     const main = document.querySelector("main")
     if (main) main.scrollTop = 0
   }
+
+  // Navigation depuis la command palette
+  const handlePaletteNavigate = (url: string) => {
+    const key = url.replace("#", "") as NavKey
+    if (["dashboard", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "team", "settings"].includes(key)) {
+      handleNavSelect(key as NavKey)
+    }
+  }
+
+  const currentTitle = navTitles[activeNav]
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar */}
       <Sidebar active={activeNav} onSelect={handleNavSelect} />
 
-      {/* Mobile sidebar (Sheet) */}
+      {/* Mobile sidebar */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-[260px] p-0">
           <Sidebar active={activeNav} mobile onSelect={handleNavSelect} />
@@ -82,21 +104,18 @@ export default function Home() {
 
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0">
-        <Header
+        <DashboardHeader
           onNewJob={() => setNewJobOpen(true)}
           onMobileMenu={() => setMobileNavOpen(true)}
+          onNavigate={handlePaletteNavigate}
+          title={currentTitle.title}
+          subtitle={currentTitle.subtitle}
         />
 
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 lg:p-6 space-y-5 max-w-[1800px] mx-auto">
             {activeNav === "dashboard" && (
-              <DashboardHome
-                onSelectCompany={handleSelectCompany}
-                highlightedId={highlightedId}
-                onExport={handleExport}
-                exporting={exporting}
-                onSearch={handleSearch}
-              />
+              <AnalyticsDashboard onNavigate={handlePaletteNavigate} />
             )}
 
             {activeNav === "search" && (

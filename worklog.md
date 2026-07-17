@@ -734,3 +734,90 @@ Stage Summary:
 - Détection fermetures (règles + LLM)
 - Échantillon démo 12 entités avec doublons/erreurs/champs manquants
 - UI unifiée avec toggle 5 moteurs (Google Maps / Facebook / Business / Site Web / IA Cleaner)
+
+---
+Task ID: 16
+Agent: Main (Architect)
+Task: Créer un dashboard analytics complet (graphiques, KPIs, cartes, stats, historique, activité, exports, alertes, recherche globale, temps réel)
+
+Work Log:
+- Créé src/lib/dashboard-data.ts avec données mock enrichies :
+  * 8 KPIs avec sparklines, trends, deltas (entreprises, jobs, sources, dédup, enrichissement, API, qualité, alertes)
+  * Timeseries 30 jours (4 sources : Google Maps, Facebook, LinkedIn, Sites web)
+  * Timeseries 7 jours × 24h (168 points)
+  * 8 secteurs avec couleurs et pourcentages
+  * 10 communes d'Abidjan avec croissance et GPS
+  * 8 top entreprises (leaderboard par score qualité)
+  * 13 activités temps réel (jobs, IA, alertes, exports, utilisateurs, sources)
+  * 5 alertes (critique/warning/info, actives/résolues)
+  * 7 exports historique (xlsx/csv/json/pdf, completed/processing/failed)
+  * 6 sources avec performance (taux succès, temps moyen)
+  * 12 mois d'évolution qualité (6 dimensions)
+  * 7 dimensions radar qualité (mois courant vs précédent)
+  * 25+ items indexés pour recherche globale (pages, actions, entreprises, jobs, exports, alertes)
+  * Stats temps réel système (CPU, mémoire, disque, uptime, latence)
+- Construit 6 composants analytics :
+  * kpi-cards.tsx — 8 KPIs avec sparklines SVG, trends colorés (up/down/stable), icônes
+  * charts.tsx — 6 graphiques Recharts :
+    - Area chart volume scraping 30j (4 sources, gradients)
+    - Pie chart répartition secteurs (8 secteurs)
+    - Bar chart densité communes (10 communes)
+    - Radar chart qualité 7 dimensions (courant vs précédent)
+    - Line chart évolution qualité 12 mois (4 métriques)
+    - Bar chart horizontal performance sources (6 sources, couleurs par taux)
+  * geographic-heatmap.tsx — carte SVG Abidjan avec cercles de chaleur par commune, badges croissance, lagune Ébrié, boussole, légende, stats overlay
+  * activity-alerts.tsx — fil d'activité temps réel (13 events, filtres tabs Tous/Jobs/IA/Système) + panneau alertes (5 alertes, sévérités criticité/warning/info)
+  * exports-leaderboard.tsx — historique exports (7 fichiers avec status/télécharger) + top entreprises (8 classement) + stats temps réel système (CPU/mémoire/disque bars)
+  * command-palette.tsx — recherche globale ⌘K avec :
+    - Raccourci clavier Cmd/Ctrl+K
+    - Filtrage fuzzy sur label + keywords + description
+    - Groupement par type (Page, Action, Entreprise, Job, Export, Alerte)
+    - Navigation clavier (↑↓ + Enter)
+    - 25+ items indexés
+- Construit dashboard-header.tsx — header avec :
+  - Bouton recherche qui ouvre la command palette (avec shortcut ⌘K affiché)
+  - Sélecteur tenant (AgriBusiness CI)
+  - Quota API (68/100k)
+  - Bouton Nouveau job
+  - Notifications (badge avec 3 alertes actives)
+  - Theme toggle (dark/light)
+  - User menu
+- Assemblé analytics-dashboard.tsx — vue complète avec :
+  - Hero greeting "Bonjour Adama 👋"
+  - Badge "Système opérationnel" (pulse emerald)
+  - Boutons Actualiser + Nouveau scraping
+  - 8 KPIs
+  - 6 graphiques
+  - Carte de chaleur
+  - Activité + Alertes
+  - Exports + Leaderboard
+  - Stats temps réel système
+  - Banner export Enterprise
+- Intégré dans page.tsx : remplace DashboardHome par AnalyticsDashboard, utilise DashboardHeader (avec command palette)
+- Titres/subtitles dynamiques par section (10 vues)
+- Lint : 0 erreur (corrigé 2 issues : chemin import command-palette, typo entrepreneurs→entreprises, setState in effect)
+- Tests Agent Browser + VLM :
+  * Dashboard complet : greeting, 8 KPIs avec sparklines, 6 graphiques ✅
+  * Carte de chaleur Abidjan : 10 communes avec cercles colorés + badges croissance ✅
+  * Fil d'activité temps réel : 13 events avec icônes colorées ✅
+  * Panneau alertes : 5 alertes (critique/warning/info) ✅
+  * Exports récents : 7 fichiers (xlsx/csv/json) + boutons télécharger ✅
+  * Top entreprises : 8 (Orange CI #1, MTN #2, BICICI #3...) ✅
+  * Stats temps réel : CPU/mémoire/disque bars ✅
+  * Command palette ⌘K : ouverture, recherche "orange" → Orange CI trouvé ✅
+  * Navigation : palette → clic item → change de vue ✅
+  * Aucune erreur console/runtime (1 warning mineur aria-describedby)
+
+Stage Summary:
+- Dashboard analytics Enterprise complet et fonctionnel
+- 6 composants (kpi-cards, charts, geographic-heatmap, activity-alerts, exports-leaderboard, command-palette)
+- 8 KPIs avec sparklines + trends
+- 6 graphiques Recharts (area, pie, bar, radar, line, horizontal bar)
+- Carte de chaleur géographique Abidjan (10 communes + croissance)
+- Fil d'activité temps réel (13 events, filtres tabs)
+- Panneau alertes (5 alertes, 3 sévérités)
+- Historique exports (7 fichiers)
+- Top entreprises leaderboard (8)
+- Stats temps réel système (CPU/mémoire/disque)
+- Command palette ⌘K avec recherche globale (25+ items, navigation clavier)
+- Header enrichi avec recherche, notifications, theme toggle, user menu
