@@ -1163,3 +1163,136 @@ Stage Summary:
 - Logging automatique (RestApiLog)
 - Seed automatique (64 entreprises)
 - UI dashboard avec explorer interactif (Try it) + Swagger UI
+
+---
+Task ID: 22-notifications
+Agent: Notifications System Builder
+Task: Build notifications system (Email, SMS, WhatsApp, Push, Webhook, Alerts, Auto-reports)
+
+Work Log:
+- Lu le worklog existant + inspecté prisma/schema.prisma (modèles Notification, AlertRule, ScheduledReport, ReportExecution déjà poussés), src/lib/api/{helpers,auth-middleware}.ts, src/lib/db.ts (cache Prisma par mtime schéma), src/lib/export/{generators,export-store,types}.ts, src/lib/dashboard-data.ts (KPIs + sourcePerformance pour les métriques d'alertes), src/lib/scraper/job-store.ts (listJobs pour scrape_failures), src/components/dashboard/sidebar.tsx, src/app/page.tsx, src/middleware.ts
+- Créé src/lib/notifications/providers.ts — 6 providers (email/sms/whatsapp/push simulés avec logging, in_app pass-through, webhook réel avec fetch POST + signature HMAC-SHA256 + enregistrement WebhookDelivery en DB)
+- Créé src/lib/notifications/engine.ts — orchestration : sendNotification (crée Notification + dispatch via provider + update status sent/delivered/failed), sendMultiChannel (envoie sur N canaux), getNotificationStats (groupBy channel/status/priority + counts 24h), markAsRead, listNotifications (paginé avec filtres), sendTestNotification (envoie sur 5 canaux)
+- Créé src/lib/notifications/alerts.ts — collectMetric (quota_usage=68 simulé, scrape_failures=listJobs failed count, source_degraded=1 si successRate<85, companies_added=db.company.count, dedup_rate=17.8 simulé), evaluateCondition (gt/lt/gte/lte/eq/contains), evaluateAlert (vérifie cooldownMin), triggerAlert (envoie multi-canal + update lastTriggeredAt/triggerCount), checkAllAlerts (boucle sur règles actives)
+- Créé src/lib/notifications/reports.ts — calculateNextRun (parse daily:08:00 / weekly:mon:08:00 / monthly:01:08:00 → next Date), createScheduledReport, generateReport (utilise generateExport du moteur existant, crée ReportExecution, stocke dataUrl base64, update nextRunAt/lastRunAt/runCount, envoie notif multi-canal), checkDueReports (nextRunAt <= now), listExecutions
+- Créé src/lib/notifications/seed.ts — seedNotificationsIfEmpty : 3 alertes défaut (Quota API > 80%, Source dégradée, Taux de déduplication élevé) + 2 rapports défaut (Rapport quotidien PDF, Rapport hebdomadaire XLSX), avec singleton promise + release pour re-seed si suppression
+- Créé 8 routes API sous /api/v1/notifications/ :
+  * GET / (list paginée + filtres channel/status/priority + search)
+  * POST / (envoi manuel)
+  * GET /[id] (single)
+  * PUT /[id]/read (mark as read)
+  * GET /stats (byChannel/byStatus/byPriority + unreadInApp + failed24h + sent24h)
+  * POST /test (envoie test sur 5 canaux)
+- Créé 4 routes API sous /api/v1/alerts/ :
+  * GET / (list avec channels parsés)
+  * POST / (création avec validation metric/condition/channels)
+  * PUT /[id] (update partiel)
+  * DELETE /[id]
+  * POST /check (évalue toutes les règles actives, déclenche + respecte cooldown)
+- Créé 5 routes API sous /api/v1/reports/ :
+  * GET / (list avec channels/recipients/filters parsés + _count executions)
+  * POST / (création avec calcul nextRunAt)
+  * PUT /[id] (update partiel + recalcul nextRunAt si schedule change)
+  * DELETE /[id]
+  * POST /[id]/run (génère le rapport via moteur export, crée ReportExecution, envoie notif)
+  * GET /[id]/executions (historique paginé)
+- Créé src/components/dashboard/views/notifications-view.tsx — vue complète 3 tabs :
+  * Tab Notifications : 4 stat cards (Total / Envoyées 24h / Non lues / Échecs 24h), 3 filtres (Canal/Statut/Priorité via Select shadcn), boutons Actualiser + Envoyer test, liste scrollable (max-h-600) avec icône par canal, badges priorité/statut colorés, timestamp, bouton "Marquer lue" pour in_app non lues
+  * Tab Alertes : 3 règles par défaut affichées en cards (icône métrique, badges metric/condition/threshold/active, canaux chips, cooldown, triggerCount, lastTriggered, switch activer/désactiver, bouton supprimer), boutons "Vérifier maintenant" + "Nouvelle règle", dialog création avec multi-select canaux (6 boutons cliquables)
+  * Tab Rapports auto : 2 rapports par défaut (cards avec icône format, type/format/active badges, schedule, next run, exécutions count, canaux chips), boutons "Exécuter" + expand (chevron) + delete, dialog création (type/schedule/format/channels/recipients), historique exécutions repliable par rapport avec status icon, filename, taille, timestamp
+- Modifié src/components/dashboard/sidebar.tsx : ajout `notifications` au type NavKey + nav item "Notifications" avec icône Bell + badge "Multi-canal" dans section Administration
+- Modifié src/app/page.tsx : ajout import NotificationsView + entrée navTitles + routing `{activeNav === "notifications" && <NotificationsView />}` + ajout "notifications" au handlePaletteNavigate whitelist
+- Modifié src/lib/dashboard-data.ts : ajout entrée #notifications au searchableItems (command palette)
+- Modifié src/lib/db.ts : nettoyage du code (suppression des console.log de debug), commentaire NOTE pour indiquer que le redémarrage du dev server peut être nécessaire si Prisma client est régénéré externement
+- Bug rencontré : Prisma client en cache Turbopack ne reconnaissait pas les modèles Notification/AlertRule/ScheduledReport/ReportExecution malgré db:push — résolu en tuant le dev server et en exécutant init-fullstack.sh pour redémarrer avec un cache propre
+- Bug mineur : timeAgo() affichait des valeurs négatives pour les dates futures (Prochain run) — corrigé pour afficher "dans Xmin/h/j" pour les dates futures
+- Bug mineur : seedPromise restait truthy après résolution → le re-seed ne se déclenchait pas si utilisateur supprimait toutes les règles/rapports — corrigé avec .finally(() => { seedPromise = null })
+- Lint : `bun run lint` → 0 erreur, 0 warning
+- Tests curl (tous réussis) :
+  * POST /api/auth/login → 200 (cookie JWT)
+  * GET /api/v1/notifications?limit=3 → 200 (pagination meta)
+  * GET /api/v1/notifications/stats → 200 (byChannel/byStatus/byPriority + unreadInApp + failed24h + sent24h)
+  * POST /api/v1/notifications/test → 200 (5/5 canaux réussis : email/sms/whatsapp/push/in_app)
+  * GET /api/v1/alerts → 200 (3 règles seedées : Quota API > 80%, Source dégradée, Taux de déduplication élevé)
+  * POST /api/v1/alerts/check → 200 (3 évaluées, 1 déclenchée "Source dégradée" car Pages Jaunes 78.1% < 85%, notifications créées sur in_app + webhook)
+  * POST /api/v1/alerts (création) → 201 (validation metric/condition/channels)
+  * PUT /api/v1/alerts/[id] → 200 (toggle isActive)
+  * DELETE /api/v1/alerts/[id] → 200
+  * GET /api/v1/reports → 200 (2 rapports seedés : Quotidien PDF, Hebdomadaire XLSX, nextRunAt calculé)
+  * POST /api/v1/reports (création monthly:01:09:00) → 201 (nextRunAt = 1er août 09:00)
+  * POST /api/v1/reports/[id]/run → 200 (génère XLSX 43 562 bytes / CSV 9 009 bytes, ReportExecution créée, notif envoyée sur canal email)
+  * GET /api/v1/reports/[id]/executions → 200 (historique paginé avec filename/fileSizeBytes/hasData)
+  * PUT /api/v1/notifications/[id]/read → 200 (status: read, readAt: now)
+- Vérifications UI via agent-browser :
+  * Sidebar : "Notifications Multi-canal" dans section Administration ✓
+  * Vue chargée : header "Notifications" + subtitle "Multi-canal · Alertes auto · Rapports planifiés" ✓
+  * 3 tabs fonctionnels : Notifications / Alertes / Rapports auto ✓
+  * Tab Notifications : 4 stat cards (Total 19, Envoyées 24h, Non lues, Échecs 24h), 3 filtres Select, boutons Actualiser/Envoyer test, liste avec icônes par canal, badges priorité/statut, boutons "Marquer lue" ✓
+  * Clic "Envoyer test" → toast "Test envoyé sur 5/5 canaux" + 5 notifications créées ✓
+  * Tab Alertes : 3 cards (Taux de déduplication élevé, Source dégradée, Quota API > 80%) avec icônes métriques, badges metric/condition/threshold/active, canaux chips, switch activer, bouton supprimer ✓
+  * Tab Rapports auto : 2 cards (Rapport hebdomadaire XLSX, Rapport quotidien PDF) avec type/format/active badges, schedule, next run, Exécuter button ✓
+  * Clic "Exécuter" sur Rapport hebdomadaire → toast "Rapport généré : Rapport hebdomadaire" + execution history repliée montre "rapport_hebdomadaire_2026-07-17.xlsx" 42.5 Ko ✓
+- Aucune erreur console/runtime
+
+Stage Summary:
+- Système de notifications Enterprise complet et fonctionnel
+- 18 fichiers créés : 5 modules lib (providers, engine, alerts, reports, seed) + 13 routes API (notifications x6, alerts x4, reports x5) + 1 composant UI
+- 4 fichiers modifiés : sidebar.tsx (NavKey + nav item), page.tsx (routing + navTitles), dashboard-data.ts (command palette entry), db.ts (cleanup + NOTE commentaire)
+- 6 canaux supportés : email/sms/whatsapp/push simulés (avec logging), webhook réel (POST HTTP + HMAC-SHA256 + WebhookDelivery en DB), in_app (stocké en DB)
+- 5 métriques d'alerte : quota_usage (68% simulé), scrape_failures (compte jobs failed), source_degraded (1 si successRate<85), companies_added (count DB), dedup_rate (17.8% simulé)
+- 6 conditions : gt/lt/gte/lte/eq/contains avec cooldown configurable par règle
+- 4 formats de rapport : PDF/XLSX/CSV/JSON via moteur d'export existant (76 entreprises filtrables)
+- Plannings parsés : daily:08:00, weekly:mon:08:00, monthly:01:08:00 avec calcul nextRunAt automatique
+- Seed par défaut idempotent : 3 alertes + 2 rapports créés au premier appel API
+- API REST v1 conforme : auth JWT (cookie/Bearer/API key via requireApiAuth), réponses standardisées (sendSuccess/sendError), pagination meta, audit log (logApiCall)
+- UI 3 tabs : Notifications (stat cards + filtres + liste scrollable), Alertes (cards + dialog création multi-canal), Rapports auto (cards + dialog création + historique exécutions repliable)
+- Lint 100% propre (0 erreur, 0 warning), dev server compile sans erreur
+- Tests curl e2e : 14+ endpoints testés, tous réussis
+- Tests UI agent-browser : sidebar + 3 tabs + boutons (Envoyer test, Exécuter) + toasts + execution history fonctionnels
+- Palette conforme : emerald + orange + slate pour les badges, aucun indigo/bleu
+- Responsive : grid-cols-2 sur mobile, sm:grid-cols-3 pour canaux, dialogs max-w-lg
+- Dark mode : toutes les couleurs ont variant dark:
+
+---
+Task ID: 22
+Agent: Main (Architect) + Sous-agent Notifications Builder
+Task: Créer un système de notifications multi-canal (Emails, SMS, WhatsApp, Push, Webhook, Alertes, Rapports automatiques)
+
+Work Log:
+- Schéma Prisma : ajout modèles Notification, AlertRule, ScheduledReport, ReportExecution + db:push
+- 5 modules notifications (src/lib/notifications/) :
+  * providers.ts : 6 providers (email, SMS, WhatsApp, push, webhook, in_app) avec simulation d'envoi + webhook réel avec HMAC-SHA256
+  * engine.ts : sendNotification(), sendMultiChannel(), getNotificationStats(), markAsRead(), listNotifications()
+  * alerts.ts : evaluateAlert(), checkAllAlerts(), triggerAlert() — 5 métriques (quota_usage, scrape_failures, source_degraded, companies_added, dedup_rate)
+  * reports.ts : generateReport() (utilise export engine existant), checkDueReports(), calculateNextRun(), createScheduledReport()
+  * seed.ts : seed 3 alert rules + 2 scheduled reports par défaut
+- 12 API routes (/api/v1/notifications, /alerts, /reports) :
+  * Notifications : GET list, POST send, GET by id, PUT read, GET stats, POST test (5 canaux)
+  * Alerts : GET list, POST create, PUT update, DELETE, POST check (évalue toutes les règles)
+  * Reports : GET list, POST create, PUT update, DELETE, POST run (génère rapport), GET executions
+- UI notifications-view.tsx : 3 onglets (Notifications, Alertes, Rapports auto)
+- Sidebar : entrée "Notifications Multi-canal" dans Administration
+- Tests curl :
+  * GET notifications → 20 notifications ✓
+  * POST test → 5/5 canaux (email, SMS, WhatsApp, push, in_app) ✓
+  * GET stats → 25 total, 6 canaux, 4 statuts ✓
+  * GET alerts → 3 règles (quota, source, dédup) ✓
+  * POST alerts/check → 0 déclenchée sur 3 évaluées ✓
+  * GET reports → 2 rapports (quotidien, hebdo) ✓
+  * POST reports/[id]/run → rapport généré (43 562 bytes xlsx) ✓
+- Tests Agent Browser :
+  * Page Notifications : 3 onglets visibles ✓
+  * Liste notifications avec icônes par canal ✓
+  * Onglet Alertes : règles avec métrique/condition/seuil/active + bouton Vérifier ✓
+  * Onglet Rapports : liste avec schedule + bouton Exécuter ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- Système de notifications Enterprise complet et fonctionnel
+- 18 fichiers créés (5 modules + 12 routes API + 1 UI view)
+- 6 canaux : Email, SMS, WhatsApp, Push, Webhook (HMAC-SHA256), In-app
+- Moteur d'alertes : 5 métriques, conditions (gt/lt/gte/lte/eq/contains), cooldown, multi-canal
+- Rapports automatiques : scheduling (daily/weekly/monthly), génération via export engine, multi-format
+- API REST v1 complète (12 endpoints)
+- UI dashboard avec 3 onglets
+- Seed automatique (3 alertes + 2 rapports)

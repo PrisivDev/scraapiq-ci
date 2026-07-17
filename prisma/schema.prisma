@@ -344,3 +344,103 @@ model WebhookDelivery {
   @@index([status])
   @@index([createdAt])
 }
+
+// ============================================================================
+// NOTIFICATIONS (multi-canal : email, SMS, WhatsApp, push, webhook)
+// ============================================================================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String?
+  channel     String   // email | sms | whatsapp | push | webhook | in_app
+  title       String
+  body        String
+  payload     String   @default("{}") // JSON
+  status      String   @default("pending") // pending | sent | delivered | failed | read
+  priority    String   @default("normal") // low | normal | high | critical
+  recipient   String?  // email, phone, device token, webhook URL
+  senderId    String?  // who triggered
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3)
+  error       String?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([channel])
+  @@index([status])
+  @@index([createdAt])
+  @@index([priority])
+}
+
+// ============================================================================
+// ALERT RULES (règles d'alerte automatiques)
+// ============================================================================
+
+model AlertRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  metric      String   // quota_usage | scrape_failures | source_degraded | companies_added | dedup_rate
+  condition   String   // gt | lt | gte | lte | eq | contains
+  threshold   Float
+  channels    String   @default("[\"in_app\"]") // JSON array of channels
+  isActive    Boolean  @default(true)
+  lastTriggeredAt DateTime?
+  triggerCount Int     @default(0)
+  cooldownMin Int      @default(30) // min entre 2 déclenchements
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([metric])
+}
+
+// ============================================================================
+// SCHEDULED REPORTS (rapports automatiques)
+// ============================================================================
+
+model ScheduledReport {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        String   // daily | weekly | monthly | custom
+  schedule    String   // cron expression or simple: "daily:08:00", "weekly:mon:08:00"
+  channels    String   @default("[\"email\"]") // JSON array
+  recipients  String   @default("[]") // JSON array of emails/phones
+  filters     String   @default("{}") // JSON : sectors, cities, etc.
+  format      String   @default("pdf") // pdf | xlsx | csv | json
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  runCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions  ReportExecution[]
+
+  @@index([isActive])
+  @@index([nextRunAt])
+}
+
+model ReportExecution {
+  id          String   @id @default(cuid())
+  reportId    String
+  status      String   @default("pending") // pending | processing | completed | failed
+  format      String
+  fileSizeBytes Int?
+  filename    String?
+  dataUrl     String?  // base64 for small files
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  report      ScheduledReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([status])
+  @@index([createdAt])
+}

@@ -25,6 +25,7 @@ import { ExportEngineView } from "@/components/dashboard/views/export-engine-vie
 import { TeamView } from "@/components/dashboard/views/team-view"
 import { SettingsView } from "@/components/dashboard/views/settings-view"
 import { ApiDocsView } from "@/components/dashboard/views/api-docs-view"
+import { NotificationsView } from "@/components/dashboard/views/notifications-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
@@ -37,6 +38,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   scraper: { title: "Moteur de scraping", subtitle: "Google Maps · Facebook · LinkedIn · Sites web · IA" },
   exports: { title: "Exports", subtitle: "Historique des exports générés" },
   api: { title: "API REST", subtitle: "v1 · CRUD · Swagger · JWT · Pagination · Filtres · Tri · Recherche · Webhooks" },
+  notifications: { title: "Notifications", subtitle: "Multi-canal · Alertes auto · Rapports planifiés" },
   team: { title: "Équipe & tenants", subtitle: "Membres et permissions" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
@@ -85,7 +87,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "team", "settings"].includes(key)) {
+    if (["dashboard", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -144,6 +146,8 @@ export default function Home() {
             {activeNav === "exports" && <ExportEngineView />}
 
             {activeNav === "api" && <ApiDocsView />}
+
+            {activeNav === "notifications" && <NotificationsView />}
 
             {activeNav === "team" && <TeamView />}
 

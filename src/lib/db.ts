@@ -32,11 +32,13 @@ if (process.env.NODE_ENV === "production") {
   db = globalForPrisma.prisma ?? createPrismaClient()
   if (!globalForPrisma.prisma) globalForPrisma.prisma = db
 } else {
-  // Dev: invalidate the cached client if the schema has changed since it was created
+  // Dev: invalidate the cached client if the schema has changed since it was created.
+  // Touch the schema file (or run db:push) to force a fresh client on the next HMR reload.
+  // NOTE: in some cases (e.g. Prisma client regenerated externally), the dev server must
+  // be restarted so Turbopack re-reads node_modules/@prisma/client.
   if (globalForPrisma.prisma && globalForPrisma.prismaSchemaHash === schemaHash) {
     db = globalForPrisma.prisma
   } else {
-    // Safely disconnect the previous client before replacing
     if (globalForPrisma.prisma) {
       globalForPrisma.prisma.$disconnect().catch(() => {})
     }
