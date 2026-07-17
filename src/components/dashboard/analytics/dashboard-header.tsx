@@ -5,7 +5,7 @@ import { Search, Bell, Plus, Sun, Moon, Menu, Building2, ChevronDown, Zap, Comma
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserMenu } from "@/components/auth/user-menu"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -166,37 +166,8 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
           <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </Button>
 
-        {/* User */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-full outline-none">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  AK
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Adama Koné</span>
-                <span className="text-xs text-muted-foreground font-normal">adama@agribusiness.ci</span>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Mon profil</DropdownMenuItem>
-            <DropdownMenuItem>Clés API</DropdownMenuItem>
-            <DropdownMenuItem>Facturation</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => toast.info("Déconnexion")}
-            >
-              Se déconnecter
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* User — utilise le composant UserMenu qui gère le logout correctement */}
+        <UserMenu />
       </header>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onNavigate={handleNavigate} />

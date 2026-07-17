@@ -15,7 +15,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import { AUTH_CONFIG } from "@/lib/auth/config"
 
 // Routes publiques (pas besoin d'auth)
-const PUBLIC_ROUTES = ["/", "/auth/login", "/auth/register", "/auth/verify-2fa"]
+// Note: "/" (dashboard) N'EST PAS public — nécessite auth
+const PUBLIC_ROUTES = ["/auth/login", "/auth/register", "/auth/verify-2fa"]
 const PUBLIC_PATTERNS = [
   /^\/api\/auth\//,
   /^\/api\/oauth\//,
