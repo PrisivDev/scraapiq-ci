@@ -18,6 +18,7 @@ import {
   Code,
   Bell,
   Shield,
+  ShieldCheck,
   Server,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -39,6 +40,7 @@ export type NavKey =
   | "notifications"
   | "backoffice"
   | "queue"
+  | "security"
   | "settings"
 
 interface SidebarProps {
@@ -68,6 +70,7 @@ const navItems: {
   { key: "team", label: "Équipe & tenants", icon: Users, section: "Administration" },
   { key: "backoffice", label: "Back Office", icon: Shield, section: "Administration" },
   { key: "queue", label: "Architecture distribuée", icon: Server, badge: "Live", section: "Administration" },
+  { key: "security", label: "Sécurité", icon: ShieldCheck, section: "Administration" },
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },
 ]
 

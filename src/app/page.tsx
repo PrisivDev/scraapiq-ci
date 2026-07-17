@@ -29,6 +29,7 @@ import { ApiDocsView } from "@/components/dashboard/views/api-docs-view"
 import { NotificationsView } from "@/components/dashboard/views/notifications-view"
 import { BackOfficeView } from "@/components/dashboard/views/back-office-view"
 import { QueueMonitoringView } from "@/components/dashboard/views/queue-monitoring-view"
+import { SecurityView } from "@/components/dashboard/views/security-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
@@ -46,6 +47,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   team: { title: "Équipe & tenants", subtitle: "Membres et permissions" },
   backoffice: { title: "Back Office", subtitle: "Administration · Utilisateurs · Abonnements · API · Logs · Audit · Maintenance" },
   queue: { title: "Architecture distribuée", subtitle: "Redis · BullMQ · Workers · Auto-scaling" },
+  security: { title: "Centre de sécurité", subtitle: "Rate Limiting · WAF · DDoS · Chiffrement · RGPD · Audit" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
 
@@ -93,7 +95,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "settings"].includes(key)) {
+    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "security", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -164,6 +166,8 @@ export default function Home() {
             {activeNav === "backoffice" && <BackOfficeView />}
 
             {activeNav === "queue" && <QueueMonitoringView />}
+
+            {activeNav === "security" && <SecurityView />}
 
             {activeNav === "settings" && <SettingsView />}
           </div>
