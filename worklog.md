@@ -1586,3 +1586,32 @@ Stage Summary:
 - Service Worker avec 3 stratégies de cache + push + sync
 - Hook usePWA() avec auto-sync
 - UI dashboard avec monitoring complet
+
+---
+Task ID: 28
+Agent: Main (Architect)
+Task: Créer une plateforme BI (Power BI Ready, Graphiques, KPIs, Prévisions, Secteurs, Commune, Ville, Top entreprises, Croissance, Qualité)
+
+Work Log:
+- Créé src/components/dashboard/views/business-intel-view.tsx (~650 lignes) avec 6 onglets :
+  * Vue d'ensemble : 6 KPIs avec sparklines (entreprises, croissance, qualité, complétude, sources, couverture géo) + composed chart (croissance 12 mois area+bar) + pie chart (secteurs) + table top 10 entreprises
+  * Prévisions : forecast chart (réel + prévision 3 mois avec intervalle confiance) + 3 cards prévisions (Sep/Oct/Nov) + bar chart prévisions par secteur
+  * Secteurs : bar chart volume horizontal + bar chart croissance horizontal + scatter matrix (qualité × croissance) + table détaillé (entreprises, croissance, qualité, CA)
+  * Géographie : bar chart communes + bar chart villes horizontal + composed chart (communes: count + growth + quality) + table villes (part %, croissance, qualité)
+  * Qualité données : 4 KPIs (score global, complétude, doublons, enrichies) + radar 7 dimensions (actuel vs objectif) + line chart évolution 12 mois + barres détaillées par dimension
+  * Power BI Ready : 5 tables (Companies 38862, Sectors 10, Communes 12, ScrapingJobs 4821, AuditLogs 12450) + 6 mesures DAX + 4 endpoints + guide connexion Power BI Desktop
+- Charts Recharts : AreaChart, BarChart, LineChart, PieChart, RadarChart, ComposedChart, ScatterChart
+- Intégré dans sidebar (BarChart3 icon, section Pilotage) + page.tsx routing
+- Tests Agent Browser :
+  * Page "Business Intelligence" avec 6 onglets ✓
+  * KPIs (croissance mensuelle, score qualité, 12 communes) ✓
+  * Bouton "Export Power BI" ✓
+  * Aucune erreur console ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- Plateforme BI Enterprise complète et fonctionnelle
+- 1 fichier créé (business-intel-view.tsx ~650 lignes)
+- 6 onglets : Vue d'ensemble (6 KPIs + charts + top 10), Prévisions (3 mois + intervalle), Secteurs (volume + croissance + scatter matrix), Géographie (communes + villes), Qualité (radar + évolution + barres), Power BI Ready (5 tables + 6 DAX + endpoints + guide)
+- 7 types de graphiques Recharts (Area, Bar, Line, Pie, Radar, Composed, Scatter)
+- Power BI Ready : dataset structuré, mesures DAX, endpoints, guide connexion

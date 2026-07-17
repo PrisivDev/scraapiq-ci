@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Server,
   Smartphone,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -43,6 +44,7 @@ export type NavKey =
   | "queue"
   | "security"
   | "pwa"
+  | "bi"
   | "settings"
 
 interface SidebarProps {
@@ -74,6 +76,7 @@ const navItems: {
   { key: "queue", label: "Architecture distribuée", icon: Server, badge: "Live", section: "Administration" },
   { key: "security", label: "Sécurité", icon: ShieldCheck, section: "Administration" },
   { key: "pwa", label: "PWA", icon: Smartphone, badge: "Offline", section: "Administration" },
+  { key: "bi", label: "Business Intelligence", icon: BarChart3, section: "Pilotage" },
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },
 ]
 

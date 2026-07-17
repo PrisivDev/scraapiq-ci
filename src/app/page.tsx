@@ -31,6 +31,7 @@ import { BackOfficeView } from "@/components/dashboard/views/back-office-view"
 import { QueueMonitoringView } from "@/components/dashboard/views/queue-monitoring-view"
 import { SecurityView } from "@/components/dashboard/views/security-view"
 import { PWAView } from "@/components/dashboard/views/pwa-view"
+import { BusinessIntelView } from "@/components/dashboard/views/business-intel-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
@@ -50,6 +51,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   queue: { title: "Architecture distribuée", subtitle: "Redis · BullMQ · Workers · Auto-scaling" },
   security: { title: "Centre de sécurité", subtitle: "Rate Limiting · WAF · DDoS · Chiffrement · RGPD · Audit" },
   pwa: { title: "Progressive Web App", subtitle: "Offline · Sync · Notifications · Installation · IndexedDB" },
+  bi: { title: "Business Intelligence", subtitle: "Power BI Ready · Prévisions · Secteurs · Croissance · Qualité" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
 
@@ -97,7 +99,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "security", "pwa", "settings"].includes(key)) {
+    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "security", "pwa", "bi", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -172,6 +174,8 @@ export default function Home() {
             {activeNav === "security" && <SecurityView />}
 
             {activeNav === "pwa" && <PWAView />}
+
+            {activeNav === "bi" && <BusinessIntelView />}
 
             {activeNav === "settings" && <SettingsView />}
           </div>
