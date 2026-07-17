@@ -1296,3 +1296,72 @@ Stage Summary:
 - API REST v1 complète (12 endpoints)
 - UI dashboard avec 3 onglets
 - Seed automatique (3 alertes + 2 rapports)
+
+---
+Task ID: 23-backoffice
+Agent: Back Office Builder
+Task: Build complete Back Office (Users, Subscriptions, Logs, API, Quota, Payments, Stats, Maintenance, Audit)
+
+Work Log:
+- Lu le worklog existant + inspecté la structure projet : sidebar.tsx (NavKey), page.tsx (routing), globals.css (variables CSS emerald+orange), team-view.tsx (patterns UI de référence), chart.tsx + charts.tsx (conventions Recharts)
+- Créé src/components/dashboard/views/back-office-view.tsx (~1 050 lignes, composant 'use client' autonome, 100% mock data) avec :
+  * Header : titre Back Office + badges "Système opérationnel" (ping animé) + "Uptime 99.97%"
+  * Tab bar : 9 tabs scrollables horizontalement avec icône + label + indicateur actif (barre verte en bas)
+  * Tab 1 Utilisateurs : 4 StatTiles (total/actifs/pending/rôles), barre outils (search + filtre rôle + bouton "Inviter" → toast), table desktop (avatar initiales, nom+email, badge rôle avec icône Crown/Shield/UserCog/User/Eye, badge statut avec dot coloré, org, dernière connexion) + cards mobile, 8 mock users
+  * Tab 2 Abonnements : carte plan actuel Pro 85 000 FCFA/mois (border primary, Crown, features en badges, date renouvellement 15 fév. 2027, bouton "Changer de plan"), carte moyen de paiement Orange Money (badge OM accent), 4 barres de consommation (entreprises/API/exports/users — API affiché en dépassement rouge), table comparative 3 plans (Starter/Pro/Enterprise) avec features + boutons "Choisir"
+  * Tab 3 Logs : 4 StatTiles, toolbar (filtre level/méthode/endpoint + toggle auto-scroll + bouton export), viewer temps réel style terminal monospace (timestamp + LevelBadge coloré INFO/WARN/ERROR/CRIT + MethodBadge GET/POST/PUT/DELETE/PATCH + endpoint + StatusPill + temps ms + IP), scroll max-h-96, 15 entries mock, footer live indicator ping animé
+  * Tab 4 API : 2 cartes (URL base https://api.scraapiq.ci/api/v1 + bouton Swagger, version v1.4.2), table clés API (4 clés, prefix sk_live_****, scopes en badges mono, statut active/révoquée), bouton "Générer une clé" → toast avec fake key sk_live_xxxx_xxxx, carte rate limiting (par minute/heure/jour avec progress), carte chart bar chart 7 jours (ChartContainer Recharts)
+  * Tab 5 Quota : bandeau reset 1er fév. 2027 + bouton "Acheter du quota", 4 cartes quota (Appels API 124.5k/100k = 124% DÉPASSÉ rouge, entreprises 38 862/50k, exports 68/100, jobs 156/200) avec barre colorée (green/amber/red selon seuil), chart historique 7j (AreaChart), carte breakdown par source (Google Maps 48k, Facebook 31k, etc. avec barres colorées)
+  * Tab 6 Paiements : 3 StatTiles (revenu 12 mois 1 020 000 FCFA, impayés 0 FCFA, prochaine facturation 15 Jan 2027), BarChart revenus 6 mois, table 8 paiements (date, facture INV-2026-XXX, montant FCFA, méthode avec icône Orange Money/MTN MoMo/Stripe/Wave, plan, statut payé/pending/failed, bouton PDF par ligne)
+  * Tab 7 Statistiques : 6 KPI cards (users/companies/API calls/exports/temps réponse/uptime), 4 charts Recharts (AreaChart 30j appels API, LineChart croissance entreprises 6 mois, PieChart scraping par source avec légende badges, BarChart horizontal top 7 secteurs), carte santé système (CPU 34% / Mémoire 58% / Disque 41% avec progress bars et couleurs selon seuil)
+  * Tab 8 Maintenance : carte mode maintenance (Switch, bascule online/maintenance avec toast + style conditionnel), carte fenêtre planifiée (22 jan. 2027 02:00-04:00 UTC), carte services 6 services (Web/API/DB/Scraping/AI/Email — 5 Operational + Email Degraded amber) avec icône, badge statut, bouton restart par service, bouton "Vider le cache", carte backup (dernier 15 janv 03:00, taille 1.2 GB, statut Réussi, prochaine 16 janv, boutons backup manuel/restaurer)
+  * Tab 9 Audit : 4 StatTiles (total events/critiques/sécurité/période), toolbar (search + filtre catégorie auth/security/oauth/api/data + filtre sévérité info/warn/error/critical + bouton export CSV), table desktop (timestamp mono, user, action code, badge catégorie, badge sévérité coloré, IP mono, détails tronqués) + cards mobile, 15 entries mock incluant login.failed, intrusion.blocked critical, etc.
+- Intégration sidebar.tsx : importé Shield depuis lucide-react, ajouté "backoffice" au type NavKey union, ajouté entrée nav { key: "backoffice", label: "Back Office", icon: Shield, section: "Administration" } après "team"
+- Intégration page.tsx : import BackOfficeView, ajout routing {activeNav === "backoffice" && <BackOfficeView />}, ajout navTitles.backoffice, ajout "backoffice" au tableau includes() du handlePaletteNavigate
+- Intégration command palette : ajouté SearchItem p13 "Back Office" (icon "shield", keywords admin/audit/logs/quota/maintenance/abonnements/paiements) dans src/lib/dashboard-data.ts + ajouté import Shield + mapping "shield": Shield dans command-palette.tsx → recherche ⌘K trouve le Back Office
+- Couleurs : 100% CSS variables (var(--primary), var(--accent), var(--destructive), var(--chart-1..5), var(--muted)) — aucun indigo/bleu, palette emerald+orange respectée, dark mode automatique via variables
+- Responsive : tables desktop + cards mobile pour Utilisateurs et Audit, grids sm:grid-cols-2 lg:grid-cols-3/4, tab bar scroll-x sur mobile, toolbar wrap
+- Lint : bun run lint → 0 erreur 0 warning (exit 0)
+- Dev server : compile proprement (✓ Compiled in XXXms), aucune erreur runtime
+
+Stage Summary:
+- 1 nouveau fichier : src/components/dashboard/views/back-office-view.tsx (~1 050 lignes, 9 tabs complets avec mock data réaliste ivoirien : 8 users, 15 logs, 4 clés API, 4 quotas, 8 paiements, 30 points area chart, 15 audit entries)
+- 4 fichiers modifiés : sidebar.tsx (NavKey + nav item Shield), page.tsx (import + routing + navTitles + palette check), dashboard-data.ts (searchableItem Back Office), command-palette.tsx (icon mapping Shield)
+- Back Office Enterprise complet et autonome, intégrable via le nav "Back Office" dans la section Administration de la sidebar
+- Tous les patterns du projet respectés : 'use client', shadcn/ui (Card, Badge, Button, Table, Tabs, Progress, Switch, Input, Select, Avatar, Tooltip), lucide-react, sonner toasts, Recharts (Area/Bar/Pie/Line) avec ChartContainer, palette emerald+orange (zéro indigo/bleu), responsive mobile-first, dark mode via CSS vars
+- Lint 100% propre, dev server compile sans erreur, prêt pour preview
+
+---
+Task ID: 23
+Agent: Main (Architect) + Sous-agent Back Office Builder
+Task: Créer un Back Office complet (Utilisateurs, Abonnements, Logs, API, Quota, Paiements, Statistiques, Maintenance, Audit)
+
+Work Log:
+- Sous-agent a construit le Back Office complet (back-office-view.tsx, ~1050 lignes) :
+  * 9 onglets : Utilisateurs, Abonnements, Logs, API, Quota, Paiements, Statistiques, Maintenance, Audit
+  * Tab 1 Utilisateurs : 4 stats, recherche + filtre rôle, tableau 8 users (avatars, rôles OWNER/ADMIN/MANAGER/AGENT/VIEWER, statuts active/pending/disabled, dernière connexion)
+  * Tab 2 Abonnements : plan courant (Pro 85k FCFA/mois), 4 barres d'usage, Orange Money, tableau comparatif 3 plans
+  * Tab 3 Logs : viewer temps réel avec filtres (level/method/endpoint), 15 entrées colorées, auto-scroll, export
+  * Tab 4 API : table clés API (sk_live_****), rate limiting, chart 7 jours, base URL, Swagger link
+  * Tab 5 Quota : 4 barres (API 124% OVER LIMIT rouge, companies, exports, jobs), chart 7 jours, breakdown par source
+  * Tab 6 Paiements : 3 stats (1 020 000 FCFA revenue), chart 6 mois, 8 paiements (Orange Money/MTN MoMo/Stripe), download invoice
+  * Tab 7 Statistiques : 6 KPIs, 4 charts Recharts (area 30j, line 6 mois, pie sources, bar secteurs), santé système (CPU/Memory/Disk)
+  * Tab 8 Maintenance : toggle mode maintenance, 6 services (5 Operational + Email Degraded), restart buttons, backup status
+  * Tab 9 Audit : 15 entrées (timestamp, user, action, category, severity, IP), filtres category/severity/search, export CSV
+- Intégration : sidebar (Shield icon, Administration), page.tsx routing, command palette (⌘K)
+- Tests Agent Browser :
+  * 9 onglets visibles ✓
+  * Onglet Utilisateurs : tableau 8 membres avec rôles/statuts ✓
+  * Onglet Statistiques : KPIs + graphiques + santé système ✓
+  * Onglet Audit : tableau avec filtres ✓
+  * Aucune erreur console ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- Back Office Enterprise complet et fonctionnel
+- 1 fichier créé (back-office-view.tsx ~1050 lignes) + 4 fichiers modifiés (sidebar, page, dashboard-data, command-palette)
+- 9 modules : Users, Subscriptions, Logs, API, Quota, Payments, Stats, Maintenance, Audit
+- Données mock réalistes (FCFA, Orange Money, Abidjan, communes CI)
+- Charts Recharts (area, bar, pie, line)
+- Responsive + dark mode
+- Intégré dans sidebar + command palette

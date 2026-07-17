@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import {
   Search, Building2, Activity, Download, Bell, LayoutDashboard,
   Database, Users, Settings, Map, Radar, Play, FileSpreadsheet,
-  UserPlus, Moon, Sun, CornerDownLeft, ArrowRight,
+  UserPlus, Moon, Sun, CornerDownLeft, ArrowRight, Shield,
 } from "lucide-react"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -30,6 +30,7 @@ const iconMap: Record<string, React.ElementType> = {
   "moon": Moon,
   "sun": Sun,
   "bell": Bell,
+  "shield": Shield,
 }
 
 const typeMeta: Record<SearchItem["type"], { label: string; color: string }> = {

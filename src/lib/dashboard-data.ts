@@ -561,6 +561,7 @@ export const searchableItems: SearchItem[] = [
   { id: "p10", type: "page", label: "Paramètres", icon: "settings", keywords: ["settings", "config", "profil"], url: "#settings" },
   { id: "p11", type: "page", label: "API REST", icon: "database", keywords: ["api", "rest", "swagger", "webhooks", "documentation", "v1"], url: "#api" },
   { id: "p12", type: "page", label: "Notifications", icon: "bell", keywords: ["notifications", "alertes", "rapports", "email", "sms", "whatsapp", "push", "webhook"], url: "#notifications" },
+  { id: "p13", type: "page", label: "Back Office", icon: "shield", keywords: ["backoffice", "admin", "administration", "audit", "logs", "quota", "maintenance", "abonnements", "paiements"], url: "#backoffice" },
   // Actions
   { id: "a1", type: "action", label: "Lancer un job de scraping", icon: "play", keywords: ["lancer", "job", "scraping", "nouveau"] },
   { id: "a2", type: "action", label: "Exporter en Excel", icon: "file-spreadsheet", keywords: ["export", "excel", "xlsx"] },
