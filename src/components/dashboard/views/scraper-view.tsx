@@ -5,7 +5,9 @@ import {
   Radar, Play, Square, RefreshCw, Download, MapPin, Phone, Mail, Globe,
   Star, Clock, Tag, Building2, AlertCircle, AlertTriangle, CheckCircle2,
   Loader2, XCircle, Eye, ChevronRight, ExternalLink, Activity, Sparkles,
-  MessageCircle, BadgeCheck, Heart, Users, Briefcase, Crown, UserCheck, Award
+  MessageCircle, BadgeCheck, Heart, Users, Briefcase, Crown, UserCheck, Award,
+  Info, Link2, Navigation, Languages, ChevronDown, ChevronUp,
+  Facebook, Instagram, Linkedin, Twitter, Youtube, Send, Share2, Hash
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,6 +23,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -28,7 +31,7 @@ import { cn } from "@/lib/utils"
 // Types
 // ---------------------------------------------------------------------------
 
-type Engine = "google-maps" | "facebook" | "business"
+type Engine = "google-maps" | "facebook" | "business" | "website"
 
 interface ScrapedPlace {
   name: string
@@ -83,6 +86,50 @@ interface ScrapedPlace {
   }>
   employeesOnLinkedin?: number
   identificationScore?: number
+  // Website Robot-specific (les champs ci-dessous sont renseignés par le moteur website)
+  siteUrl?: string
+  siteName?: string
+  metaDescription?: string
+  language?: string
+  logoUrl?: string
+  visitedPages?: Array<{
+    url: string
+    requestedUrl: string
+    title?: string
+    pageType: string
+    status: number
+    loadTimeMs: number
+    depth: number
+    error?: string
+  }>
+  socialLinks?: Array<{
+    platform: string
+    url: string
+    foundOn: string
+    handle?: string
+  }>
+  addresses?: string[]
+  footerLinks?: Array<{ text: string; url: string }>
+}
+
+/** Type dédié pour les données issues du robot Website (tableaux strictement typés).
+ *  Ne peut pas `extends ScrapedPlace` car `whatsapp`/`gps` ont des types incompatibles avec la base.
+ *  Utilisé via un cast `as unknown as WebsitePlace` quand on accède aux champs website. */
+interface WebsitePlace {
+  siteUrl: string
+  siteName?: string
+  metaDescription?: string
+  language?: string
+  logoUrl?: string
+  emails?: Array<{ email: string; foundOn: string; context?: string; fromMailtoLink: boolean }>
+  phones?: Array<{ raw: string; normalized: string; foundOn: string; context?: string; fromTelLink: boolean }>
+  whatsapp?: Array<{ raw: string; normalized: string; foundOn: string; context?: string; fromTelLink: boolean }>
+  gps?: Array<{ lat: number; lng: number; foundOn: string; source: string }>
+  socialLinks?: Array<{ platform: string; url: string; foundOn: string; handle?: string }>
+  addresses?: string[]
+  footerLinks?: Array<{ text: string; url: string }>
+  visitedPages?: Array<{ url: string; requestedUrl: string; title?: string; pageType: string; status: number; loadTimeMs: number; depth: number; error?: string }>
+  googleMapsUrl?: string
 }
 
 interface JobProgress {
@@ -117,7 +164,7 @@ interface ScrapeResult {
 
 interface JobState {
   id: string
-  query: { keyword: string; city?: string; commune?: string; neighborhood?: string; maxResults?: number; pageUrl?: string }
+  query: { keyword: string; city?: string; commune?: string; neighborhood?: string; maxResults?: number; pageUrl?: string; url?: string; pageTypes?: string[]; maxPages?: number }
   progress: JobProgress
   result?: ScrapeResult
   events: Array<{ type: string; [key: string]: unknown }>
@@ -150,6 +197,10 @@ const ENDPOINTS: Record<Engine, { launch: string; job: (id: string) => string; l
   business: {
     launch: "/api/scraper/business",
     job: (id) => `/api/scraper/business/jobs/${id}`,
+  },
+  website: {
+    launch: "/api/scraper/website",
+    job: (id) => `/api/scraper/website/jobs/${id}`,
   },
 }
 
@@ -191,11 +242,16 @@ export function ScraperView() {
   const [linkedinCookies, setLinkedinCookies] = useState("")
   const [maxPeople, setMaxPeople] = useState(20)
   const [extractEmployees, setExtractEmployees] = useState(true)
+  // Website Robot-only fields
+  const [siteUrl, setSiteUrl] = useState("")
+  const [websitePageTypes, setWebsitePageTypes] = useState<string[]>(["contact", "about", "legal"])
+  const [maxPages, setMaxPages] = useState(8)
 
   const [jobs, setJobs] = useState<Record<Engine, JobState | null>>({
     "google-maps": null,
     facebook: null,
     business: null,
+    website: null,
   })
   const [pollingEngine, setPollingEngine] = useState<Engine | null>(null)
   const [launching, setLaunching] = useState(false)
@@ -217,8 +273,8 @@ export function ScraperView() {
       } else {
         setPollingEngine((cur) => (cur === eng ? null : cur))
         if (data.progress.status === "completed" && data.result) {
-          toast.success(eng === "business" ? "Identification terminée" : "Scraping terminé", {
-            description: `${data.result.stats.uniqueCount} ${eng === "business" ? "entreprise(s)" : "lieu(s)"} unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
+          toast.success(eng === "business" ? "Identification terminée" : eng === "website" ? "Extraction site terminée" : "Scraping terminé", {
+            description: `${data.result.stats.uniqueCount} ${eng === "business" ? "entreprise(s)" : eng === "website" ? "site(s)" : "lieu(s)"} unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
           })
         } else if (data.progress.status === "failed") {
           toast.error("Scraping échoué", {
@@ -238,7 +294,16 @@ export function ScraperView() {
     const isBusinessDirect =
       engine === "business" && (linkedinSlug.trim().length > 0 || linkedinUrl.trim().length > 0)
 
-    if (engine === "business") {
+    if (engine === "website") {
+      if (!siteUrl.trim()) {
+        toast.error("Veuillez saisir l'URL du site à scraper")
+        return
+      }
+      if (websitePageTypes.length === 0) {
+        toast.error("Sélectionnez au moins un type de page à visiter")
+        return
+      }
+    } else if (engine === "business") {
       if (!keyword.trim() && !linkedinSlug.trim() && !linkedinUrl.trim()) {
         toast.error("Veuillez saisir un nom, un slug LinkedIn ou une URL LinkedIn")
         return
@@ -255,7 +320,14 @@ export function ScraperView() {
       let body: Record<string, unknown>
       let description: string
 
-      if (engine === "business") {
+      if (engine === "website") {
+        body = {
+          url: siteUrl.trim(),
+          pageTypes: websitePageTypes,
+          maxPages,
+        }
+        description = `Site web : ${siteUrl.trim()}`
+      } else if (engine === "business") {
         body = {
           query: keyword.trim() || undefined,
           location: city.trim() || undefined,
@@ -309,7 +381,7 @@ export function ScraperView() {
           description: "Fonctionne pour les grandes entreprises publiques (Orange, MTN…). Pour les PME, fournissez des cookies (li_at).",
         })
       } else {
-        toast.info(engine === "business" ? "Job d'identification lancé" : "Job de scraping lancé", {
+        toast.info(engine === "business" ? "Job d'identification lancé" : engine === "website" ? "Robot lancé" : "Job de scraping lancé", {
           description,
         })
       }
@@ -367,6 +439,8 @@ export function ScraperView() {
               ? "Facebook · Playwright · Extraction pages & recherche · Déduplication IA"
               : engine === "business"
               ? "Business / LinkedIn · Identification entreprises · Dirigeants & employés · Multi-sources"
+              : engine === "website"
+              ? "Site Web · Robot Playwright · Accueil + Contact + À propos + Mentions légales · Emails/Tél/WhatsApp/Réseaux/GPS"
               : "Google Maps · Playwright · Extraction complète · Déduplication IA · Anti-blocage"}
           </p>
         </div>
@@ -391,6 +465,10 @@ export function ScraperView() {
                 <Building2 className="h-3.5 w-3.5" />
                 Business / LinkedIn
               </TabsTrigger>
+              <TabsTrigger value="website" className="gap-1.5">
+                <Globe className="h-3.5 w-3.5" />
+                Site Web
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -404,16 +482,20 @@ export function ScraperView() {
               <FacebookIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             ) : engine === "business" ? (
               <Building2 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            ) : engine === "website" ? (
+              <Globe className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             ) : (
               <Tag className="h-4 w-4 text-primary" />
             )}
-            Critères de recherche{engine === "facebook" ? " — Facebook" : engine === "business" ? " — Business / LinkedIn" : " — Google Maps"}
+            Critères de recherche{engine === "facebook" ? " — Facebook" : engine === "business" ? " — Business / LinkedIn" : engine === "website" ? " — Site Web / Robot" : " — Google Maps"}
           </CardTitle>
           <CardDescription className="text-xs">
             {engine === "facebook"
               ? "Le moteur va ouvrir Facebook, charger les pages et extraire les coordonnées (Messenger, WhatsApp, site, etc.)"
               : engine === "business"
               ? "Le moteur va identifier l'entreprise sur LinkedIn, extraire dirigeants et employés, avec fallbacks (Google, Pages Jaunes)"
+              : engine === "website"
+              ? "Le robot va visiter l'accueil du site, découvrir les pages Contact / À propos / Mentions légales via le footer, et extraire tous les contacts"
               : "Le moteur va ouvrir Google Maps, scroller les résultats et extraire chaque fiche détaillée"}
           </CardDescription>
         </CardHeader>
@@ -461,6 +543,107 @@ export function ScraperView() {
                     le scraping risque d'échouer ou de renvoyer des résultats partiels.
                   </p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Alerte info Robot Website */}
+          {engine === "website" && (
+            <Alert className="border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <Info className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <AlertTitle className="text-emerald-800 dark:text-emerald-200">
+                🤖 Robot de scraping de site web
+              </AlertTitle>
+              <AlertDescription className="text-emerald-700 dark:text-emerald-300">
+                Le robot visitera automatiquement l'accueil, puis découvrira les pages Contact, À propos
+                et Mentions légales via les liens du footer. Il extraira emails, téléphones, WhatsApp,
+                réseaux sociaux, Google Maps et GPS.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Champs Website Robot */}
+          {engine === "website" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-7 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Globe className="h-3 w-3" /> URL du site <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    value={siteUrl}
+                    onChange={(e) => setSiteUrl(e.target.value)}
+                    placeholder="https://www.orange.ci"
+                    disabled={isRunning}
+                    type="url"
+                    autoComplete="url"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Saisissez l'URL complète du site (avec ou sans https://).
+                  </p>
+                </div>
+                <div className="md:col-span-5 space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Activity className="h-3 w-3" /> Max pages à visiter
+                  </Label>
+                  <Select value={String(maxPages)} onValueChange={(v) => setMaxPages(Number(v))} disabled={isRunning}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[4, 6, 8, 10, 15].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n} pages</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Inclut l'accueil + les pages découvertes (profondeur 1).
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1.5">
+                  <Navigation className="h-3 w-3" /> Types de pages à visiter
+                </Label>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  {([
+                    { value: "contact", label: "Contact" },
+                    { value: "about", label: "À propos" },
+                    { value: "legal", label: "Mentions légales" },
+                  ] as const).map((opt) => {
+                    const checked = websitePageTypes.includes(opt.value)
+                    return (
+                      <label
+                        key={opt.value}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs cursor-pointer select-none transition-colors",
+                          checked
+                            ? "border-primary/50 bg-primary/5 text-foreground"
+                            : "border-input text-muted-foreground hover:bg-muted/50",
+                          isRunning && "opacity-60 pointer-events-none"
+                        )}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            if (v) {
+                              setWebsitePageTypes((prev) =>
+                                prev.includes(opt.value) ? prev : [...prev, opt.value]
+                              )
+                            } else {
+                              setWebsitePageTypes((prev) => prev.filter((t) => t !== opt.value))
+                            }
+                          }}
+                          disabled={isRunning}
+                          aria-label={opt.label}
+                        />
+                        <span className="font-medium">{opt.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  L'accueil est toujours visitée en premier. Ces types guident la découverte des liens dans le footer.
+                </p>
               </div>
             </div>
           )}
@@ -561,8 +744,8 @@ export function ScraperView() {
             </div>
           )}
 
-          {/* Champs standards (masqués en mode pageUrl direct) */}
-          {engine !== "business" && (
+          {/* Champs standards (masqués en mode pageUrl direct OU en mode website) */}
+          {engine !== "business" && engine !== "website" && (
           <div className={cn("grid grid-cols-1 md:grid-cols-12 gap-3", isDirectPageMode && "opacity-50 pointer-events-none")}>
             <div className="md:col-span-4 space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
@@ -663,11 +846,17 @@ export function ScraperView() {
                   ? "Auth par cookies"
                   : engine === "business"
                   ? "Identification multi-sources"
+                  : engine === "website"
+                  ? "Robot Playwright headless"
                   : "Anti-blocage (CAPTCHA, 429, consent)"}
               </span>
               <span className="flex items-center gap-1">
                 <Sparkles className="h-3 w-3 text-primary" />
-                {engine === "business" ? "Dirigeants & employés" : "Dédup IA (Jaro-Winkler + GPS)"}
+                {engine === "business"
+                  ? "Dirigeants & employés"
+                  : engine === "website"
+                  ? "Extraction emails / tél / WhatsApp / GPS"
+                  : "Dédup IA (Jaro-Winkler + GPS)"}
               </span>
               <span className="hidden sm:flex items-center gap-1">
                 <Activity className="h-3 w-3 text-primary" />
@@ -675,6 +864,8 @@ export function ScraperView() {
                   ? "Extraction Messenger/WhatsApp"
                   : engine === "business"
                   ? "Score de confiance 0-100"
+                  : engine === "website"
+                  ? "Footer + Contact + À propos + Mentions"
                   : "Backoff exponentiel"}
               </span>
             </div>
@@ -687,7 +878,7 @@ export function ScraperView() {
               ) : (
                 <Button onClick={launchJob} disabled={launching} className="gap-2">
                   {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  {engine === "business" ? "Lancer l'identification" : "Lancer le scraping"}
+                  {engine === "business" ? "Lancer l'identification" : engine === "website" ? "Lancer le robot" : "Lancer le scraping"}
                 </Button>
               )}
             </div>
@@ -709,6 +900,8 @@ export function ScraperView() {
                     <><FacebookIcon className="h-2.5 w-2.5" /> Facebook</>
                   ) : engine === "business" ? (
                     <><Building2 className="h-2.5 w-2.5" /> Business</>
+                  ) : engine === "website" ? (
+                    <><Globe className="h-2.5 w-2.5" /> Website</>
                   ) : (
                     <><MapPin className="h-2.5 w-2.5" /> Google Maps</>
                   )}
@@ -729,9 +922,9 @@ export function ScraperView() {
 
             {/* Stats live */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <StatCard label="Extraits" value={currentJob.progress.processedCount} icon={CheckCircle2} />
+              <StatCard label={engine === "website" ? "Pages visitées" : "Extraits"} value={currentJob.progress.processedCount} icon={CheckCircle2} />
               <StatCard label="Doublons" value={currentJob.progress.duplicatesDetected} icon={AlertCircle} />
-              <StatCard label="Uniques" value={currentJob.progress.resultsCount - currentJob.progress.duplicatesDetected} icon={Sparkles} />
+              <StatCard label={engine === "website" ? "Sites extraits" : "Uniques"} value={currentJob.progress.resultsCount - currentJob.progress.duplicatesDetected} icon={Sparkles} />
               <StatCard label="Erreurs" value={currentJob.progress.errors.length} icon={XCircle} />
               <StatCard label="Durée" value={currentJob.result ? `${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s` : "…"} icon={Clock} />
             </div>
@@ -753,12 +946,12 @@ export function ScraperView() {
                 <div className="rounded-lg bg-slate-950 text-slate-100 p-3 font-mono text-[11px] space-y-0.5 max-h-48 overflow-y-auto">
                   {currentJob.events.slice(-30).map((event, i) => (
                     <div key={i} className={cn(
-                      (event.type === "error" || event.type === "fb-error" || event.type === "biz-error") && "text-red-400",
+                      (event.type === "error" || event.type === "fb-error" || event.type === "biz-error" || event.type === "ws-error") && "text-red-400",
                       (event.type === "block-detected" || event.type === "fb-login-required" || event.type === "fb-consent-required" || event.type === "biz-fallback") && "text-amber-400",
-                      (event.type === "place-extracted" || event.type === "fb-extracted" || event.type === "biz-extracted") && "text-emerald-400",
-                      (event.type === "duplicate-detected" || event.type === "fb-page-loaded" || event.type === "fb-search-loaded" || event.type === "biz-page-loaded" || event.type === "biz-search-loaded" || event.type === "biz-people-found") && "text-cyan-400",
+                      (event.type === "place-extracted" || event.type === "fb-extracted" || event.type === "biz-extracted" || event.type === "ws-extracted") && "text-emerald-400",
+                      (event.type === "duplicate-detected" || event.type === "fb-page-loaded" || event.type === "fb-search-loaded" || event.type === "biz-page-loaded" || event.type === "biz-search-loaded" || event.type === "biz-people-found" || event.type === "ws-page-loaded" || event.type === "ws-contacts-found") && "text-cyan-400",
                       event.type === "complete" && "text-emerald-400 font-semibold",
-                      !["error", "fb-error", "biz-error", "block-detected", "fb-login-required", "fb-consent-required", "biz-fallback", "place-extracted", "fb-extracted", "biz-extracted", "duplicate-detected", "fb-page-loaded", "fb-search-loaded", "biz-page-loaded", "biz-search-loaded", "biz-people-found", "complete"].includes(event.type) && "text-slate-400",
+                      !["error", "fb-error", "biz-error", "ws-error", "block-detected", "fb-login-required", "fb-consent-required", "biz-fallback", "place-extracted", "fb-extracted", "biz-extracted", "ws-extracted", "duplicate-detected", "fb-page-loaded", "fb-search-loaded", "biz-page-loaded", "biz-search-loaded", "biz-people-found", "ws-page-loaded", "ws-contacts-found", "complete"].includes(event.type) && "text-slate-400",
                     )}>
                       [{new Date().toLocaleTimeString("fr-FR")}] {formatEvent(event)}
                     </div>
@@ -789,7 +982,7 @@ export function ScraperView() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList>
               <TabsTrigger value="grid">
-                {engine === "facebook" ? "Pages" : engine === "business" ? "Entreprises" : "Résultats"} ({currentJob.result.places.length})
+                {engine === "facebook" ? "Pages" : engine === "business" ? "Entreprises" : engine === "website" ? "Sites" : "Résultats"} ({currentJob.result.places.length})
               </TabsTrigger>
               <TabsTrigger value="duplicates">Doublons ({currentJob.result.duplicates.length})</TabsTrigger>
               <TabsTrigger value="stats">Stats</TabsTrigger>
@@ -811,6 +1004,8 @@ export function ScraperView() {
               {currentJob.result.places.map((place, i) => (
                 engine === "business" ? (
                   <BusinessPlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+                ) : engine === "website" ? (
+                  <WebsitePlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
                 ) : (
                   <PlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
                 )
@@ -908,6 +1103,86 @@ export function ScraperView() {
                   icon={CheckCircle2}
                 />
               </div>
+            ) : engine === "website" ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <StatCard
+                  label="Sites extraits"
+                  value={currentJob.result.stats.totalExtracted}
+                  icon={Globe}
+                />
+                <StatCard
+                  label="Pages visitées"
+                  value={currentJob.result.places.reduce(
+                    (sum, p) => sum + (p.visitedPages?.length || 0),
+                    0
+                  )}
+                  icon={Navigation}
+                />
+                <StatCard
+                  label="Emails extraits"
+                  value={currentJob.result.places.reduce(
+                    (sum, p) => sum + ((p as unknown as WebsitePlace).emails?.length || 0),
+                    0
+                  )}
+                  icon={Mail}
+                />
+                <StatCard
+                  label="Téléphones extraits"
+                  value={currentJob.result.places.reduce(
+                    (sum, p) => sum + ((p as unknown as WebsitePlace).phones?.length || 0),
+                    0
+                  )}
+                  icon={Phone}
+                />
+                <StatCard
+                  label="Réseaux sociaux"
+                  value={currentJob.result.places.reduce(
+                    (sum, p) => sum + (p.socialLinks?.length || 0),
+                    0
+                  )}
+                  icon={Share2}
+                />
+                <StatCard
+                  label="Adresses extraites"
+                  value={currentJob.result.places.reduce(
+                    (sum, p) => sum + (p.addresses?.length || 0),
+                    0
+                  )}
+                  icon={MapPin}
+                />
+                <StatCard
+                  label="Coord. GPS extraites"
+                  value={currentJob.result.places.reduce(
+                    (sum, p) => sum + ((p as unknown as WebsitePlace).gps?.length || 0),
+                    0
+                  )}
+                  icon={Navigation}
+                />
+                <StatCard
+                  label="Durée totale"
+                  value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`}
+                  icon={Clock}
+                />
+                <StatCard
+                  label="Durée moyenne/page"
+                  value={`${(() => {
+                    const totalPages = currentJob.result.places.reduce(
+                      (sum, p) => sum + (p.visitedPages?.length || 0),
+                      0
+                    )
+                    const totalMs = currentJob.result.stats.durationMs
+                    return totalPages > 0 && totalMs > 0
+                      ? `${(totalMs / totalPages / 1000).toFixed(1)}s`
+                      : "—"
+                  })()}`}
+                  icon={Activity}
+                />
+                <StatCard
+                  label="Taux de succès"
+                  value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
+                  icon={CheckCircle2}
+                />
+              </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <StatCard
@@ -953,17 +1228,21 @@ export function ScraperView() {
               <FacebookIcon className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
             ) : engine === "business" ? (
               <Building2 className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
+            ) : engine === "website" ? (
+              <Globe className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
             ) : (
               <Radar className="h-12 w-12 mx-auto mb-3 text-primary opacity-50" />
             )}
             <p className="font-semibold mb-1">
-              Prêt à {engine === "facebook" ? "scraper Facebook" : engine === "business" ? "identifier des entreprises" : "scraper Google Maps"}
+              Prêt à {engine === "facebook" ? "scraper Facebook" : engine === "business" ? "identifier des entreprises" : engine === "website" ? "lancer le robot sur un site" : "scraper Google Maps"}
             </p>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
               {engine === "facebook"
                 ? "Configurez vos critères (ou une URL de page) ci-dessus, ajoutez vos cookies Facebook si possible, puis cliquez sur « Lancer le scraping »."
                 : engine === "business"
                 ? "Renseignez un nom d'entreprise, un slug ou une URL LinkedIn, ajoutez des cookies (li_at) pour les PME, puis lancez l'identification. Dirigeants et employés seront extraits automatiquement."
+                : engine === "website"
+                ? "Saisissez l'URL d'un site ci-dessus, sélectionnez les types de pages à visiter, puis cliquez sur « Lancer le robot ». Le robot découvrira automatiquement les pages Contact, À propos et Mentions légales via le footer."
                 : "Configurez vos critères ci-dessus puis cliquez sur « Lancer le scraping ». Le moteur ouvrira Google Maps en mode headless, extraira chaque fiche et dédupliquera les résultats automatiquement."}
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-muted-foreground">
@@ -989,6 +1268,18 @@ export function ScraperView() {
                   </Badge>
                   <Badge variant="outline" className="gap-1">
                     <Award className="h-2.5 w-2.5 text-primary" /> Score d'identification
+                  </Badge>
+                </>
+              ) : engine === "website" ? (
+                <>
+                  <Badge variant="outline" className="gap-1">
+                    <Globe className="h-2.5 w-2.5 text-primary" /> Accueil + Footer
+                  </Badge>
+                  <Badge variant="outline" className="gap-1">
+                    <Mail className="h-2.5 w-2.5 text-primary" /> Emails / Tél / WhatsApp
+                  </Badge>
+                  <Badge variant="outline" className="gap-1">
+                    <Share2 className="h-2.5 w-2.5 text-primary" /> Réseaux sociaux + GPS
                   </Badge>
                 </>
               ) : (
@@ -1537,6 +1828,400 @@ function BusinessPlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: (
   )
 }
 
+// ---------------------------------------------------------------------------
+// Carte spécifique au robot Website
+// ---------------------------------------------------------------------------
+
+const PAGE_TYPE_META: Record<string, { label: string; className: string }> = {
+  home: { label: "Accueil", className: "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40" },
+  contact: { label: "Contact", className: "text-orange-700 border-orange-200 bg-orange-50 dark:text-orange-300 dark:border-orange-900 dark:bg-orange-950/40" },
+  about: { label: "À propos", className: "text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-300 dark:border-amber-900 dark:bg-amber-950/30" },
+  legal: { label: "Mentions légales", className: "text-purple-700 border-purple-200 bg-purple-50 dark:text-purple-300 dark:border-purple-900 dark:bg-purple-950/30" },
+  footer: { label: "Footer", className: "text-muted-foreground" },
+  other: { label: "Autre", className: "text-muted-foreground" },
+}
+
+const SOCIAL_PLATFORM_META: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+  facebook: { label: "Facebook", icon: Facebook, className: "text-blue-700 border-blue-200 bg-blue-50 dark:text-blue-300 dark:border-blue-900 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-950/60" },
+  instagram: { label: "Instagram", icon: Instagram, className: "text-pink-700 border-pink-200 bg-pink-50 dark:text-pink-300 dark:border-pink-900 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-950/60" },
+  linkedin: { label: "LinkedIn", icon: Linkedin, className: "text-sky-700 border-sky-200 bg-sky-50 dark:text-sky-300 dark:border-sky-900 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-950/60" },
+  twitter: { label: "Twitter", icon: Twitter, className: "text-slate-700 border-slate-200 bg-slate-50 dark:text-slate-300 dark:border-slate-800 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-900/60" },
+  youtube: { label: "YouTube", icon: Youtube, className: "text-red-700 border-red-200 bg-red-50 dark:text-red-300 dark:border-red-900 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/60" },
+  tiktok: { label: "TikTok", icon: Hash, className: "text-slate-800 border-slate-300 bg-slate-100 dark:text-slate-200 dark:border-slate-700 dark:bg-slate-800/40 hover:bg-slate-200 dark:hover:bg-slate-800/60" },
+  whatsapp: { label: "WhatsApp", icon: MessageCircle, className: "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/60" },
+  telegram: { label: "Telegram", icon: Send, className: "text-cyan-700 border-cyan-200 bg-cyan-50 dark:text-cyan-300 dark:border-cyan-900 dark:bg-cyan-950/40 hover:bg-cyan-100 dark:hover:bg-cyan-950/60" },
+}
+
+function WebsitePlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => void }) {
+  const [expandedDesc, setExpandedDesc] = useState(false)
+  const [showAllFooterLinks, setShowAllFooterLinks] = useState(false)
+
+  const wp = place as unknown as WebsitePlace
+  const siteName = wp.siteName || place.name
+  const siteUrl = wp.siteUrl || place.website || ""
+  const metaDescription = wp.metaDescription || place.description || ""
+  const isLongDesc = metaDescription.length > 140
+
+  const visitedPages = wp.visitedPages || []
+  const emails = wp.emails || []
+  const phones = wp.phones || []
+  const whatsappList = wp.whatsapp || []
+  const socialLinks = wp.socialLinks || []
+  const addresses = wp.addresses || []
+  const gpsList = wp.gps || []
+  const footerLinks = wp.footerLinks || []
+  const googleMapsUrl = wp.googleMapsUrl
+  const logoUrl = wp.logoUrl
+  const language = wp.language
+
+  const shownFooterLinks = showAllFooterLinks ? footerLinks : footerLinks.slice(0, 5)
+  const hiddenFooterCount = Math.max(0, footerLinks.length - 5)
+
+  return (
+    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+      <CardContent className="p-4" onClick={onClick}>
+        {/* Header: logo + site name + external link */}
+        <div className="flex items-start gap-2 mb-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 shrink-0 overflow-hidden">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`Logo ${siteName}`}
+                className="h-full w-full object-contain"
+                onError={(e) => {
+                  const target = e.currentTarget as HTMLImageElement
+                  target.style.display = "none"
+                }}
+              />
+            ) : (
+              <Globe className="h-4 w-4" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-sm leading-tight line-clamp-2 flex items-center gap-1">
+              <span className="truncate">{siteName}</span>
+              {siteUrl && (
+                <a
+                  href={siteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Ouvrir le site"
+                  className="shrink-0 text-orange-600 hover:text-orange-700 dark:text-orange-400"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </h3>
+            {siteUrl && (
+              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                {siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+              </p>
+            )}
+          </div>
+          {language && (
+            <Badge variant="outline" className="text-[9px] gap-1 shrink-0" title="Langue du site">
+              <Languages className="h-2.5 w-2.5" />
+              {language.toUpperCase()}
+            </Badge>
+          )}
+        </div>
+
+        {/* Meta description */}
+        {metaDescription && (
+          <div className="text-[11px] text-muted-foreground mb-2">
+            <p className={cn(!expandedDesc && "line-clamp-2")}>{metaDescription}</p>
+            {isLongDesc && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setExpandedDesc((v) => !v) }}
+                className="text-primary hover:underline mt-0.5 text-[10px]"
+              >
+                {expandedDesc ? "Voir moins" : "Voir plus"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Visited pages */}
+        {visitedPages.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <Navigation className="h-3 w-3 text-primary" /> Pages visitées ({visitedPages.length})
+            </p>
+            <ul className="space-y-1 max-h-44 overflow-y-auto pr-1">
+              {visitedPages.slice(0, 8).map((page, i) => {
+                const meta = PAGE_TYPE_META[page.pageType] || PAGE_TYPE_META.other
+                return (
+                  <li key={i} className="text-[11px]">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="outline" className={cn("text-[9px] h-4 px-1", meta.className)}>
+                        {meta.label}
+                      </Badge>
+                      {page.title && (
+                        <span className="font-medium truncate flex-1 min-w-0">{page.title}</span>
+                      )}
+                      <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">
+                        {page.loadTimeMs ? `${page.loadTimeMs}ms` : ""}
+                        {page.status ? ` · ${page.status}` : ""}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground truncate pl-1" title={page.url}>
+                      {page.url}
+                    </p>
+                    {page.error && (
+                      <p className="text-[9px] text-destructive pl-1">⚠ {page.error}</p>
+                    )}
+                  </li>
+                )
+              })}
+              {visitedPages.length > 8 && (
+                <li className="text-[10px] text-muted-foreground">
+                  + {visitedPages.length - 8} autres pages
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Emails */}
+        {emails.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <Mail className="h-3 w-3 text-primary" /> Emails ({emails.length})
+            </p>
+            <ul className="space-y-1">
+              {emails.slice(0, 5).map((e, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <span aria-hidden="true">✉️</span>
+                  <a
+                    href={`mailto:${e.email}`}
+                    onClick={(ev) => ev.stopPropagation()}
+                    className="truncate hover:text-primary flex-1 min-w-0"
+                    title={e.email}
+                  >
+                    {e.email}
+                  </a>
+                  {e.fromMailtoLink && (
+                    <Badge variant="outline" className="text-[9px] h-4 px-1 text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 shrink-0">
+                      mailto
+                    </Badge>
+                  )}
+                </li>
+              ))}
+              {emails.length > 5 && (
+                <li className="text-[10px] text-muted-foreground">+ {emails.length - 5} autres</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Phones */}
+        {phones.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <Phone className="h-3 w-3 text-primary" /> Téléphones ({phones.length})
+            </p>
+            <ul className="space-y-1">
+              {phones.slice(0, 5).map((p, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <span aria-hidden="true">📞</span>
+                  <a
+                    href={`tel:${p.normalized}`}
+                    onClick={(ev) => ev.stopPropagation()}
+                    className="truncate hover:text-primary flex-1 min-w-0"
+                    title={p.raw}
+                  >
+                    {p.normalized || p.raw}
+                  </a>
+                  {p.fromTelLink && (
+                    <Badge variant="outline" className="text-[9px] h-4 px-1 text-orange-700 border-orange-200 bg-orange-50 dark:text-orange-300 dark:border-orange-900 dark:bg-orange-950/40 shrink-0">
+                      tel:
+                    </Badge>
+                  )}
+                </li>
+              ))}
+              {phones.length > 5 && (
+                <li className="text-[10px] text-muted-foreground">+ {phones.length - 5} autres</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* WhatsApp */}
+        {whatsappList.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <MessageCircle className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> WhatsApp ({whatsappList.length})
+            </p>
+            <ul className="space-y-1">
+              {whatsappList.slice(0, 3).map((w, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <span aria-hidden="true">💬</span>
+                  <a
+                    href={`https://wa.me/${w.normalized.replace(/[^\d]/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(ev) => ev.stopPropagation()}
+                    className="truncate hover:text-emerald-700 dark:hover:text-emerald-300 flex-1 min-w-0"
+                    title={w.raw}
+                  >
+                    {w.normalized || w.raw}
+                  </a>
+                  <Badge variant="outline" className="text-[9px] h-4 px-1 text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 shrink-0">
+                    WhatsApp
+                  </Badge>
+                </li>
+              ))}
+              {whatsappList.length > 3 && (
+                <li className="text-[10px] text-muted-foreground">+ {whatsappList.length - 3} autres</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Social links + Google Maps */}
+        {(socialLinks.length > 0 || googleMapsUrl) && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t">
+            {socialLinks.map((s, i) => {
+              const meta = SOCIAL_PLATFORM_META[s.platform] || { label: s.platform, icon: Link2, className: "text-muted-foreground" }
+              const Icon = meta.icon
+              return (
+                <a
+                  key={`${s.platform}-${i}`}
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title={s.handle ? `${meta.label} : ${s.handle}` : meta.label}
+                >
+                  <Badge variant="outline" className={cn("text-[9px] gap-1 cursor-pointer", meta.className)}>
+                    <Icon className="h-2.5 w-2.5" />
+                    {meta.label}
+                  </Badge>
+                </a>
+              )
+            })}
+            {googleMapsUrl && (
+              <a
+                href={googleMapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title="Google Maps"
+              >
+                <Badge variant="outline" className="text-[9px] gap-1 cursor-pointer text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/60">
+                  <span aria-hidden="true">🗺️</span>
+                  Google Maps
+                </Badge>
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Addresses */}
+        {addresses.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <MapPin className="h-3 w-3 text-primary" /> Adresses ({addresses.length})
+            </p>
+            <ul className="space-y-1">
+              {addresses.slice(0, 3).map((a, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                  <span aria-hidden="true">📍</span>
+                  <span className="line-clamp-2">{a}</span>
+                </li>
+              ))}
+              {addresses.length > 3 && (
+                <li className="text-[10px] text-muted-foreground">+ {addresses.length - 3} autres</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* GPS coordinates */}
+        {gpsList.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <Navigation className="h-3 w-3 text-primary" /> Coordonnées GPS ({gpsList.length})
+            </p>
+            <ul className="space-y-1">
+              {gpsList.slice(0, 3).map((g, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <a
+                    href={`https://www.google.com/maps?q=${g.lat},${g.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-mono hover:text-primary"
+                    title={`Source: ${g.source} · Trouvé sur ${g.foundOn}`}
+                  >
+                    {g.lat.toFixed(5)}, {g.lng.toFixed(5)}
+                  </a>
+                  <Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground shrink-0">
+                    {g.source}
+                  </Badge>
+                </li>
+              ))}
+              {gpsList.length > 3 && (
+                <li className="text-[10px] text-muted-foreground">+ {gpsList.length - 3} autres</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Footer links (collapsible) */}
+        {footerLinks.length > 0 && (
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+              <Link2 className="h-3 w-3 text-primary" /> Liens du footer ({footerLinks.length})
+            </p>
+            <ul className="space-y-0.5">
+              {shownFooterLinks.map((f, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                  <a
+                    href={f.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="truncate text-muted-foreground hover:text-primary flex-1 min-w-0"
+                    title={f.url}
+                  >
+                    {f.text || f.url}
+                  </a>
+                </li>
+              ))}
+              {hiddenFooterCount > 0 && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowAllFooterLinks((v) => !v) }}
+                    className="text-primary hover:underline text-[10px] flex items-center gap-1"
+                  >
+                    {showAllFooterLinks ? (
+                      <><ChevronUp className="h-3 w-3" /> Voir moins</>
+                    ) : (
+                      <><ChevronDown className="h-3 w-3" /> + {hiddenFooterCount} autres</>
+                    )}
+                  </button>
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between mt-2 pt-2 text-[10px]">
+          <span className="text-muted-foreground">
+            Extrait {new Date(place.scrapedAt).toLocaleDateString("fr-FR")}
+          </span>
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function formatEvent(event: { type: string; [key: string]: unknown }): string {
   switch (event.type) {
     // Google Maps events
@@ -1586,6 +2271,19 @@ function formatEvent(event: { type: string; [key: string]: unknown }): string {
       return `🔄 Fallback: ${event.source || ""} — ${event.reason || ""}`
     case "biz-error":
       return `✗ Erreur: ${event.message}`
+    // Website Robot events
+    case "ws-page-visit":
+      return `🔍 Visite: ${event.pageType || ""} ${event.url || ""}`
+    case "ws-page-loaded":
+      return `✓ Page chargée: ${event.title || ""} (${event.loadTimeMs || 0}ms)`
+    case "ws-contacts-found":
+      return `📊 Trouvé: ${event.emails || 0} emails, ${event.phones || 0} tél, ${event.socials || 0} réseaux`
+    case "ws-extracted":
+      return "✅ Extraction terminée"
+    case "ws-error":
+      return `✗ Erreur: ${event.message}${event.url ? ` (${event.url})` : ""}`
+    case "ws-progress":
+      return `📊 Phase: ${event.phase || ""} (${event.progress || 0}%)`
     default:
       return event.type
   }
