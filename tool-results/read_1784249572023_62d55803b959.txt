@@ -1,0 +1,2002 @@
+     1→"use client"
+     2→
+     3→import { useState, useEffect, useCallback } from "react"
+     4→import {
+     5→  Radar, Play, Square, RefreshCw, Download, MapPin, Phone, Mail, Globe,
+     6→  Star, Clock, Tag, Building2, AlertCircle, AlertTriangle, CheckCircle2,
+     7→  Loader2, XCircle, Eye, ChevronRight, ExternalLink, Activity, Sparkles,
+     8→  MessageCircle, BadgeCheck, Heart, Users, Briefcase, Crown, UserCheck, Award,
+     9→  Info, Link2, Navigation, Languages, ChevronDown, ChevronUp,
+    10→  Facebook, Instagram, Linkedin, Twitter, Youtube, Send, Share2, Hash
+    11→} from "lucide-react"
+    12→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+    13→import { Button } from "@/components/ui/button"
+    14→import { Input } from "@/components/ui/input"
+    15→import { Label } from "@/components/ui/label"
+    16→import { Textarea } from "@/components/ui/textarea"
+    17→import { Badge } from "@/components/ui/badge"
+    18→import { Progress } from "@/components/ui/progress"
+    19→import { Separator } from "@/components/ui/separator"
+    20→import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+    21→import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+    22→import {
+    23→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    24→} from "@/components/ui/select"
+    25→import { Switch } from "@/components/ui/switch"
+    26→import { Checkbox } from "@/components/ui/checkbox"
+    27→import { toast } from "sonner"
+    28→import { cn } from "@/lib/utils"
+    29→
+    30→// ---------------------------------------------------------------------------
+    31→// Types
+    32→// ---------------------------------------------------------------------------
+    33→
+    34→type Engine = "google-maps" | "facebook" | "business" | "website"
+    35→
+    36→interface ScrapedPlace {
+    37→  name: string
+    38→  category?: string
+    39→  address?: string
+    40→  phone?: string
+    41→  phoneNormalized?: string
+    42→  email?: string
+    43→  website?: string
+    44→  gps?: { lat: number; lng: number }
+    45→  rating?: number
+    46→  reviewCount?: number
+    47→  isOpenNow?: boolean
+    48→  hours?: Array<{ day: string; hours: string }>
+    49→  photos?: Array<{ url: string; alt?: string }>
+    50→  placeId?: string
+    51→  sourceUrl?: string
+    52→  scrapedAt: string
+    53→  // Facebook-specific
+    54→  pageName?: string
+    55→  pageUrl?: string
+    56→  messenger?: string
+    57→  whatsapp?: string
+    58→  googleMapsUrl?: string
+    59→  description?: string
+    60→  facebookId?: string
+    61→  likesCount?: number
+    62→  followersCount?: number
+    63→  isVerified?: boolean
+    64→  // Business/LinkedIn-specific
+    65→  linkedinSlug?: string
+    66→  linkedinUrl?: string
+    67→  companySize?: string
+    68→  companyType?: string
+    69→  foundedYear?: number
+    70→  specialties?: string[]
+    71→  executives?: Array<{
+    72→    name: string
+    73→    title?: string
+    74→    linkedinUrl?: string
+    75→    photoUrl?: string
+    76→    role: "executive"
+    77→    bio?: string
+    78→    location?: string
+    79→  }>
+    80→  employees?: Array<{
+    81→    name: string
+    82→    title?: string
+    83→    linkedinUrl?: string
+    84→    photoUrl?: string
+    85→    role: "employee"
+    86→  }>
+    87→  employeesOnLinkedin?: number
+    88→  identificationScore?: number
+    89→  // Website Robot-specific (les champs ci-dessous sont renseignés par le moteur website)
+    90→  siteUrl?: string
+    91→  siteName?: string
+    92→  metaDescription?: string
+    93→  language?: string
+    94→  logoUrl?: string
+    95→  visitedPages?: Array<{
+    96→    url: string
+    97→    requestedUrl: string
+    98→    title?: string
+    99→    pageType: string
+   100→    status: number
+   101→    loadTimeMs: number
+   102→    depth: number
+   103→    error?: string
+   104→  }>
+   105→  socialLinks?: Array<{
+   106→    platform: string
+   107→    url: string
+   108→    foundOn: string
+   109→    handle?: string
+   110→  }>
+   111→  addresses?: string[]
+   112→  footerLinks?: Array<{ text: string; url: string }>
+   113→}
+   114→
+   115→/** Type dédié pour les données issues du robot Website (tableaux strictement typés).
+   116→ *  Ne peut pas `extends ScrapedPlace` car `whatsapp`/`gps` ont des types incompatibles avec la base.
+   117→ *  Utilisé via un cast `as unknown as WebsitePlace` quand on accède aux champs website. */
+   118→interface WebsitePlace {
+   119→  siteUrl: string
+   120→  siteName?: string
+   121→  metaDescription?: string
+   122→  language?: string
+   123→  logoUrl?: string
+   124→  emails?: Array<{ email: string; foundOn: string; context?: string; fromMailtoLink: boolean }>
+   125→  phones?: Array<{ raw: string; normalized: string; foundOn: string; context?: string; fromTelLink: boolean }>
+   126→  whatsapp?: Array<{ raw: string; normalized: string; foundOn: string; context?: string; fromTelLink: boolean }>
+   127→  gps?: Array<{ lat: number; lng: number; foundOn: string; source: string }>
+   128→  socialLinks?: Array<{ platform: string; url: string; foundOn: string; handle?: string }>
+   129→  addresses?: string[]
+   130→  footerLinks?: Array<{ text: string; url: string }>
+   131→  visitedPages?: Array<{ url: string; requestedUrl: string; title?: string; pageType: string; status: number; loadTimeMs: number; depth: number; error?: string }>
+   132→  googleMapsUrl?: string
+   133→}
+   134→
+   135→interface JobProgress {
+   136→  jobId: string
+   137→  status: "queued" | "running" | "completed" | "failed" | "cancelled"
+   138→  phase: string
+   139→  progress: number
+   140→  resultsCount: number
+   141→  processedCount: number
+   142→  duplicatesDetected: number
+   143→  errors: string[]
+   144→  currentPlace?: string
+   145→  startedAt: string
+   146→}
+   147→
+   148→interface ScrapeResult {
+   149→  jobId: string
+   150→  status: string
+   151→  places: ScrapedPlace[]
+   152→  duplicates: Array<{ canonicalName: string; duplicates: Array<{ name: string; similarity: number; reason: string }>; confidence: number }>
+   153→  stats: {
+   154→    totalExtracted: number
+   155→    uniqueCount: number
+   156→    duplicatesCount: number
+   157→    durationMs: number
+   158→    pagesScraped: number
+   159→    blocksEncountered: number
+   160→    retries: number
+   161→  }
+   162→  errors: string[]
+   163→}
+   164→
+   165→interface JobState {
+   166→  id: string
+   167→  query: { keyword: string; city?: string; commune?: string; neighborhood?: string; maxResults?: number; pageUrl?: string; url?: string; pageTypes?: string[]; maxPages?: number }
+   168→  progress: JobProgress
+   169→  result?: ScrapeResult
+   170→  events: Array<{ type: string; [key: string]: unknown }>
+   171→  createdAt: string
+   172→}
+   173→
+   174→interface LaunchResponse {
+   175→  jobId: string
+   176→  status?: string
+   177→  query?: unknown
+   178→  estimatedDurationMs?: number
+   179→  message?: string
+   180→  authenticated?: boolean
+   181→}
+   182→
+   183→// ---------------------------------------------------------------------------
+   184→// Helpers
+   185→// ---------------------------------------------------------------------------
+   186→
+   187→const ENDPOINTS: Record<Engine, { launch: string; job: (id: string) => string; list?: string }> = {
+   188→  "google-maps": {
+   189→    launch: "/api/scraper/google-maps",
+   190→    job: (id) => `/api/scraper/jobs/${id}`,
+   191→    list: "/api/scraper/jobs",
+   192→  },
+   193→  facebook: {
+   194→    launch: "/api/scraper/facebook",
+   195→    job: (id) => `/api/scraper/facebook/jobs/${id}`,
+   196→  },
+   197→  business: {
+   198→    launch: "/api/scraper/business",
+   199→    job: (id) => `/api/scraper/business/jobs/${id}`,
+   200→  },
+   201→  website: {
+   202→    launch: "/api/scraper/website",
+   203→    job: (id) => `/api/scraper/website/jobs/${id}`,
+   204→  },
+   205→}
+   206→
+   207→function formatCount(n: number): string {
+   208→  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+   209→  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+   210→  return String(n)
+   211→}
+   212→
+   213→const FacebookIcon = ({ className }: { className?: string }) => (
+   214→  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+   215→    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+   216→  </svg>
+   217→)
+   218→
+   219→const LinkedinIcon = ({ className }: { className?: string }) => (
+   220→  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+   221→    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/>
+   222→  </svg>
+   223→)
+   224→
+   225→// ---------------------------------------------------------------------------
+   226→// Main component
+   227→// ---------------------------------------------------------------------------
+   228→
+   229→export function ScraperView() {
+   230→  const [engine, setEngine] = useState<Engine>("google-maps")
+   231→  const [keyword, setKeyword] = useState("restaurant")
+   232→  const [city, setCity] = useState("Abidjan")
+   233→  const [commune, setCommune] = useState("Cocody")
+   234→  const [neighborhood, setNeighborhood] = useState("")
+   235→  const [maxResults, setMaxResults] = useState(10)
+   236→  // Facebook-only fields
+   237→  const [cookies, setCookies] = useState("")
+   238→  const [pageUrl, setPageUrl] = useState("")
+   239→  // Business/LinkedIn-only fields
+   240→  const [linkedinSlug, setLinkedinSlug] = useState("")
+   241→  const [linkedinUrl, setLinkedinUrl] = useState("")
+   242→  const [linkedinCookies, setLinkedinCookies] = useState("")
+   243→  const [maxPeople, setMaxPeople] = useState(20)
+   244→  const [extractEmployees, setExtractEmployees] = useState(true)
+   245→  // Website Robot-only fields
+   246→  const [siteUrl, setSiteUrl] = useState("")
+   247→  const [websitePageTypes, setWebsitePageTypes] = useState<string[]>(["contact", "about", "legal"])
+   248→  const [maxPages, setMaxPages] = useState(8)
+   249→
+   250→  const [jobs, setJobs] = useState<Record<Engine, JobState | null>>({
+   251→    "google-maps": null,
+   252→    facebook: null,
+   253→    business: null,
+   254→    website: null,
+   255→  })
+   256→  const [pollingEngine, setPollingEngine] = useState<Engine | null>(null)
+   257→  const [launching, setLaunching] = useState(false)
+   258→  const [selectedPlace, setSelectedPlace] = useState<ScrapedPlace | null>(null)
+   259→
+   260→  const currentJob = jobs[engine]
+   261→  const isRunning = currentJob?.progress.status === "running" || currentJob?.progress.status === "queued"
+   262→
+   263→  // Polling de l'état du job (par moteur)
+   264→  const pollJob = useCallback(async (jobId: string, eng: Engine) => {
+   265→    try {
+   266→      const res = await fetch(ENDPOINTS[eng].job(jobId), { credentials: "include" })
+   267→      if (!res.ok) return
+   268→      const data: JobState = await res.json()
+   269→      setJobs((prev) => ({ ...prev, [eng]: data }))
+   270→
+   271→      if (data.progress.status === "running" || data.progress.status === "queued") {
+   272→        setTimeout(() => pollJob(jobId, eng), 1500)
+   273→      } else {
+   274→        setPollingEngine((cur) => (cur === eng ? null : cur))
+   275→        if (data.progress.status === "completed" && data.result) {
+   276→          toast.success(eng === "business" ? "Identification terminée" : eng === "website" ? "Extraction site terminée" : "Scraping terminé", {
+   277→            description: `${data.result.stats.uniqueCount} ${eng === "business" ? "entreprise(s)" : eng === "website" ? "site(s)" : "lieu(s)"} unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
+   278→          })
+   279→        } else if (data.progress.status === "failed") {
+   280→          toast.error("Scraping échoué", {
+   281→            description: data.progress.errors[0] || "Erreur inconnue",
+   282→          })
+   283→        }
+   284→      }
+   285→    } catch (err) {
+   286→      console.error("[poll] error:", err)
+   287→      setPollingEngine((cur) => (cur === eng ? null : cur))
+   288→    }
+   289→  }, [])
+   290→
+   291→  // Lance un job
+   292→  const launchJob = async () => {
+   293→    const isDirectPage = engine === "facebook" && pageUrl.trim().length > 0
+   294→    const isBusinessDirect =
+   295→      engine === "business" && (linkedinSlug.trim().length > 0 || linkedinUrl.trim().length > 0)
+   296→
+   297→    if (engine === "website") {
+   298→      if (!siteUrl.trim()) {
+   299→        toast.error("Veuillez saisir l'URL du site à scraper")
+   300→        return
+   301→      }
+   302→      if (websitePageTypes.length === 0) {
+   303→        toast.error("Sélectionnez au moins un type de page à visiter")
+   304→        return
+   305→      }
+   306→    } else if (engine === "business") {
+   307→      if (!keyword.trim() && !linkedinSlug.trim() && !linkedinUrl.trim()) {
+   308→        toast.error("Veuillez saisir un nom, un slug LinkedIn ou une URL LinkedIn")
+   309→        return
+   310→      }
+   311→    } else if (!isDirectPage && !keyword.trim()) {
+   312→      toast.error(engine === "facebook"
+   313→        ? "Veuillez saisir un mot-clé ou une URL de page Facebook"
+   314→        : "Veuillez saisir un mot-clé")
+   315→      return
+   316→    }
+   317→
+   318→    setLaunching(true)
+   319→    try {
+   320→      let body: Record<string, unknown>
+   321→      let description: string
+   322→
+   323→      if (engine === "website") {
+   324→        body = {
+   325→          url: siteUrl.trim(),
+   326→          pageTypes: websitePageTypes,
+   327→          maxPages,
+   328→        }
+   329→        description = `Site web : ${siteUrl.trim()}`
+   330→      } else if (engine === "business") {
+   331→        body = {
+   332→          query: keyword.trim() || undefined,
+   333→          location: city.trim() || undefined,
+   334→          linkedinSlug: linkedinSlug.trim() || undefined,
+   335→          linkedinUrl: linkedinUrl.trim() || undefined,
+   336→          cookies: linkedinCookies.trim() || undefined,
+   337→          maxPeople,
+   338→          extractEmployees,
+   339→        }
+   340→        description = isBusinessDirect
+   341→          ? `Entreprise LinkedIn : ${linkedinSlug.trim() || linkedinUrl.trim()}`
+   342→          : `Recherche entreprise « ${keyword} »${city.trim() ? ` à ${city.trim()}` : ""}`
+   343→      } else {
+   344→        body = {
+   345→          keyword: keyword.trim() || undefined,
+   346→          city: city.trim() || undefined,
+   347→          commune: commune.trim() || undefined,
+   348→          neighborhood: neighborhood.trim() || undefined,
+   349→          maxResults,
+   350→        }
+   351→        if (engine === "facebook") {
+   352→          if (cookies.trim()) body.cookies = cookies.trim()
+   353→          if (pageUrl.trim()) body.pageUrl = pageUrl.trim()
+   354→        }
+   355→        description = isDirectPage
+   356→          ? `Page Facebook : ${pageUrl.trim()}`
+   357→          : `Recherche « ${keyword} » à ${commune || city}`
+   358→      }
+   359→
+   360→      const res = await fetch(ENDPOINTS[engine].launch, {
+   361→        method: "POST",
+   362→        headers: { "Content-Type": "application/json" },
+   363→        credentials: "include",
+   364→        body: JSON.stringify(body),
+   365→      })
+   366→
+   367→      if (!res.ok) {
+   368→        const err = await res.json().catch(() => ({}))
+   369→        throw new Error(err.error || "Échec du lancement")
+   370→      }
+   371→
+   372→      const data: LaunchResponse = await res.json()
+   373→      const { jobId } = data
+   374→
+   375→      if (engine === "facebook" && data.authenticated === false) {
+   376→        toast.warning("Cookies non validés", {
+   377→          description: "Le moteur n'a pas pu vérifier les cookies. Le scraping peut échouer ou être limité.",
+   378→        })
+   379→      } else if (engine === "business" && data.authenticated === false) {
+   380→        toast.info("Lancement sans cookies LinkedIn", {
+   381→          description: "Fonctionne pour les grandes entreprises publiques (Orange, MTN…). Pour les PME, fournissez des cookies (li_at).",
+   382→        })
+   383→      } else {
+   384→        toast.info(engine === "business" ? "Job d'identification lancé" : engine === "website" ? "Robot lancé" : "Job de scraping lancé", {
+   385→          description,
+   386→        })
+   387→      }
+   388→
+   389→      setPollingEngine(engine)
+   390→      pollJob(jobId, engine)
+   391→    } catch (err) {
+   392→      toast.error("Erreur", { description: (err as Error).message })
+   393→    } finally {
+   394→      setLaunching(false)
+   395→    }
+   396→  }
+   397→
+   398→  // Annule le job courant
+   399→  const cancelJob = async () => {
+   400→    if (!currentJob) return
+   401→    try {
+   402→      await fetch(ENDPOINTS[engine].job(currentJob.id), {
+   403→        method: "DELETE",
+   404→        credentials: "include",
+   405→      })
+   406→      toast.info("Job annulé")
+   407→      pollJob(currentJob.id, engine)
+   408→    } catch {
+   409→      toast.error("Erreur lors de l'annulation")
+   410→    }
+   411→  }
+   412→
+   413→  // Récupère les jobs GM récents au montage (FB n'a pas d'endpoint list)
+   414→  useEffect(() => {
+   415→    fetch("/api/scraper/jobs", { credentials: "include" })
+   416→      .then((r) => r.json())
+   417→      .then((data) => {
+   418→        if (data.jobs && data.jobs.length > 0) {
+   419→          pollJob(data.jobs[0].id, "google-maps")
+   420→        }
+   421→      })
+   422→      .catch(() => {})
+   423→  }, [pollJob])
+   424→
+   425→  const hasFbCookies = cookies.trim().length > 0
+   426→  const isDirectPageMode = engine === "facebook" && pageUrl.trim().length > 0
+   427→
+   428→  return (
+   429→    <div className="space-y-4">
+   430→      {/* Header + engine switch */}
+   431→      <div className="flex flex-wrap items-center justify-between gap-3">
+   432→        <div>
+   433→          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   434→            <Radar className="h-6 w-6 text-primary" />
+   435→            Moteur de scraping
+   436→          </h1>
+   437→          <p className="text-sm text-muted-foreground mt-0.5">
+   438→            {engine === "facebook"
+   439→              ? "Facebook · Playwright · Extraction pages & recherche · Déduplication IA"
+   440→              : engine === "business"
+   441→              ? "Business / LinkedIn · Identification entreprises · Dirigeants & employés · Multi-sources"
+   442→              : engine === "website"
+   443→              ? "Site Web · Robot Playwright · Accueil + Contact + À propos + Mentions légales · Emails/Tél/WhatsApp/Réseaux/GPS"
+   444→              : "Google Maps · Playwright · Extraction complète · Déduplication IA · Anti-blocage"}
+   445→          </p>
+   446→        </div>
+   447→        <div className="flex items-center gap-3">
+   448→          {isRunning && (
+   449→            <Badge variant="outline" className="bg-primary/10 text-primary gap-1.5">
+   450→              <Loader2 className="h-3 w-3 animate-spin" />
+   451→              Scraping en cours…
+   452→            </Badge>
+   453→          )}
+   454→          <Tabs value={engine} onValueChange={(v) => setEngine(v as Engine)}>
+   455→            <TabsList>
+   456→              <TabsTrigger value="google-maps" className="gap-1.5">
+   457→                <MapPin className="h-3.5 w-3.5" />
+   458→                Google Maps
+   459→              </TabsTrigger>
+   460→              <TabsTrigger value="facebook" className="gap-1.5">
+   461→                <FacebookIcon className="h-3.5 w-3.5" />
+   462→                Facebook
+   463→              </TabsTrigger>
+   464→              <TabsTrigger value="business" className="gap-1.5">
+   465→                <Building2 className="h-3.5 w-3.5" />
+   466→                Business / LinkedIn
+   467→              </TabsTrigger>
+   468→              <TabsTrigger value="website" className="gap-1.5">
+   469→                <Globe className="h-3.5 w-3.5" />
+   470→                Site Web
+   471→              </TabsTrigger>
+   472→            </TabsList>
+   473→          </Tabs>
+   474→        </div>
+   475→      </div>
+   476→
+   477→      {/* Formulaire de recherche */}
+   478→      <Card>
+   479→        <CardHeader className="pb-3">
+   480→          <CardTitle className="text-base flex items-center gap-2">
+   481→            {engine === "facebook" ? (
+   482→              <FacebookIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   483→            ) : engine === "business" ? (
+   484→              <Building2 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   485→            ) : engine === "website" ? (
+   486→              <Globe className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   487→            ) : (
+   488→              <Tag className="h-4 w-4 text-primary" />
+   489→            )}
+   490→            Critères de recherche{engine === "facebook" ? " — Facebook" : engine === "business" ? " — Business / LinkedIn" : engine === "website" ? " — Site Web / Robot" : " — Google Maps"}
+   491→          </CardTitle>
+   492→          <CardDescription className="text-xs">
+   493→            {engine === "facebook"
+   494→              ? "Le moteur va ouvrir Facebook, charger les pages et extraire les coordonnées (Messenger, WhatsApp, site, etc.)"
+   495→              : engine === "business"
+   496→              ? "Le moteur va identifier l'entreprise sur LinkedIn, extraire dirigeants et employés, avec fallbacks (Google, Pages Jaunes)"
+   497→              : engine === "website"
+   498→              ? "Le robot va visiter l'accueil du site, découvrir les pages Contact / À propos / Mentions légales via le footer, et extraire tous les contacts"
+   499→              : "Le moteur va ouvrir Google Maps, scroller les résultats et extraire chaque fiche détaillée"}
+   500→          </CardDescription>
+   501→        </CardHeader>
+   502→        <CardContent className="space-y-4">
+   503→          {/* Alerte cookies Facebook */}
+   504→          {engine === "facebook" && (
+   505→            <Alert className="border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-950/40">
+   506→              <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   507→              <AlertTitle className="text-orange-800 dark:text-orange-200">
+   508→                ⚠️ Connexion Facebook requise
+   509→              </AlertTitle>
+   510→              <AlertDescription className="text-orange-700 dark:text-orange-300">
+   511→                Facebook nécessite des cookies de session (<code className="font-mono">c_user</code>,{" "}
+   512→                <code className="font-mono">xs</code>) pour accéder à la plupart des pages.
+   513→                Récupérez-les depuis votre navigateur → DevTools → Application → Cookies → facebook.com
+   514→              </AlertDescription>
+   515→            </Alert>
+   516→          )}
+   517→
+   518→          {/* Alerte cookies LinkedIn (business) */}
+   519→          {engine === "business" && (
+   520→            <Alert className="border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-950/40">
+   521→              <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   522→              <AlertTitle className="text-orange-800 dark:text-orange-200">
+   523→                🔐 Authentification LinkedIn
+   524→              </AlertTitle>
+   525→              <AlertDescription className="text-orange-700 dark:text-orange-300">
+   526→                LinkedIn nécessite des cookies (<code className="font-mono">li_at</code>) pour les PME.
+   527→                Les grandes entreprises publiques (Orange, MTN, etc.) sont accessibles sans authentification.
+   528→              </AlertDescription>
+   529→            </Alert>
+   530→          )}
+   531→
+   532→          {/* Bannière warning si FB sans cookies */}
+   533→          {engine === "facebook" && !hasFbCookies && (
+   534→            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3">
+   535→              <div className="flex items-start gap-2 text-xs">
+   536→                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+   537→                <div>
+   538→                  <p className="font-semibold text-amber-800 dark:text-amber-200">
+   539→                    Cookies de session non fournis
+   540→                  </p>
+   541→                  <p className="text-amber-700 dark:text-amber-300 mt-0.5">
+   542→                    Sans cookies valides, Facebook limite drastiquement l'accès aux pages et
+   543→                    le scraping risque d'échouer ou de renvoyer des résultats partiels.
+   544→                  </p>
+   545→                </div>
+   546→              </div>
+   547→            </div>
+   548→          )}
+   549→
+   550→          {/* Alerte info Robot Website */}
+   551→          {engine === "website" && (
+   552→            <Alert className="border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40">
+   553→              <Info className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+   554→              <AlertTitle className="text-emerald-800 dark:text-emerald-200">
+   555→                🤖 Robot de scraping de site web
+   556→              </AlertTitle>
+   557→              <AlertDescription className="text-emerald-700 dark:text-emerald-300">
+   558→                Le robot visitera automatiquement l'accueil, puis découvrira les pages Contact, À propos
+   559→                et Mentions légales via les liens du footer. Il extraira emails, téléphones, WhatsApp,
+   560→                réseaux sociaux, Google Maps et GPS.
+   561→              </AlertDescription>
+   562→            </Alert>
+   563→          )}
+   564→
+   565→          {/* Champs Website Robot */}
+   566→          {engine === "website" && (
+   567→            <div className="space-y-4">
+   568→              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+   569→                <div className="md:col-span-7 space-y-1.5">
+   570→                  <Label className="text-xs flex items-center gap-1.5">
+   571→                    <Globe className="h-3 w-3" /> URL du site <span className="text-destructive">*</span>
+   572→                  </Label>
+   573→                  <Input
+   574→                    value={siteUrl}
+   575→                    onChange={(e) => setSiteUrl(e.target.value)}
+   576→                    placeholder="https://www.orange.ci"
+   577→                    disabled={isRunning}
+   578→                    type="url"
+   579→                    autoComplete="url"
+   580→                  />
+   581→                  <p className="text-[10px] text-muted-foreground">
+   582→                    Saisissez l'URL complète du site (avec ou sans https://).
+   583→                  </p>
+   584→                </div>
+   585→                <div className="md:col-span-5 space-y-1.5">
+   586→                  <Label className="text-xs flex items-center gap-1.5">
+   587→                    <Activity className="h-3 w-3" /> Max pages à visiter
+   588→                  </Label>
+   589→                  <Select value={String(maxPages)} onValueChange={(v) => setMaxPages(Number(v))} disabled={isRunning}>
+   590→                    <SelectTrigger><SelectValue /></SelectTrigger>
+   591→                    <SelectContent>
+   592→                      {[4, 6, 8, 10, 15].map((n) => (
+   593→                        <SelectItem key={n} value={String(n)}>{n} pages</SelectItem>
+   594→                      ))}
+   595→                    </SelectContent>
+   596→                  </Select>
+   597→                  <p className="text-[10px] text-muted-foreground">
+   598→                    Inclut l'accueil + les pages découvertes (profondeur 1).
+   599→                  </p>
+   600→                </div>
+   601→              </div>
+   602→
+   603→              <div className="space-y-1.5">
+   604→                <Label className="text-xs flex items-center gap-1.5">
+   605→                  <Navigation className="h-3 w-3" /> Types de pages à visiter
+   606→                </Label>
+   607→                <div className="flex flex-wrap gap-4 pt-1">
+   608→                  {([
+   609→                    { value: "contact", label: "Contact" },
+   610→                    { value: "about", label: "À propos" },
+   611→                    { value: "legal", label: "Mentions légales" },
+   612→                  ] as const).map((opt) => {
+   613→                    const checked = websitePageTypes.includes(opt.value)
+   614→                    return (
+   615→                      <label
+   616→                        key={opt.value}
+   617→                        className={cn(
+   618→                          "flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs cursor-pointer select-none transition-colors",
+   619→                          checked
+   620→                            ? "border-primary/50 bg-primary/5 text-foreground"
+   621→                            : "border-input text-muted-foreground hover:bg-muted/50",
+   622→                          isRunning && "opacity-60 pointer-events-none"
+   623→                        )}
+   624→                      >
+   625→                        <Checkbox
+   626→                          checked={checked}
+   627→                          onCheckedChange={(v) => {
+   628→                            if (v) {
+   629→                              setWebsitePageTypes((prev) =>
+   630→                                prev.includes(opt.value) ? prev : [...prev, opt.value]
+   631→                              )
+   632→                            } else {
+   633→                              setWebsitePageTypes((prev) => prev.filter((t) => t !== opt.value))
+   634→                            }
+   635→                          }}
+   636→                          disabled={isRunning}
+   637→                          aria-label={opt.label}
+   638→                        />
+   639→                        <span className="font-medium">{opt.label}</span>
+   640→                      </label>
+   641→                    )
+   642→                  })}
+   643→                </div>
+   644→                <p className="text-[10px] text-muted-foreground">
+   645→                  L'accueil est toujours visitée en premier. Ces types guident la découverte des liens dans le footer.
+   646→                </p>
+   647→              </div>
+   648→            </div>
+   649→          )}
+   650→
+   651→          {/* Champs business/LinkedIn */}
+   652→          {engine === "business" && (
+   653→            <div className="space-y-4">
+   654→              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+   655→                <div className="md:col-span-5 space-y-1.5">
+   656→                  <Label className="text-xs flex items-center gap-1.5">
+   657→                    <Tag className="h-3 w-3" /> Nom ou mot-clé {!linkedinSlug && !linkedinUrl && "*"}
+   658→                  </Label>
+   659→                  <Input
+   660→                    value={keyword}
+   661→                    onChange={(e) => setKeyword(e.target.value)}
+   662→                    placeholder="Orange, MTN Côte d'Ivoire…"
+   663→                    disabled={isRunning}
+   664→                  />
+   665→                </div>
+   666→                <div className="md:col-span-3 space-y-1.5">
+   667→                  <Label className="text-xs flex items-center gap-1.5">
+   668→                    <MapPin className="h-3 w-3" /> Localisation
+   669→                  </Label>
+   670→                  <Input
+   671→                    value={city}
+   672→                    onChange={(e) => setCity(e.target.value)}
+   673→                    placeholder="Abidjan, CI"
+   674→                    disabled={isRunning}
+   675→                  />
+   676→                </div>
+   677→                <div className="md:col-span-2 space-y-1.5">
+   678→                  <Label className="text-xs flex items-center gap-1.5">
+   679→                    <UserCheck className="h-3 w-3" /> Max personnes
+   680→                  </Label>
+   681→                  <Select value={String(maxPeople)} onValueChange={(v) => setMaxPeople(Number(v))} disabled={isRunning}>
+   682→                    <SelectTrigger><SelectValue /></SelectTrigger>
+   683→                    <SelectContent>
+   684→                      {[5, 10, 20, 50].map((n) => (
+   685→                        <SelectItem key={n} value={String(n)}>{n} personnes</SelectItem>
+   686→                      ))}
+   687→                    </SelectContent>
+   688→                  </Select>
+   689→                </div>
+   690→                <div className="md:col-span-2 space-y-1.5">
+   691→                  <Label className="text-xs flex items-center gap-1.5">
+   692→                    <Users className="h-3 w-3" /> Extraire employés
+   693→                  </Label>
+   694→                  <div className="flex items-center gap-2 h-9">
+   695→                    <Switch
+   696→                      checked={extractEmployees}
+   697→                      onCheckedChange={setExtractEmployees}
+   698→                      disabled={isRunning}
+   699→                      aria-label="Extraire les employés"
+   700→                    />
+   701→                    <span className="text-[11px] text-muted-foreground">
+   702→                      {extractEmployees ? "Oui" : "Non"}
+   703→                    </span>
+   704→                  </div>
+   705→                </div>
+   706→              </div>
+   707→
+   708→              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+   709→                <div className="md:col-span-3 space-y-1.5">
+   710→                  <Label className="text-xs flex items-center gap-1.5">
+   711→                    <LinkedinIcon className="h-3 w-3" /> Slug LinkedIn (optionnel)
+   712→                  </Label>
+   713→                  <Input
+   714→                    value={linkedinSlug}
+   715→                    onChange={(e) => setLinkedinSlug(e.target.value)}
+   716→                    placeholder="orange"
+   717→                    disabled={isRunning}
+   718→                  />
+   719→                </div>
+   720→                <div className="md:col-span-4 space-y-1.5">
+   721→                  <Label className="text-xs flex items-center gap-1.5">
+   722→                    <LinkedinIcon className="h-3 w-3" /> URL LinkedIn (optionnel)
+   723→                  </Label>
+   724→                  <Input
+   725→                    value={linkedinUrl}
+   726→                    onChange={(e) => setLinkedinUrl(e.target.value)}
+   727→                    placeholder="https://www.linkedin.com/company/orange/"
+   728→                    disabled={isRunning}
+   729→                  />
+   730→                </div>
+   731→                <div className="md:col-span-5 space-y-1.5">
+   732→                  <Label className="text-xs flex items-center gap-1.5">
+   733→                    <AlertCircle className="h-3 w-3" /> Cookies LinkedIn (optionnel)
+   734→                  </Label>
+   735→                  <Textarea
+   736→                    value={linkedinCookies}
+   737→                    onChange={(e) => setLinkedinCookies(e.target.value)}
+   738→                    placeholder="li_at=XXXX; JSESSIONID=YYYY"
+   739→                    disabled={isRunning}
+   740→                    className="min-h-[42px] text-[11px] font-mono"
+   741→                  />
+   742→                </div>
+   743→              </div>
+   744→            </div>
+   745→          )}
+   746→
+   747→          {/* Champs standards (masqués en mode pageUrl direct OU en mode website) */}
+   748→          {engine !== "business" && engine !== "website" && (
+   749→          <div className={cn("grid grid-cols-1 md:grid-cols-12 gap-3", isDirectPageMode && "opacity-50 pointer-events-none")}>
+   750→            <div className="md:col-span-4 space-y-1.5">
+   751→              <Label className="text-xs flex items-center gap-1.5">
+   752→                <Tag className="h-3 w-3" /> Mot-clé {!isDirectPageMode && "*"}
+   753→              </Label>
+   754→              <Input
+   755→                value={keyword}
+   756→                onChange={(e) => setKeyword(e.target.value)}
+   757→                placeholder="restaurant, pharmacie, banque…"
+   758→                disabled={isRunning}
+   759→              />
+   760→            </div>
+   761→            <div className="md:col-span-2 space-y-1.5">
+   762→              <Label className="text-xs flex items-center gap-1.5">
+   763→                <Building2 className="h-3 w-3" /> Ville
+   764→              </Label>
+   765→              <Input
+   766→                value={city}
+   767→                onChange={(e) => setCity(e.target.value)}
+   768→                placeholder="Abidjan"
+   769→                disabled={isRunning}
+   770→              />
+   771→            </div>
+   772→            <div className="md:col-span-2 space-y-1.5">
+   773→              <Label className="text-xs flex items-center gap-1.5">
+   774→                <MapPin className="h-3 w-3" /> Commune
+   775→              </Label>
+   776→              <Input
+   777→                value={commune}
+   778→                onChange={(e) => setCommune(e.target.value)}
+   779→                placeholder="Cocody"
+   780→                disabled={isRunning}
+   781→              />
+   782→            </div>
+   783→            <div className="md:col-span-2 space-y-1.5">
+   784→              <Label className="text-xs flex items-center gap-1.5">
+   785→                <MapPin className="h-3 w-3" /> Quartier
+   786→              </Label>
+   787→              <Input
+   788→                value={neighborhood}
+   789→                onChange={(e) => setNeighborhood(e.target.value)}
+   790→                placeholder="Riviera 2"
+   791→                disabled={isRunning}
+   792→              />
+   793→            </div>
+   794→            <div className="md:col-span-2 space-y-1.5">
+   795→              <Label className="text-xs">Max résultats</Label>
+   796→              <Select value={String(maxResults)} onValueChange={(v) => setMaxResults(Number(v))} disabled={isRunning}>
+   797→                <SelectTrigger><SelectValue /></SelectTrigger>
+   798→                <SelectContent>
+   799→                  {[5, 10, 20, 50].map((n) => (
+   800→                    <SelectItem key={n} value={String(n)}>{n} lieux</SelectItem>
+   801→                  ))}
+   802→                </SelectContent>
+   803→              </Select>
+   804→            </div>
+   805→          </div>
+   806→          )}
+   807→
+   808→          {/* Champs Facebook spécifiques */}
+   809→          {engine === "facebook" && (
+   810→            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+   811→              <div className="md:col-span-7 space-y-1.5">
+   812→                <Label className="text-xs flex items-center gap-1.5">
+   813→                  <FacebookIcon className="h-3 w-3" /> URL de page Facebook (optionnel)
+   814→                </Label>
+   815→                <Input
+   816→                  value={pageUrl}
+   817→                  onChange={(e) => setPageUrl(e.target.value)}
+   818→                  placeholder="https://www.facebook.com/orangecotedivoire"
+   819→                  disabled={isRunning}
+   820→                />
+   821→                <p className="text-[10px] text-muted-foreground">
+   822→                  Si renseignée, la recherche par mot-clé est ignorée (scraping direct de la page).
+   823→                </p>
+   824→              </div>
+   825→              <div className="md:col-span-5 space-y-1.5">
+   826→                <Label className="text-xs flex items-center gap-1.5">
+   827→                  <AlertCircle className="h-3 w-3" /> Cookies Facebook (optionnel)
+   828→                </Label>
+   829→                <Textarea
+   830→                  value={cookies}
+   831→                  onChange={(e) => setCookies(e.target.value)}
+   832→                  placeholder="c_user=XXXX; xs=YYYY; datr=ZZZZ; fr=WWW"
+   833→                  disabled={isRunning}
+   834→                  className="min-h-[42px] text-[11px] font-mono"
+   835→                />
+   836→              </div>
+   837→            </div>
+   838→          )}
+   839→
+   840→          {/* Badges & actions */}
+   841→          <div className="flex flex-wrap items-center justify-between gap-3">
+   842→            <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+   843→              <span className="flex items-center gap-1">
+   844→                <CheckCircle2 className="h-3 w-3 text-primary" />
+   845→                {engine === "facebook"
+   846→                  ? "Auth par cookies"
+   847→                  : engine === "business"
+   848→                  ? "Identification multi-sources"
+   849→                  : engine === "website"
+   850→                  ? "Robot Playwright headless"
+   851→                  : "Anti-blocage (CAPTCHA, 429, consent)"}
+   852→              </span>
+   853→              <span className="flex items-center gap-1">
+   854→                <Sparkles className="h-3 w-3 text-primary" />
+   855→                {engine === "business"
+   856→                  ? "Dirigeants & employés"
+   857→                  : engine === "website"
+   858→                  ? "Extraction emails / tél / WhatsApp / GPS"
+   859→                  : "Dédup IA (Jaro-Winkler + GPS)"}
+   860→              </span>
+   861→              <span className="hidden sm:flex items-center gap-1">
+   862→                <Activity className="h-3 w-3 text-primary" />
+   863→                {engine === "facebook"
+   864→                  ? "Extraction Messenger/WhatsApp"
+   865→                  : engine === "business"
+   866→                  ? "Score de confiance 0-100"
+   867→                  : engine === "website"
+   868→                  ? "Footer + Contact + À propos + Mentions"
+   869→                  : "Backoff exponentiel"}
+   870→              </span>
+   871→            </div>
+   872→            <div className="flex gap-2">
+   873→              {isRunning ? (
+   874→                <Button variant="destructive" onClick={cancelJob} className="gap-2">
+   875→                  <Square className="h-4 w-4" />
+   876→                  Annuler
+   877→                </Button>
+   878→              ) : (
+   879→                <Button onClick={launchJob} disabled={launching} className="gap-2">
+   880→                  {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+   881→                  {engine === "business" ? "Lancer l'identification" : engine === "website" ? "Lancer le robot" : "Lancer le scraping"}
+   882→                </Button>
+   883→              )}
+   884→            </div>
+   885→          </div>
+   886→        </CardContent>
+   887→      </Card>
+   888→
+   889→      {/* Progression en temps réel */}
+   890→      {currentJob && (
+   891→        <Card>
+   892→          <CardHeader className="pb-3">
+   893→            <div className="flex items-center justify-between">
+   894→              <CardTitle className="text-base flex items-center gap-2">
+   895→                <Activity className="h-4 w-4 text-primary" />
+   896→                Progression — Job{" "}
+   897→                <span className="font-mono text-xs text-muted-foreground">{currentJob.id}</span>
+   898→                <Badge variant="outline" className="text-[10px] gap-1 ml-1">
+   899→                  {engine === "facebook" ? (
+   900→                    <><FacebookIcon className="h-2.5 w-2.5" /> Facebook</>
+   901→                  ) : engine === "business" ? (
+   902→                    <><Building2 className="h-2.5 w-2.5" /> Business</>
+   903→                  ) : engine === "website" ? (
+   904→                    <><Globe className="h-2.5 w-2.5" /> Website</>
+   905→                  ) : (
+   906→                    <><MapPin className="h-2.5 w-2.5" /> Google Maps</>
+   907→                  )}
+   908→                </Badge>
+   909→              </CardTitle>
+   910→              <StatusBadge status={currentJob.progress.status} />
+   911→            </div>
+   912→          </CardHeader>
+   913→          <CardContent className="space-y-4">
+   914→            {/* Barre de progression */}
+   915→            <div className="space-y-2">
+   916→              <div className="flex justify-between text-xs">
+   917→                <span className="font-medium capitalize">{currentJob.progress.phase}</span>
+   918→                <span className="text-muted-foreground">{currentJob.progress.progress}%</span>
+   919→              </div>
+   920→              <Progress value={currentJob.progress.progress} className="h-2" />
+   921→            </div>
+   922→
+   923→            {/* Stats live */}
+   924→            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+   925→              <StatCard label={engine === "website" ? "Pages visitées" : "Extraits"} value={currentJob.progress.processedCount} icon={CheckCircle2} />
+   926→              <StatCard label="Doublons" value={currentJob.progress.duplicatesDetected} icon={AlertCircle} />
+   927→              <StatCard label={engine === "website" ? "Sites extraits" : "Uniques"} value={currentJob.progress.resultsCount - currentJob.progress.duplicatesDetected} icon={Sparkles} />
+   928→              <StatCard label="Erreurs" value={currentJob.progress.errors.length} icon={XCircle} />
+   929→              <StatCard label="Durée" value={currentJob.result ? `${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s` : "…"} icon={Clock} />
+   930→            </div>
+   931→
+   932→            {currentJob.progress.currentPlace && isRunning && (
+   933→              <div className="rounded-lg bg-muted/40 p-2.5 text-xs flex items-center gap-2">
+   934→                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+   935→                <span className="text-muted-foreground">Extraction en cours :</span>
+   936→                <span className="font-medium truncate">{currentJob.progress.currentPlace}</span>
+   937→              </div>
+   938→            )}
+   939→
+   940→            {/* Log streaming */}
+   941→            {currentJob.events.length > 0 && (
+   942→              <div>
+   943→                <p className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+   944→                  <Activity className="h-3 w-3" /> Log streaming
+   945→                </p>
+   946→                <div className="rounded-lg bg-slate-950 text-slate-100 p-3 font-mono text-[11px] space-y-0.5 max-h-48 overflow-y-auto">
+   947→                  {currentJob.events.slice(-30).map((event, i) => (
+   948→                    <div key={i} className={cn(
+   949→                      (event.type === "error" || event.type === "fb-error" || event.type === "biz-error" || event.type === "ws-error") && "text-red-400",
+   950→                      (event.type === "block-detected" || event.type === "fb-login-required" || event.type === "fb-consent-required" || event.type === "biz-fallback") && "text-amber-400",
+   951→                      (event.type === "place-extracted" || event.type === "fb-extracted" || event.type === "biz-extracted" || event.type === "ws-extracted") && "text-emerald-400",
+   952→                      (event.type === "duplicate-detected" || event.type === "fb-page-loaded" || event.type === "fb-search-loaded" || event.type === "biz-page-loaded" || event.type === "biz-search-loaded" || event.type === "biz-people-found" || event.type === "ws-page-loaded" || event.type === "ws-contacts-found") && "text-cyan-400",
+   953→                      event.type === "complete" && "text-emerald-400 font-semibold",
+   954→                      !["error", "fb-error", "biz-error", "ws-error", "block-detected", "fb-login-required", "fb-consent-required", "biz-fallback", "place-extracted", "fb-extracted", "biz-extracted", "ws-extracted", "duplicate-detected", "fb-page-loaded", "fb-search-loaded", "biz-page-loaded", "biz-search-loaded", "biz-people-found", "ws-page-loaded", "ws-contacts-found", "complete"].includes(event.type) && "text-slate-400",
+   955→                    )}>
+   956→                      [{new Date().toLocaleTimeString("fr-FR")}] {formatEvent(event)}
+   957→                    </div>
+   958→                  ))}
+   959→                  {isRunning && <div className="text-slate-500 animate-pulse">▋</div>}
+   960→                </div>
+   961→              </div>
+   962→            )}
+   963→
+   964→            {/* Erreurs */}
+   965→            {currentJob.progress.errors.length > 0 && (
+   966→              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+   967→                <p className="text-xs font-semibold text-destructive mb-1">Erreurs ({currentJob.progress.errors.length})</p>
+   968→                <ul className="space-y-0.5 text-[11px] text-muted-foreground max-h-32 overflow-y-auto">
+   969→                  {currentJob.progress.errors.slice(-10).map((err, i) => (
+   970→                    <li key={i} className="font-mono">• {err}</li>
+   971→                  ))}
+   972→                </ul>
+   973→              </div>
+   974→            )}
+   975→          </CardContent>
+   976→        </Card>
+   977→      )}
+   978→
+   979→      {/* Résultats */}
+   980→      {currentJob?.result && currentJob.result.places.length > 0 && (
+   981→        <Tabs defaultValue="grid">
+   982→          <div className="flex flex-wrap items-center justify-between gap-2">
+   983→            <TabsList>
+   984→              <TabsTrigger value="grid">
+   985→                {engine === "facebook" ? "Pages" : engine === "business" ? "Entreprises" : engine === "website" ? "Sites" : "Résultats"} ({currentJob.result.places.length})
+   986→              </TabsTrigger>
+   987→              <TabsTrigger value="duplicates">Doublons ({currentJob.result.duplicates.length})</TabsTrigger>
+   988→              <TabsTrigger value="stats">Stats</TabsTrigger>
+   989→            </TabsList>
+   990→            <a
+   991→              href={`${ENDPOINTS[engine].job(currentJob.id)}?format=csv`}
+   992→              target="_blank"
+   993→              rel="noreferrer"
+   994→            >
+   995→              <Button variant="outline" size="sm" className="gap-2">
+   996→                <Download className="h-3.5 w-3.5" />
+   997→                Export CSV
+   998→              </Button>
+   999→            </a>
+  1000→          </div>
+  1001→
+  1002→          <TabsContent value="grid" className="mt-4">
+  1003→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+  1004→              {currentJob.result.places.map((place, i) => (
+  1005→                engine === "business" ? (
+  1006→                  <BusinessPlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+  1007→                ) : engine === "website" ? (
+  1008→                  <WebsitePlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+  1009→                ) : (
+  1010→                  <PlaceCard key={i} place={place} onClick={() => setSelectedPlace(place)} />
+  1011→                )
+  1012→              ))}
+  1013→            </div>
+  1014→          </TabsContent>
+  1015→
+  1016→          <TabsContent value="duplicates" className="mt-4">
+  1017→            {currentJob.result.duplicates.length === 0 ? (
+  1018→              <Card>
+  1019→                <CardContent className="p-8 text-center text-muted-foreground text-sm">
+  1020→                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-primary" />
+  1021→                  Aucun doublon détecté
+  1022→                </CardContent>
+  1023→              </Card>
+  1024→            ) : (
+  1025→              <div className="space-y-3">
+  1026→                {currentJob.result.duplicates.map((group, i) => (
+  1027→                  <Card key={i}>
+  1028→                    <CardContent className="p-4">
+  1029→                      <div className="flex items-center gap-2 mb-3">
+  1030→                        <Sparkles className="h-4 w-4 text-primary" />
+  1031→                        <p className="text-sm font-semibold">{group.canonicalName}</p>
+  1032→                        <Badge variant="outline" className="text-[10px] ml-auto">
+  1033→                          Confiance {(group.confidence * 100).toFixed(0)}%
+  1034→                        </Badge>
+  1035→                      </div>
+  1036→                      <Separator className="mb-3" />
+  1037→                      <div className="space-y-1.5">
+  1038→                        {group.duplicates.map((dup, j) => (
+  1039→                          <div key={j} className="flex items-center justify-between text-xs">
+  1040→                            <span className="flex items-center gap-2">
+  1041→                              <AlertCircle className="h-3 w-3 text-amber-500" />
+  1042→                              {dup.name}
+  1043→                            </span>
+  1044→                            <div className="flex items-center gap-2">
+  1045→                              <Badge variant="outline" className="text-[9px]">{dup.reason}</Badge>
+  1046→                              <span className="text-muted-foreground tabular-nums">{(dup.similarity * 100).toFixed(0)}%</span>
+  1047→                            </div>
+  1048→                          </div>
+  1049→                        ))}
+  1050→                      </div>
+  1051→                    </CardContent>
+  1052→                  </Card>
+  1053→                ))}
+  1054→              </div>
+  1055→            )}
+  1056→          </TabsContent>
+  1057→
+  1058→          <TabsContent value="stats" className="mt-4">
+  1059→            {engine === "business" ? (
+  1060→              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+  1061→                <StatCard
+  1062→                  label="Entreprises identifiées"
+  1063→                  value={currentJob.result.stats.totalExtracted}
+  1064→                  icon={Building2}
+  1065→                />
+  1066→                <StatCard
+  1067→                  label="Dirigeants extraits"
+  1068→                  value={currentJob.result.places.reduce((sum, p) => sum + (p.executives?.length || 0), 0)}
+  1069→                  icon={Crown}
+  1070→                />
+  1071→                <StatCard
+  1072→                  label="Employés extraits"
+  1073→                  value={currentJob.result.places.reduce((sum, p) => sum + (p.employees?.length || 0), 0)}
+  1074→                  icon={UserCheck}
+  1075→                />
+  1076→                <StatCard
+  1077→                  label="Score moyen"
+  1078→                  value={`${(() => {
+  1079→                    const scores = currentJob.result.places
+  1080→                      .map((p) => p.identificationScore)
+  1081→                      .filter((s): s is number => typeof s === "number")
+  1082→                    return scores.length > 0
+  1083→                      ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(0)
+  1084→                      : "0"
+  1085→                  })()}%`}
+  1086→                  icon={Award}
+  1087→                />
+  1088→                <StatCard
+  1089→                  label="Followers LinkedIn"
+  1090→                  value={formatCount(currentJob.result.places.reduce((sum, p) => sum + (p.followersCount || 0), 0))}
+  1091→                  icon={Users}
+  1092→                />
+  1093→                <StatCard
+  1094→                  label="Employés sur LinkedIn"
+  1095→                  value={formatCount(currentJob.result.places.reduce((sum, p) => sum + (p.employeesOnLinkedin || 0), 0))}
+  1096→                  icon={Briefcase}
+  1097→                />
+  1098→                <StatCard label="Doublons fusionnés" value={currentJob.result.stats.duplicatesCount} icon={AlertCircle} />
+  1099→                <StatCard label="Durée totale" value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+  1100→                <StatCard
+  1101→                  label="Taux de succès"
+  1102→                  value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
+  1103→                  icon={CheckCircle2}
+  1104→                />
+  1105→              </div>
+  1106→            ) : engine === "website" ? (
+  1107→              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+  1108→                <StatCard
+  1109→                  label="Sites extraits"
+  1110→                  value={currentJob.result.stats.totalExtracted}
+  1111→                  icon={Globe}
+  1112→                />
+  1113→                <StatCard
+  1114→                  label="Pages visitées"
+  1115→                  value={currentJob.result.places.reduce(
+  1116→                    (sum, p) => sum + (p.visitedPages?.length || 0),
+  1117→                    0
+  1118→                  )}
+  1119→                  icon={Navigation}
+  1120→                />
+  1121→                <StatCard
+  1122→                  label="Emails extraits"
+  1123→                  value={currentJob.result.places.reduce(
+  1124→                    (sum, p) => sum + ((p as unknown as WebsitePlace).emails?.length || 0),
+  1125→                    0
+  1126→                  )}
+  1127→                  icon={Mail}
+  1128→                />
+  1129→                <StatCard
+  1130→                  label="Téléphones extraits"
+  1131→                  value={currentJob.result.places.reduce(
+  1132→                    (sum, p) => sum + ((p as unknown as WebsitePlace).phones?.length || 0),
+  1133→                    0
+  1134→                  )}
+  1135→                  icon={Phone}
+  1136→                />
+  1137→                <StatCard
+  1138→                  label="Réseaux sociaux"
+  1139→                  value={currentJob.result.places.reduce(
+  1140→                    (sum, p) => sum + (p.socialLinks?.length || 0),
+  1141→                    0
+  1142→                  )}
+  1143→                  icon={Share2}
+  1144→                />
+  1145→                <StatCard
+  1146→                  label="Adresses extraites"
+  1147→                  value={currentJob.result.places.reduce(
+  1148→                    (sum, p) => sum + (p.addresses?.length || 0),
+  1149→                    0
+  1150→                  )}
+  1151→                  icon={MapPin}
+  1152→                />
+  1153→                <StatCard
+  1154→                  label="Coord. GPS extraites"
+  1155→                  value={currentJob.result.places.reduce(
+  1156→                    (sum, p) => sum + ((p as unknown as WebsitePlace).gps?.length || 0),
+  1157→                    0
+  1158→                  )}
+  1159→                  icon={Navigation}
+  1160→                />
+  1161→                <StatCard
+  1162→                  label="Durée totale"
+  1163→                  value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`}
+  1164→                  icon={Clock}
+  1165→                />
+  1166→                <StatCard
+  1167→                  label="Durée moyenne/page"
+  1168→                  value={`${(() => {
+  1169→                    const totalPages = currentJob.result.places.reduce(
+  1170→                      (sum, p) => sum + (p.visitedPages?.length || 0),
+  1171→                      0
+  1172→                    )
+  1173→                    const totalMs = currentJob.result.stats.durationMs
+  1174→                    return totalPages > 0 && totalMs > 0
+  1175→                      ? `${(totalMs / totalPages / 1000).toFixed(1)}s`
+  1176→                      : "—"
+  1177→                  })()}`}
+  1178→                  icon={Activity}
+  1179→                />
+  1180→                <StatCard
+  1181→                  label="Taux de succès"
+  1182→                  value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
+  1183→                  icon={CheckCircle2}
+  1184→                />
+  1185→              </div>
+  1186→            ) : (
+  1187→              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+  1188→                <StatCard
+  1189→                  label={engine === "facebook" ? "Pages extraites (total)" : "Lieux extraits (total)"}
+  1190→                  value={currentJob.result.stats.totalExtracted}
+  1191→                  icon={CheckCircle2}
+  1192→                />
+  1193→                <StatCard
+  1194→                  label={engine === "facebook" ? "Pages uniques" : "Lieux uniques"}
+  1195→                  value={currentJob.result.stats.uniqueCount}
+  1196→                  icon={Sparkles}
+  1197→                />
+  1198→                <StatCard label="Doublons fusionnés" value={currentJob.result.stats.duplicatesCount} icon={AlertCircle} />
+  1199→                <StatCard
+  1200→                  label={engine === "facebook" ? "Pages visitées" : "Pages scrapées"}
+  1201→                  value={currentJob.result.stats.pagesScraped}
+  1202→                  icon={Activity}
+  1203→                />
+  1204→                <StatCard label="Blocages rencontrés" value={currentJob.result.stats.blocksEncountered} icon={XCircle} />
+  1205→                <StatCard label="Retries" value={currentJob.result.stats.retries} icon={RefreshCw} />
+  1206→                <StatCard label="Durée totale" value={`${(currentJob.result.stats.durationMs / 1000).toFixed(1)}s`} icon={Clock} />
+  1207→                <StatCard
+  1208→                  label="Vitesse moyenne"
+  1209→                  value={`${currentJob.result.stats.totalExtracted > 0 && currentJob.result.stats.durationMs > 0 ? (currentJob.result.stats.totalExtracted / (currentJob.result.stats.durationMs / 1000)).toFixed(2) : "0.00"} /s`}
+  1210→                  icon={Activity}
+  1211→                />
+  1212→                <StatCard
+  1213→                  label="Taux de succès"
+  1214→                  value={`${currentJob.result.stats.totalExtracted > 0 ? ((currentJob.result.stats.uniqueCount / currentJob.result.stats.totalExtracted) * 100).toFixed(1) : 0}%`}
+  1215→                  icon={CheckCircle2}
+  1216→                />
+  1217→              </div>
+  1218→            )}
+  1219→          </TabsContent>
+  1220→        </Tabs>
+  1221→      )}
+  1222→
+  1223→      {/* État initial : pas de job */}
+  1224→      {!currentJob && !launching && (
+  1225→        <Card>
+  1226→          <CardContent className="p-12 text-center">
+  1227→            {engine === "facebook" ? (
+  1228→              <FacebookIcon className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
+  1229→            ) : engine === "business" ? (
+  1230→              <Building2 className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
+  1231→            ) : engine === "website" ? (
+  1232→              <Globe className="h-12 w-12 mx-auto mb-3 text-orange-500 dark:text-orange-400 opacity-70" />
+  1233→            ) : (
+  1234→              <Radar className="h-12 w-12 mx-auto mb-3 text-primary opacity-50" />
+  1235→            )}
+  1236→            <p className="font-semibold mb-1">
+  1237→              Prêt à {engine === "facebook" ? "scraper Facebook" : engine === "business" ? "identifier des entreprises" : engine === "website" ? "lancer le robot sur un site" : "scraper Google Maps"}
+  1238→            </p>
+  1239→            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+  1240→              {engine === "facebook"
+  1241→                ? "Configurez vos critères (ou une URL de page) ci-dessus, ajoutez vos cookies Facebook si possible, puis cliquez sur « Lancer le scraping »."
+  1242→                : engine === "business"
+  1243→                ? "Renseignez un nom d'entreprise, un slug ou une URL LinkedIn, ajoutez des cookies (li_at) pour les PME, puis lancez l'identification. Dirigeants et employés seront extraits automatiquement."
+  1244→                : engine === "website"
+  1245→                ? "Saisissez l'URL d'un site ci-dessus, sélectionnez les types de pages à visiter, puis cliquez sur « Lancer le robot ». Le robot découvrira automatiquement les pages Contact, À propos et Mentions légales via le footer."
+  1246→                : "Configurez vos critères ci-dessus puis cliquez sur « Lancer le scraping ». Le moteur ouvrira Google Maps en mode headless, extraira chaque fiche et dédupliquera les résultats automatiquement."}
+  1247→            </p>
+  1248→            <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[11px] text-muted-foreground">
+  1249→              <Badge variant="outline" className="gap-1">
+  1250→                <CheckCircle2 className="h-2.5 w-2.5 text-primary" /> Playwright + Chromium
+  1251→              </Badge>
+  1252→              {engine === "facebook" ? (
+  1253→                <>
+  1254→                  <Badge variant="outline" className="gap-1">
+  1255→                    <FacebookIcon className="h-2.5 w-2.5" /> Pages + recherche
+  1256→                  </Badge>
+  1257→                  <Badge variant="outline" className="gap-1">
+  1258→                    <MessageCircle className="h-2.5 w-2.5 text-primary" /> Messenger / WhatsApp
+  1259→                  </Badge>
+  1260→                </>
+  1261→              ) : engine === "business" ? (
+  1262→                <>
+  1263→                  <Badge variant="outline" className="gap-1">
+  1264→                    <LinkedinIcon className="h-2.5 w-2.5" /> LinkedIn + fallbacks
+  1265→                  </Badge>
+  1266→                  <Badge variant="outline" className="gap-1">
+  1267→                    <Crown className="h-2.5 w-2.5 text-primary" /> Dirigeants & employés
+  1268→                  </Badge>
+  1269→                  <Badge variant="outline" className="gap-1">
+  1270→                    <Award className="h-2.5 w-2.5 text-primary" /> Score d'identification
+  1271→                  </Badge>
+  1272→                </>
+  1273→              ) : engine === "website" ? (
+  1274→                <>
+  1275→                  <Badge variant="outline" className="gap-1">
+  1276→                    <Globe className="h-2.5 w-2.5 text-primary" /> Accueil + Footer
+  1277→                  </Badge>
+  1278→                  <Badge variant="outline" className="gap-1">
+  1279→                    <Mail className="h-2.5 w-2.5 text-primary" /> Emails / Tél / WhatsApp
+  1280→                  </Badge>
+  1281→                  <Badge variant="outline" className="gap-1">
+  1282→                    <Share2 className="h-2.5 w-2.5 text-primary" /> Réseaux sociaux + GPS
+  1283→                  </Badge>
+  1284→                </>
+  1285→              ) : (
+  1286→                <>
+  1287→                  <Badge variant="outline" className="gap-1">
+  1288→                    <Sparkles className="h-2.5 w-2.5 text-primary" /> Dédup IA
+  1289→                  </Badge>
+  1290→                  <Badge variant="outline" className="gap-1">
+  1291→                    <Activity className="h-2.5 w-2.5 text-primary" /> Anti-CAPTCHA
+  1292→                  </Badge>
+  1293→                </>
+  1294→              )}
+  1295→            </div>
+  1296→          </CardContent>
+  1297→        </Card>
+  1298→      )}
+  1299→
+  1300→      {/* Dialog léger pour la place sélectionnée ( Eye icon preview ) */}
+  1301→      {selectedPlace && (
+  1302→        <div
+  1303→          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+  1304→          role="dialog"
+  1305→          aria-modal="true"
+  1306→          onClick={() => setSelectedPlace(null)}
+  1307→        >
+  1308→          <Card className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+  1309→            <CardHeader className="pb-3">
+  1310→              <div className="flex items-start justify-between gap-2">
+  1311→                <CardTitle className="text-base flex items-center gap-1.5">
+  1312→                  <Eye className="h-4 w-4 text-primary" />
+  1313→                  {selectedPlace.name}
+  1314→                  {selectedPlace.isVerified && <BadgeCheck className="h-4 w-4 text-sky-500" />}
+  1315→                </CardTitle>
+  1316→                <Button variant="ghost" size="sm" onClick={() => setSelectedPlace(null)}>✕</Button>
+  1317→              </div>
+  1318→              {selectedPlace.category && (
+  1319→                <CardDescription>{selectedPlace.category}</CardDescription>
+  1320→              )}
+  1321→            </CardHeader>
+  1322→            <CardContent className="space-y-2 text-sm">
+  1323→              {selectedPlace.address && (
+  1324→                <p className="flex items-start gap-2"><MapPin className="h-4 w-4 text-muted-foreground mt-0.5" /> {selectedPlace.address}</p>
+  1325→              )}
+  1326→              {selectedPlace.phone && (
+  1327→                <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /> {selectedPlace.phone}</p>
+  1328→              )}
+  1329→              {selectedPlace.email && (
+  1330→                <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /> {selectedPlace.email}</p>
+  1331→              )}
+  1332→              {selectedPlace.website && (
+  1333→                <p className="flex items-center gap-2 truncate">
+  1334→                  <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+  1335→                  <a href={selectedPlace.website} target="_blank" rel="noreferrer" className="text-primary hover:underline truncate flex items-center gap-1">
+  1336→                    {selectedPlace.website.replace(/^https?:\/\//, "")}
+  1337→                    <ExternalLink className="h-3 w-3" />
+  1338→                  </a>
+  1339→                </p>
+  1340→              )}
+  1341→              {selectedPlace.description && (
+  1342→                <p className="text-xs text-muted-foreground pt-2 border-t">{selectedPlace.description}</p>
+  1343→              )}
+  1344→              {(selectedPlace.pageUrl || selectedPlace.messenger || selectedPlace.whatsapp || selectedPlace.googleMapsUrl) && (
+  1345→                <div className="flex flex-wrap gap-1.5 pt-2">
+  1346→                  {selectedPlace.pageUrl && (
+  1347→                    <a href={selectedPlace.pageUrl} target="_blank" rel="noreferrer">
+  1348→                      <Badge variant="outline" className="gap-1 hover:bg-orange-50 dark:hover:bg-orange-950/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800">
+  1349→                        <FacebookIcon className="h-3 w-3" /> Page Facebook
+  1350→                      </Badge>
+  1351→                    </a>
+  1352→                  )}
+  1353→                  {selectedPlace.messenger && (
+  1354→                    <a href={selectedPlace.messenger} target="_blank" rel="noreferrer">
+  1355→                      <Badge variant="outline" className="gap-1 hover:bg-sky-50 dark:hover:bg-sky-950/30">
+  1356→                        <MessageCircle className="h-3 w-3 text-sky-500" /> Messenger
+  1357→                      </Badge>
+  1358→                    </a>
+  1359→                  )}
+  1360→                  {selectedPlace.whatsapp && (
+  1361→                    <a href={selectedPlace.whatsapp} target="_blank" rel="noreferrer">
+  1362→                      <Badge variant="outline" className="gap-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
+  1363→                        <MessageCircle className="h-3 w-3 text-emerald-500" /> WhatsApp
+  1364→                      </Badge>
+  1365→                    </a>
+  1366→                  )}
+  1367→                  {selectedPlace.googleMapsUrl && (
+  1368→                    <a href={selectedPlace.googleMapsUrl} target="_blank" rel="noreferrer">
+  1369→                      <Badge variant="outline" className="gap-1 hover:bg-primary/5">
+  1370→                        <MapPin className="h-3 w-3 text-primary" /> Google Maps
+  1371→                      </Badge>
+  1372→                    </a>
+  1373→                  )}
+  1374→                </div>
+  1375→              )}
+  1376→            </CardContent>
+  1377→          </Card>
+  1378→        </div>
+  1379→      )}
+  1380→    </div>
+  1381→  )
+  1382→}
+  1383→
+  1384→// ============================================================================
+  1385→// SOUS-COMPOSANTS
+  1386→// ============================================================================
+  1387→
+  1388→function StatusBadge({ status }: { status: string }) {
+  1389→  const meta: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+  1390→    queued: { label: "En file", icon: Clock, className: "bg-muted text-muted-foreground" },
+  1391→    running: { label: "En cours", icon: Loader2, className: "bg-primary/10 text-primary" },
+  1392→    completed: { label: "Terminé", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700" },
+  1393→    failed: { label: "Échec", icon: XCircle, className: "bg-destructive/10 text-destructive" },
+  1394→    cancelled: { label: "Annulé", icon: Square, className: "bg-muted text-muted-foreground" },
+  1395→  }
+  1396→  const m = meta[status] || meta.queued
+  1397→  const Icon = m.icon
+  1398→  return (
+  1399→    <Badge variant="outline" className={cn("text-[10px] gap-1", m.className)}>
+  1400→      <Icon className={cn("h-2.5 w-2.5", status === "running" && "animate-spin")} />
+  1401→      {m.label}
+  1402→    </Badge>
+  1403→  )
+  1404→}
+  1405→
+  1406→function StatCard({ label, value, icon: Icon }: { label: string; value: number | string; icon: React.ElementType }) {
+  1407→  return (
+  1408→    <div className="rounded-lg border p-3">
+  1409→      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+  1410→        <Icon className="h-3 w-3" />
+  1411→        {label}
+  1412→      </div>
+  1413→      <p className="text-xl font-bold tabular-nums">{value}</p>
+  1414→    </div>
+  1415→  )
+  1416→}
+  1417→
+  1418→function PlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => void }) {
+  1419→  const [expanded, setExpanded] = useState(false)
+  1420→  const isFacebook = !!(
+  1421→    place.pageUrl ||
+  1422→    place.messenger ||
+  1423→    place.likesCount !== undefined ||
+  1424→    place.followersCount !== undefined ||
+  1425→    place.isVerified !== undefined ||
+  1426→    place.description
+  1427→  )
+  1428→
+  1429→  const description = place.description || ""
+  1430→  const isLongDesc = description.length > 120
+  1431→
+  1432→  return (
+  1433→    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+  1434→      <CardContent className="p-4" onClick={onClick}>
+  1435→        <div className="flex items-start gap-2 mb-2">
+  1436→          <div className={cn(
+  1437→            "flex h-9 w-9 items-center justify-center rounded-lg font-bold text-xs shrink-0",
+  1438→            isFacebook
+  1439→              ? "bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300"
+  1440→              : "bg-primary/10 text-primary"
+  1441→          )}>
+  1442→            {isFacebook ? <FacebookIcon className="h-4 w-4" /> : place.name.charAt(0)}
+  1443→          </div>
+  1444→          <div className="min-w-0 flex-1">
+  1445→            <p className="font-semibold text-sm leading-tight line-clamp-2 flex items-center gap-1">
+  1446→              <span className="truncate">{place.name}</span>
+  1447→              {place.isVerified && (
+  1448→                <BadgeCheck className="h-3.5 w-3.5 text-sky-500 shrink-0" aria-label="Page vérifiée" />
+  1449→              )}
+  1450→            </p>
+  1451→            {place.category && (
+  1452→              <p className="text-[11px] text-muted-foreground mt-0.5">{place.category}</p>
+  1453→            )}
+  1454→          </div>
+  1455→          {place.rating && (
+  1456→            <Badge variant="outline" className="text-[10px] gap-1 shrink-0">
+  1457→              <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
+  1458→              {place.rating}
+  1459→            </Badge>
+  1460→          )}
+  1461→        </div>
+  1462→
+  1463→        {/* Champs standards */}
+  1464→        <div className="space-y-1 text-[11px]">
+  1465→          {place.address && (
+  1466→            <div className="flex items-start gap-1.5 text-muted-foreground">
+  1467→              <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+  1468→              <span className="line-clamp-2">{place.address}</span>
+  1469→            </div>
+  1470→          )}
+  1471→          {place.phone && (
+  1472→            <div className="flex items-center gap-1.5 text-muted-foreground">
+  1473→              <Phone className="h-3 w-3 shrink-0" />
+  1474→              {place.phone}
+  1475→            </div>
+  1476→          )}
+  1477→          {place.email && (
+  1478→            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+  1479→              <Mail className="h-3 w-3 shrink-0" />
+  1480→              <span className="truncate">{place.email}</span>
+  1481→            </div>
+  1482→          )}
+  1483→          {place.website && (
+  1484→            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+  1485→              <Globe className="h-3 w-3 shrink-0" />
+  1486→              <a
+  1487→                href={place.website}
+  1488→                target="_blank"
+  1489→                rel="noreferrer"
+  1490→                onClick={(e) => e.stopPropagation()}
+  1491→                className="truncate hover:text-primary"
+  1492→              >
+  1493→                {place.website.replace(/^https?:\/\//, "")}
+  1494→              </a>
+  1495→            </div>
+  1496→          )}
+  1497→        </div>
+  1498→
+  1499→        {/* Bloc Facebook : description + likes/followers */}
+  1500→        {isFacebook && (description || place.likesCount !== undefined || place.followersCount !== undefined) && (
+  1501→          <div className="space-y-1 text-[11px] mt-2 pt-2 border-t border-dashed">
+  1502→            {description && (
+  1503→              <div className="text-muted-foreground">
+  1504→                <p className={cn(!expanded && "line-clamp-2")}>{description}</p>
+  1505→                {isLongDesc && (
+  1506→                  <button
+  1507→                    type="button"
+  1508→                    onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
+  1509→                    className="text-primary hover:underline mt-0.5 text-[10px]"
+  1510→                  >
+  1511→                    {expanded ? "Voir moins" : "Voir plus"}
+  1512→                  </button>
+  1513→                )}
+  1514→              </div>
+  1515→            )}
+  1516→            {(place.likesCount !== undefined && place.likesCount > 0 || place.followersCount !== undefined && place.followersCount > 0) && (
+  1517→              <div className="flex flex-wrap items-center gap-3">
+  1518→                {place.likesCount !== undefined && place.likesCount > 0 && (
+  1519→                  <span className="flex items-center gap-1 text-muted-foreground">
+  1520→                    <Heart className="h-3 w-3 text-rose-500" />
+  1521→                    {formatCount(place.likesCount)} j&apos;aime
+  1522→                  </span>
+  1523→                )}
+  1524→                {place.followersCount !== undefined && place.followersCount > 0 && (
+  1525→                  <span className="flex items-center gap-1 text-muted-foreground">
+  1526→                    <Users className="h-3 w-3 text-primary" />
+  1527→                    {formatCount(place.followersCount)} abonnés
+  1528→                  </span>
+  1529→                )}
+  1530→              </div>
+  1531→            )}
+  1532→          </div>
+  1533→        )}
+  1534→
+  1535→        {/* Liens rapides */}
+  1536→        {(place.messenger || place.whatsapp || place.pageUrl || place.googleMapsUrl) && (
+  1537→          <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t">
+  1538→            {place.messenger && (
+  1539→              <a
+  1540→                href={place.messenger}
+  1541→                target="_blank"
+  1542→                rel="noreferrer"
+  1543→                onClick={(e) => e.stopPropagation()}
+  1544→                title="Messenger"
+  1545→              >
+  1546→                <Badge variant="outline" className="text-[9px] gap-1 hover:bg-sky-50 dark:hover:bg-sky-950/30 cursor-pointer">
+  1547→                  <MessageCircle className="h-2.5 w-2.5 text-sky-500" /> Messenger
+  1548→                </Badge>
+  1549→              </a>
+  1550→            )}
+  1551→            {place.whatsapp && (
+  1552→              <a
+  1553→                href={place.whatsapp}
+  1554→                target="_blank"
+  1555→                rel="noreferrer"
+  1556→                onClick={(e) => e.stopPropagation()}
+  1557→                title="WhatsApp"
+  1558→              >
+  1559→                <Badge variant="outline" className="text-[9px] gap-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 cursor-pointer">
+  1560→                  <MessageCircle className="h-2.5 w-2.5 text-emerald-500" /> WhatsApp
+  1561→                </Badge>
+  1562→              </a>
+  1563→            )}
+  1564→            {place.pageUrl && (
+  1565→              <a
+  1566→                href={place.pageUrl}
+  1567→                target="_blank"
+  1568→                rel="noreferrer"
+  1569→                onClick={(e) => e.stopPropagation()}
+  1570→                title="Page Facebook"
+  1571→              >
+  1572→                <Badge variant="outline" className="text-[9px] gap-1 hover:bg-orange-50 dark:hover:bg-orange-950/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800 cursor-pointer">
+  1573→                  <FacebookIcon className="h-2.5 w-2.5" /> Facebook
+  1574→                </Badge>
+  1575→              </a>
+  1576→            )}
+  1577→            {place.googleMapsUrl && (
+  1578→              <a
+  1579→                href={place.googleMapsUrl}
+  1580→                target="_blank"
+  1581→                rel="noreferrer"
+  1582→                onClick={(e) => e.stopPropagation()}
+  1583→                title="Google Maps"
+  1584→              >
+  1585→                <Badge variant="outline" className="text-[9px] gap-1 hover:bg-primary/5 cursor-pointer">
+  1586→                  <MapPin className="h-2.5 w-2.5 text-primary" /> Maps
+  1587→                </Badge>
+  1588→              </a>
+  1589→            )}
+  1590→          </div>
+  1591→        )}
+  1592→
+  1593→        {/* Pied de card */}
+  1594→        <div className="flex items-center justify-between mt-2 pt-2 text-[10px]">
+  1595→          <div className="flex items-center gap-2">
+  1596→            {place.reviewCount !== undefined && (
+  1597→              <span className="text-muted-foreground">{place.reviewCount} avis</span>
+  1598→            )}
+  1599→            {place.isOpenNow !== undefined && (
+  1600→              <Badge variant="outline" className={cn("text-[9px] h-4 px-1", place.isOpenNow ? "text-emerald-600 border-emerald-200" : "text-red-600 border-red-200")}>
+  1601→                {place.isOpenNow ? "Ouvert" : "Fermé"}
+  1602→              </Badge>
+  1603→            )}
+  1604→          </div>
+  1605→          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+  1606→        </div>
+  1607→      </CardContent>
+  1608→    </Card>
+  1609→  )
+  1610→}
+  1611→
+  1612→function BusinessPlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => void }) {
+  1613→  const [expandedDesc, setExpandedDesc] = useState(false)
+  1614→  const [showAllEmployees, setShowAllEmployees] = useState(false)
+  1615→
+  1616→  const description = place.description || ""
+  1617→  const isLongDesc = description.length > 200
+  1618→  const score = place.identificationScore
+  1619→  const scoreColor =
+  1620→    score === undefined
+  1621→      ? ""
+  1622→      : score >= 70
+  1623→      ? "text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30"
+  1624→      : score >= 40
+  1625→      ? "text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30"
+  1626→      : "text-red-600 border-red-200 bg-red-50 dark:bg-red-950/30"
+  1627→
+  1628→  const executives = place.executives || []
+  1629→  const employees = place.employees || []
+  1630→  const shownEmployees = showAllEmployees ? employees : employees.slice(0, 3)
+  1631→  const hiddenEmployeesCount = Math.max(0, employees.length - 3)
+  1632→
+  1633→  return (
+  1634→    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+  1635→      <CardContent className="p-4" onClick={onClick}>
+  1636→        {/* Header: name + LinkedIn link + score */}
+  1637→        <div className="flex items-start gap-2 mb-2">
+  1638→          <div className="flex h-9 w-9 items-center justify-center rounded-lg font-bold text-xs shrink-0 bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300">
+  1639→            <Building2 className="h-4 w-4" />
+  1640→          </div>
+  1641→          <div className="min-w-0 flex-1">
+  1642→            <p className="font-semibold text-sm leading-tight line-clamp-2 flex items-center gap-1">
+  1643→              <span className="truncate">{place.name}</span>
+  1644→              {place.linkedinUrl && (
+  1645→                <a
+  1646→                  href={place.linkedinUrl}
+  1647→                  target="_blank"
+  1648→                  rel="noreferrer"
+  1649→                  onClick={(e) => e.stopPropagation()}
+  1650→                  title="Page LinkedIn"
+  1651→                  className="shrink-0 text-orange-600 hover:text-orange-700 dark:text-orange-400"
+  1652→                >
+  1653→                  <LinkedinIcon className="h-3.5 w-3.5" />
+  1654→                </a>
+  1655→              )}
+  1656→            </p>
+  1657→            {place.category && (
+  1658→              <Badge variant="outline" className="text-[9px] mt-0.5 gap-1">
+  1659→                <Tag className="h-2.5 w-2.5" /> {place.category}
+  1660→              </Badge>
+  1661→            )}
+  1662→          </div>
+  1663→          {score !== undefined && (
+  1664→            <Badge
+  1665→              variant="outline"
+  1666→              className={cn("text-[10px] gap-1 shrink-0", scoreColor)}
+  1667→              title="Score d'identification"
+  1668→            >
+  1669→              <Award className="h-2.5 w-2.5" />
+  1670→              {score}%
+  1671→            </Badge>
+  1672→          )}
+  1673→        </div>
+  1674→
+  1675→        {/* Company meta: size + type + founded + location + website + followers */}
+  1676→        <div className="space-y-1 text-[11px]">
+  1677→          {(place.companySize || place.companyType) && (
+  1678→            <div className="flex items-center gap-1.5 text-muted-foreground">
+  1679→              <Briefcase className="h-3 w-3 shrink-0" />
+  1680→              <span className="truncate">
+  1681→                {[place.companySize, place.companyType].filter(Boolean).join(" · ")}
+  1682→              </span>
+  1683→            </div>
+  1684→          )}
+  1685→          {place.foundedYear !== undefined && (
+  1686→            <div className="flex items-center gap-1.5 text-muted-foreground">
+  1687→              <Clock className="h-3 w-3 shrink-0" />
+  1688→              <span>Fondée en {place.foundedYear}</span>
+  1689→            </div>
+  1690→          )}
+  1691→          {place.address && (
+  1692→            <div className="flex items-start gap-1.5 text-muted-foreground">
+  1693→              <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+  1694→              <span className="line-clamp-2">{place.address}</span>
+  1695→            </div>
+  1696→          )}
+  1697→          {place.website && (
+  1698→            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+  1699→              <Globe className="h-3 w-3 shrink-0" />
+  1700→              <a
+  1701→                href={place.website}
+  1702→                target="_blank"
+  1703→                rel="noreferrer"
+  1704→                onClick={(e) => e.stopPropagation()}
+  1705→                className="truncate hover:text-primary"
+  1706→              >
+  1707→                {place.website.replace(/^https?:\/\//, "")}
+  1708→              </a>
+  1709→            </div>
+  1710→          )}
+  1711→          {place.followersCount !== undefined && place.followersCount > 0 && (
+  1712→            <div className="flex items-center gap-1.5 text-muted-foreground">
+  1713→              <Users className="h-3 w-3 shrink-0" />
+  1714→              <span>{formatCount(place.followersCount)} abonnés LinkedIn</span>
+  1715→            </div>
+  1716→          )}
+  1717→        </div>
+  1718→
+  1719→        {/* Description */}
+  1720→        {description && (
+  1721→          <div className="text-[11px] text-muted-foreground mt-2 pt-2 border-t border-dashed">
+  1722→            <p className={cn(!expandedDesc && "line-clamp-3")}>{description}</p>
+  1723→            {isLongDesc && (
+  1724→              <button
+  1725→                type="button"
+  1726→                onClick={(e) => { e.stopPropagation(); setExpandedDesc((v) => !v) }}
+  1727→                className="text-primary hover:underline mt-0.5 text-[10px]"
+  1728→              >
+  1729→                {expandedDesc ? "Voir moins" : "Voir plus"}
+  1730→              </button>
+  1731→            )}
+  1732→          </div>
+  1733→        )}
+  1734→
+  1735→        {/* Executives */}
+  1736→        {executives.length > 0 && (
+  1737→          <div className="mt-2 pt-2 border-t">
+  1738→            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1">
+  1739→              <Crown className="h-3 w-3 text-amber-500" /> Dirigeants ({executives.length})
+  1740→            </p>
+  1741→            <ul className="space-y-1">
+  1742→              {executives.slice(0, 5).map((exec, i) => (
+  1743→                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+  1744→                  <span aria-hidden="true">👑</span>
+  1745→                  <span className="font-medium truncate">{exec.name}</span>
+  1746→                  {exec.title && (
+  1747→                    <span className="text-muted-foreground truncate">— {exec.title}</span>
+  1748→                  )}
+  1749→                  {exec.linkedinUrl && (
+  1750→                    <a
+  1751→                      href={exec.linkedinUrl}
+  1752→                      target="_blank"
+  1753→                      rel="noreferrer"
+  1754→                      onClick={(e) => e.stopPropagation()}
+  1755→                      title="Profil LinkedIn"
+  1756→                      className="shrink-0 text-orange-600 hover:text-orange-700 dark:text-orange-400 ml-auto"
+  1757→                    >
+  1758→                      <LinkedinIcon className="h-3 w-3" />
+  1759→                    </a>
+  1760→                  )}
+  1761→                </li>
+  1762→              ))}
+  1763→              {executives.length > 5 && (
+  1764→                <li className="text-[10px] text-muted-foreground">+ {executives.length - 5} autres</li>
+  1765→              )}
+  1766→            </ul>
+  1767→          </div>
+  1768→        )}
+  1769→
+  1770→        {/* Employees */}
+  1771→        {employees.length > 0 && (
+  1772→          <div className="mt-2 pt-2 border-t">
+  1773→            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1">
+  1774→              <UserCheck className="h-3 w-3 text-primary" /> Employés ({employees.length})
+  1775→            </p>
+  1776→            <ul className="space-y-1">
+  1777→              {shownEmployees.map((emp, i) => (
+  1778→                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+  1779→                  <span aria-hidden="true">👤</span>
+  1780→                  <span className="font-medium truncate">{emp.name}</span>
+  1781→                  {emp.title && (
+  1782→                    <span className="text-muted-foreground truncate">— {emp.title}</span>
+  1783→                  )}
+  1784→                </li>
+  1785→              ))}
+  1786→              {hiddenEmployeesCount > 0 && !showAllEmployees && (
+  1787→                <li>
+  1788→                  <button
+  1789→                    type="button"
+  1790→                    onClick={(e) => { e.stopPropagation(); setShowAllEmployees(true) }}
+  1791→                    className="text-primary hover:underline text-[10px]"
+  1792→                  >
+  1793→                    + {hiddenEmployeesCount} autres
+  1794→                  </button>
+  1795→                </li>
+  1796→              )}
+  1797→            </ul>
+  1798→          </div>
+  1799→        )}
+  1800→
+  1801→        {/* Specialties */}
+  1802→        {place.specialties && place.specialties.length > 0 && (
+  1803→          <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t">
+  1804→            {place.specialties.slice(0, 6).map((spec, i) => (
+  1805→              <Badge key={i} variant="secondary" className="text-[9px]">
+  1806→                {spec}
+  1807→              </Badge>
+  1808→            ))}
+  1809→            {place.specialties.length > 6 && (
+  1810→              <span className="text-[9px] text-muted-foreground self-center">
+  1811→                +{place.specialties.length - 6}
+  1812→              </span>
+  1813→            )}
+  1814→          </div>
+  1815→        )}
+  1816→
+  1817→        {/* Footer */}
+  1818→        <div className="flex items-center justify-between mt-2 pt-2 text-[10px]">
+  1819→          <span className="text-muted-foreground">
+  1820→            {place.employeesOnLinkedin !== undefined && place.employeesOnLinkedin > 0
+  1821→              ? `${formatCount(place.employeesOnLinkedin)} employés LinkedIn`
+  1822→              : `Identifié ${new Date(place.scrapedAt).toLocaleDateString("fr-FR")}`}
+  1823→          </span>
+  1824→          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+  1825→        </div>
+  1826→      </CardContent>
+  1827→    </Card>
+  1828→  )
+  1829→}
+  1830→
+  1831→// ---------------------------------------------------------------------------
+  1832→// Carte spécifique au robot Website
+  1833→// ---------------------------------------------------------------------------
+  1834→
+  1835→const PAGE_TYPE_META: Record<string, { label: string; className: string }> = {
+  1836→  home: { label: "Accueil", className: "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40" },
+  1837→  contact: { label: "Contact", className: "text-orange-700 border-orange-200 bg-orange-50 dark:text-orange-300 dark:border-orange-900 dark:bg-orange-950/40" },
+  1838→  about: { label: "À propos", className: "text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-300 dark:border-amber-900 dark:bg-amber-950/30" },
+  1839→  legal: { label: "Mentions légales", className: "text-purple-700 border-purple-200 bg-purple-50 dark:text-purple-300 dark:border-purple-900 dark:bg-purple-950/30" },
+  1840→  footer: { label: "Footer", className: "text-muted-foreground" },
+  1841→  other: { label: "Autre", className: "text-muted-foreground" },
+  1842→}
+  1843→
+  1844→const SOCIAL_PLATFORM_META: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+  1845→  facebook: { label: "Facebook", icon: Facebook, className: "text-blue-700 border-blue-200 bg-blue-50 dark:text-blue-300 dark:border-blue-900 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-950/60" },
+  1846→  instagram: { label: "Instagram", icon: Instagram, className: "text-pink-700 border-pink-200 bg-pink-50 dark:text-pink-300 dark:border-pink-900 dark:bg-pink-950/40 hover:bg-pink-100 dark:hover:bg-pink-950/60" },
+  1847→  linkedin: { label: "LinkedIn", icon: Linkedin, className: "text-sky-700 border-sky-200 bg-sky-50 dark:text-sky-300 dark:border-sky-900 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-950/60" },
+  1848→  twitter: { label: "Twitter", icon: Twitter, className: "text-slate-700 border-slate-200 bg-slate-50 dark:text-slate-300 dark:border-slate-800 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-900/60" },
+  1849→  youtube: { label: "YouTube", icon: Youtube, className: "text-red-700 border-red-200 bg-red-50 dark:text-red-300 dark:border-red-900 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/60" },
+  1850→  tiktok: { label: "TikTok", icon: Hash, className: "text-slate-800 border-slate-300 bg-slate-100 dark:text-slate-200 dark:border-slate-700 dark:bg-slate-800/40 hover:bg-slate-200 dark:hover:bg-slate-800/60" },
+  1851→  whatsapp: { label: "WhatsApp", icon: MessageCircle, className: "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/60" },
+  1852→  telegram: { label: "Telegram", icon: Send, className: "text-cyan-700 border-cyan-200 bg-cyan-50 dark:text-cyan-300 dark:border-cyan-900 dark:bg-cyan-950/40 hover:bg-cyan-100 dark:hover:bg-cyan-950/60" },
+  1853→}
+  1854→
+  1855→function WebsitePlaceCard({ place, onClick }: { place: ScrapedPlace; onClick: () => void }) {
+  1856→  const [expandedDesc, setExpandedDesc] = useState(false)
+  1857→  const [showAllFooterLinks, setShowAllFooterLinks] = useState(false)
+  1858→
+  1859→  const wp = place as unknown as WebsitePlace
+  1860→  const siteName = wp.siteName || place.name
+  1861→  const siteUrl = wp.siteUrl || place.website || ""
+  1862→  const metaDescription = wp.metaDescription || place.description || ""
+  1863→  const isLongDesc = metaDescription.length > 140
+  1864→
+  1865→  const visitedPages = wp.visitedPages || []
+  1866→  const emails = wp.emails || []
+  1867→  const phones = wp.phones || []
+  1868→  const whatsappList = wp.whatsapp || []
+  1869→  const socialLinks = wp.socialLinks || []
+  1870→  const addresses = wp.addresses || []
+  1871→  const gpsList = wp.gps || []
+  1872→  const footerLinks = wp.footerLinks || []
+  1873→  const googleMapsUrl = wp.googleMapsUrl
+  1874→  const logoUrl = wp.logoUrl
+  1875→  const language = wp.language
+  1876→
+  1877→  const shownFooterLinks = showAllFooterLinks ? footerLinks : footerLinks.slice(0, 5)
+  1878→  const hiddenFooterCount = Math.max(0, footerLinks.length - 5)
+  1879→
+  1880→  return (
+  1881→    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+  1882→      <CardContent className="p-4" onClick={onClick}>
+  1883→        {/* Header: logo + site name + external link */}
+  1884→        <div className="flex items-start gap-2 mb-2">
+  1885→          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 shrink-0 overflow-hidden">
+  1886→            {logoUrl ? (
+  1887→              <img
+  1888→                src={logoUrl}
+  1889→                alt={`Logo ${siteName}`}
+  1890→                className="h-full w-full object-contain"
+  1891→                onError={(e) => {
+  1892→                  const target = e.currentTarget as HTMLImageElement
+  1893→                  target.style.display = "none"
+  1894→                }}
+  1895→              />
+  1896→            ) : (
+  1897→              <Globe className="h-4 w-4" />
+  1898→            )}
+  1899→          </div>
+  1900→          <div className="min-w-0 flex-1">
+  1901→            <h3 className="font-semibold text-sm leading-tight line-clamp-2 flex items-center gap-1">
+  1902→              <span className="truncate">{siteName}</span>
+  1903→              {siteUrl && (
+  1904→                <a
+  1905→                  href={siteUrl}
+  1906→                  target="_blank"
+  1907→                  rel="noreferrer"
+  1908→                  onClick={(e) => e.stopPropagation()}
+  1909→                  title="Ouvrir le site"
+  1910→                  className="shrink-0 text-orange-600 hover:text-orange-700 dark:text-orange-400"
+  1911→                >
+  1912→                  <ExternalLink className="h-3.5 w-3.5" />
+  1913→                </a>
+  1914→              )}
+  1915→            </h3>
+  1916→            {siteUrl && (
+  1917→              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+  1918→                {siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+  1919→              </p>
+  1920→            )}
+  1921→          </div>
+  1922→          {language && (
+  1923→            <Badge variant="outline" className="text-[9px] gap-1 shrink-0" title="Langue du site">
+  1924→              <Languages className="h-2.5 w-2.5" />
+  1925→              {language.toUpperCase()}
+  1926→            </Badge>
+  1927→          )}
+  1928→        </div>
+  1929→
+  1930→        {/* Meta description */}
+  1931→        {metaDescription && (
+  1932→          <div className="text-[11px] text-muted-foreground mb-2">
+  1933→            <p className={cn(!expandedDesc && "line-clamp-2")}>{metaDescription}</p>
+  1934→            {isLongDesc && (
+  1935→              <button
+  1936→                type="button"
+  1937→                onClick={(e) => { e.stopPropagation(); setExpandedDesc((v) => !v) }}
+  1938→                className="text-primary hover:underline mt-0.5 text-[10px]"
+  1939→              >
+  1940→                {expandedDesc ? "Voir moins" : "Voir plus"}
+  1941→              </button>
+  1942→            )}
+  1943→          </div>
+  1944→        )}
+  1945→
+  1946→        {/* Visited pages */}
+  1947→        {visitedPages.length > 0 && (
+  1948→          <div className="mt-2 pt-2 border-t">
+  1949→            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+  1950→              <Navigation className="h-3 w-3 text-primary" /> Pages visitées ({visitedPages.length})
+  1951→            </p>
+  1952→            <ul className="space-y-1 max-h-44 overflow-y-auto pr-1">
+  1953→              {visitedPages.slice(0, 8).map((page, i) => {
+  1954→                const meta = PAGE_TYPE_META[page.pageType] || PAGE_TYPE_META.other
+  1955→                return (
+  1956→                  <li key={i} className="text-[11px]">
+  1957→                    <div className="flex items-center gap-1.5 flex-wrap">
+  1958→                      <Badge variant="outline" className={cn("text-[9px] h-4 px-1", meta.className)}>
+  1959→                        {meta.label}
+  1960→                      </Badge>
+  1961→                      {page.title && (
+  1962→                        <span className="font-medium truncate flex-1 min-w-0">{page.title}</span>
+  1963→                      )}
+  1964→                      <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">
+  1965→                        {page.loadTimeMs ? `${page.loadTimeMs}ms` : ""}
+  1966→                        {page.status ? ` · ${page.status}` : ""}
+  1967→                      </span>
+  1968→                    </div>
+  1969→                    <p className="text-[9px] text-muted-foreground truncate pl-1" title={page.url}>
+  1970→                      {page.url}
+  1971→                    </p>
+  1972→                    {page.error && (
+  1973→                      <p className="text-[9px] text-destructive pl-1">⚠ {page.error}</p>
+  1974→                    )}
+  1975→                  </li>
+  1976→                )
+  1977→              })}
+  1978→              {visitedPages.length > 8 && (
+  1979→                <li className="text-[10px] text-muted-foreground">
+  1980→                  + {visitedPages.length - 8} autres pages
+  1981→                </li>
+  1982→              )}
+  1983→            </ul>
+  1984→          </div>
+  1985→        )}
+  1986→
+  1987→        {/* Emails */}
+  1988→        {emails.length > 0 && (
+  1989→          <div className="mt-2 pt-2 border-t">
+  1990→            <p className="text-[10px] font-semibold flex items-center gap-1 mb-1.5">
+  1991→              <Mail className="h-3 w-3 text-primary" /> Emails ({emails.length})
+  1992→            </p>
+  1993→            <ul className="space-y-1">
+  1994→              {emails.slice(0, 5).map((e, i) => (
+  1995→                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+  1996→                  <span aria-hidden="true">✉️</span>
+  1997→                  <a
+  1998→                    href={`mailto:${e.email}`}
+  1999→                    onClick={(ev) => ev.stopPropagation()}
+  2000→                    className="truncate hover:text-primary flex-1 min-w-0"
+
+[showing lines 1-2000 of 2291; use offset=2001 with limit to continue reading]

@@ -609,3 +609,128 @@ Stage Summary:
 - Déduplication automatique
 - UI unifiée avec toggle 4 moteurs (Google Maps / Facebook / Business / Site Web)
 - Testé sur orange.ci : extraction réussie (téléphone +225 07 00 60 60 60, 4 réseaux sociaux, 20 footer links)
+
+---
+Task ID: 7e-ai
+Agent: AI Cleaner UI Updater
+Task: Add 5th engine "IA Cleaner" to scraper-view.tsx
+Work Log:
+- Lu /home/z/my-project/worklog.md et les entrées précédentes (7a, 7b) pour comprendre la structure du scraper-view.tsx (4 moteurs : google-maps, facebook, business, website)
+- Inspecté le backend IA Cleaner : src/lib/scraper/ai-cleaner-types.ts (CleanedEntity, CleaningReport, MergedGroup, Correction, AICleanerEvent, AICleanerConfig), src/lib/scraper/ai-cleaner-job-store.ts (serializeAICleanerJob shape), src/app/api/scraper/ai-cleaner/route.ts (POST retourne jobId/inputCount/config/estimatedDurationMs), src/app/api/scraper/ai-cleaner/jobs/[id]/route.ts (GET retourne {id, input, cleanedEntities, report, progress, events, createdAt}, DELETE cancel, ?format=csv export), src/lib/scraper/ai-cleaner-sample.ts (12 entités ivoiriennes avec doublons/erreurs/champs manquants — Orange CI x3, MTN CI x2, Restaurant Le Wôyô, Pharmacie fermée, BICICI, Pharmacie Riviera, ETS Kouassi, SIFCA x2)
+- Imports lucide-react étendus : BrainCircuit (icône onglet), Wand2 (bouton lancer), Layers (secteur), GitMerge (fusion/dédup), Filter (corrections), TrendingUp (score qualité), Database (sources/entrées). Imports shadcn/ui ajoutés : Tooltip/TooltipContent/TooltipProvider/TooltipTrigger (pour breakdown qualité) + Table/TableBody/TableCell/TableHead/TableHeader/TableRow (pour corrections tab)
+- Types TS ajoutés (avant ScrapedPlace, hoisted) : BusinessStatus ("active"|"closed"|"temporarily_closed"|"relocated"|"unknown"), QualityBreakdown (7 dimensions 0-100), CleanedEntity (extends ScrapedPlace avec 18 champs IA : cleanedName, aliases, cleanedPhone/originalPhone/phoneCorrected, cleanedEmail/originalEmail/emailCorrected/emailValid, cleanedAddress/originalAddress/addressComponents, detectedSector/sectorCode/sectorKeywords, qualityScore/qualityBreakdown, businessStatus/closureIndicators, aiCompletions, sources, mergedCount, cleaningMetadata, canonicalId), MergedGroup, Correction (correctionType phone|email|address|name|sector, method deterministic|llm|rule), CleaningReport (input/output/duplicates/corrections/stats), AICleanerJobState (id, input, cleanedEntities, report?, progress, events, createdAt)
+- ScrapedPlace étendu avec champs optionnels additionnels (id?, sector?, lat?, lng?, confidence?, status?, sources?) pour supporter l'échantillon IA Cleaner qui utilise ces champs
+- Engine union : ajouté "ai-cleaner" (5ème moteur)
+- ENDPOINTS : ajouté entry "ai-cleaner" (launch /api/scraper/ai-cleaner, job /api/scraper/ai-cleaner/jobs/[id])
+- State additions : aiJob (AICleanerJobState|null), aiSource ("sample"|"google-maps"|"facebook"|"business"|"website", défaut "sample"), aiUseLLM/aiDetectClosed/aiCompleteMissing/aiDetectSector (booléens, tous true par défaut). jobs Record initialisé avec "ai-cleaner": null
+- isRunning étendu : `currentJob?.progress.status === "running"|"queued" || (engine === "ai-cleaner" && (aiJob?.progress.status === "running"|"queued"))`
+- pollAICleanerJob(jobId) : useCallback, fetch GET /api/scraper/ai-cleaner/jobs/[id], setAiJob(data), re-poll 1500ms si running/queued, toast.success/erreur/annulé sur terminal status. Description success : "X entité(s) nettoyée(s), Y doublon(s), Z correction(s), score moyen N/100"
+- launchJob : branche dédiée engine === "ai-cleaner" (early return) qui : (1) construit body avec config {useLLM, detectClosed, completeMissing, detectSector, minConfidence: 0.7, language: "fr", country: "ci"}, (2) si aiSource !== "sample", fetch list endpoint du moteur source (/api/scraper/jobs pour google-maps, /api/scraper/{engine}/jobs pour les autres) pour récupérer le dernier jobId et le passer comme sourceJobId+source, (3) POST /api/scraper/ai-cleaner, (4) toast.info "Moteur IA lancé" avec description pipeline, (5) setPollingEngine("ai-cleaner") + pollAICleanerJob(jobId)
+- cancelJob : branche dédiée engine === "ai-cleaner" qui DELETE /api/scraper/ai-cleaner/jobs/[aiJob.id] puis re-poll
+- TabsList (header) : ajouté 5ème TabsTrigger value="ai-cleaner" avec icône BrainCircuit + label "IA Cleaner"
+- Header description : ajouté cas ai-cleaner ("IA Cleaner · Déduplication · Fusion · Correction (tél/email/adresse) · Enrichissement · Secteur · Score qualité · Détection fermetures")
+- CardTitle icône : ajouté cas ai-cleaner (BrainCircuit emerald). CardDescription : ajouté cas ai-cleaner (description pipeline IA Cleaner)
+- Formulaire IA Cleaner (Card) : Alert emerald "🧠 Pipeline du moteur IA Cleaner" expliquant les 7 étapes (dédupliquer → fusionner → corriger → détecter secteur → compléter → scorer → détecter fermetures) + mention échantillon 12 entités. Source select (5 options : Échantillon démo, Dernier job Google Maps/Facebook/Business/Website). 4 toggle switches dans grille 2x2 (LLM z-ai emerald, Détecter fermetures orange, Compléter champs emerald, Détecter secteur orange) — chaque toggle dans un label arrondi avec border colorée selon état
+- Champs standards masqués pour ai-cleaner (condition `engine !== "business" && engine !== "website" && engine !== "ai-cleaner"`)
+- Badges & actions : ajouté cas ai-cleaner pour les 3 badges informatifs ("Pipeline 7 étapes IA", "Dédup + fusion + correction + enrichissement", "Score qualité 0-100 + détection fermetures"). Bouton lancer : icône Wand2 (au lieu de Play) pour ai-cleaner, label "Lancer le nettoyage IA"
+- Progression section existante : condition `currentJob && engine !== "ai-cleaner"` (pour ne pas afficher la card scraping standard quand ai-cleaner est actif)
+- Nouvelle section Progression IA Cleaner (Card dédiée) : header avec BrainCircuit emerald + job ID + badge "IA Cleaner". Barre de progression. 5 StatCards live (Entités entrées, Traités, Doublons suppr., Corrections, Erreurs). Log streaming dédié (max 50 events) avec couleurs ai-* : rouge pour ai-error, ambre pour corrections (ai-correct-phone/email/ai-normalize-address), cyan pour dedup/merge (ai-merge-done/ai-dedup-done), emerald pour enrichissement (ai-enrich-done), violet pour info (ai-sector-detect/ai-closed-detect/ai-quality-score), emerald bold pour ai-complete, slate pour le reste. Section erreurs dédiée
+- Résultats IA Cleaner (3 onglets Tabs) : condition `engine === "ai-cleaner" && aiJob?.report && aiJob.cleanedEntities.length > 0`. TabsList avec icônes Sparkles/Filter/TrendingUp + counts. Bouton Export CSV (lien GET ?format=csv)
+- Onglet 1 "Entités nettoyées" : grille md:grid-cols-2 lg:grid-cols-3 de CleanedEntityCard
+- Onglet 2 "Corrections" : Table shadcn avec header sticky (Entité, Champ, Avant, Après, Méthode, Confiance). Chaque correction affiche : entity name (recherche par canonicalId/id/cleanedName), badge champ coloré par type (phone orange, email emerald, address ambre, name violet, sector cyan), oldValue barré, newValue emerald, badge méthode (Déterministe emerald / Règle ambre / LLM violet), confiance % colorée (≥85% emerald, ≥60% ambre, <60% rouge). Scroll max-h-600px
+- Onglet 3 "Rapport" : grille 4 cols de 12 StatCards (Entrées, Nettoyées, Doublons suppr., Corrections, Complétions, Secteurs détectés, Fermetures détectées, Score moyen, Tél corrigés, Emails corrigés, Adresses normalisées, Appels LLM). 3 Cards supplémentaires : Durée totale + durée/entité, Sources (badges), Tokens LLM (formatCount + appels). Card Doublons fusionnés (groupes MergedGroup avec canonicalName, fusionConfidence, mergedEntities). Card Distribution scores qualité (3 buckets : ≥70 emerald / 40-69 ambre / <40 rouge)
+- Empty state : ajouté condition `!(engine === "ai-cleaner" && aiJob)` pour ne pas afficher si aiJob existe. Cas ai-cleaner : BrainCircuit emerald 12x12 + "Prêt à lancer le moteur IA Cleaner" + description pipeline + 4 badges (Dédup + fusion, Correction tél/email/adresse, Score qualité 0-100, Détection fermetures)
+- Constantes IA Cleaner : CORRECTION_FIELD_META (5 types phone/email/address/name/sector avec icône + couleur), CORRECTION_METHOD_META (deterministic/rule/llm avec label + couleur), BUSINESS_STATUS_META (5 statuts avec label + couleur + icône), getQualityScoreColor() helper (≥70 emerald, ≥40 ambre, <40 rouge)
+- QualityScoreBadge composant : badge coloré par score + TooltipProvider/Tooltip avec breakdown 7 dimensions (Complétude, Coordonnées, Nom, Géoloc, Source, Fraîcheur, Online) — chaque dimension avec mini barre de progression colorée et valeur numérique
+- CleanedEntityCard composant (~250 lignes) : header (avatar BrainCircuit emerald + cleanedName + aliases collapsible + badges secteur/sectorCode + QualityScoreBadge tooltip). Phone avec cleanedPhone font-mono + badge "corrigé" orange si phoneCorrected + originalPhone strikethrough si différent. Email avec cleanedEmail + badge "corrigé" emerald + badge "valide"/"invalide" emerald/rouge + originalEmail strikethrough. Address nettoyée + addressComponents en badges (N°, rue, commune, ville, pays). Website + rating (héritage ScrapedPlace). Business status badge coloré (active emerald, closed rouge, temporarily_closed ambre, relocated orange, unknown muted) + tooltip closureIndicators si présents. AI completions (max 5) avec field badge emerald + value tronqué + confiance % colorée. Footer : mergedCount badge orange si >1 + sources concaténées + date
+- formatEvent étendu avec 16 cases ai-* : ai-start ("🚀 Démarrage: N entité(s)"), ai-dedup-start ("🔀 Déduplication : analyse des similarités…"), ai-dedup-done ("🔀 Dédup: N doublon(s) supprimé(s) (M groupe(s))"), ai-merge-start ("🔗 Fusion groupe X/Y"), ai-merge-done ("🔗 Fusion: canonicalName (N fiche(s))"), ai-correct-start ("🔧 Correction: entityId"), ai-correct-phone ("📞 Tél corrigé: from → to"), ai-correct-email ("✉️ Email corrigé: from → to"), ai-normalize-address ("📍 Adresse normalisée: from → to"), ai-enrich-start ("✨ Enrichissement: N champ(s) manquant(s)"), ai-enrich-done ("✨ Enrichi: N champ(s) complété(s)"), ai-sector-detect ("🏭 Secteur: sector (confidence%)"), ai-quality-score ("📊 Score: N/100"), ai-closed-detect ("🔒 Statut: status (N indicateur(s))"), ai-progress ("📊 Phase: phase (progress%)"), ai-error ("✗ Erreur IA: message (entityId)"), ai-complete ("✅ Nettoyage terminé : N entité(s), M doublon(s), en X.Xs")
+- Lint : `bun run lint` → 0 erreur, 0 warning, exit code 0
+- Test end-to-end : POST /api/scraper/ai-cleaner avec body {} → 202 + jobId "ai-clean-d6691f5d" + inputCount 12. Polling GET → status running → progress 5% (dedup) → 45% (sector) → 60% (enrich) → 100% completed en ~183s. Résultat : 9 entités nettoyées, 3 doublons supprimés, 8 corrections, 27 champs complétés, 9 secteurs détectés, 1 fermeture détectée, score moyen 65/100, 11 appels LLM, 5500 tokens. Premier entity : Orange CI avec cleanedName, detectedSector "Télécommunications", sectorCode "TELCO", qualityScore 66, qualityBreakdown 7 dims, businessStatus "active", aiCompletions 3 (email/website/description), sources ["Google Maps","Site Web","RCCM"]. Corrections : email "service.client@orangeci" → "service.client@orange.ci" (deterministic 90%), address normalisation, name "Orange Côte d'Ivoire SARL" → "Orange Côte D'ivoire". Doublons : groupe Orange CI avec fusionConfidence 95%. Tous les champs backend alignés avec les types TS frontend ✓
+
+Stage Summary:
+- Fichier modifié : src/components/dashboard/views/scraper-view.tsx (~3457 lignes, +1167 lignes vs baseline 2290)
+- 5ème moteur "IA Cleaner" intégré au toggle avec icône BrainCircuit (lucide-react)
+- API routing : entry "ai-cleaner" dans ENDPOINTS (launch /api/scraper/ai-cleaner, job /api/scraper/ai-cleaner/jobs/[id], cancel DELETE, csv ?format=csv)
+- Formulaire minimal IA Cleaner : Alert emerald expliquant pipeline 7 étapes + Source select (5 options, défaut échantillon démo 12 entités) + 4 toggle switches (LLM z-ai, Détecter fermetures, Compléter champs, Détecter secteur) + bouton "Lancer le nettoyage IA" avec icône Wand2
+- Polling dédié (pollAICleanerJob) avec toast success décrivant entités nettoyées / doublons / corrections / score moyen
+- Progress section dédiée : 5 StatCards live (Entrées, Traités, Doublons, Corrections, Erreurs) + log streaming couleurs ai-* (rouge/ambre/cyan/emerald/violet/slate)
+- Résultats 3 onglets : (1) Entités nettoyées — grille CleanedEntityCard avec aliases collapsible, badges secteur+code, QualityScoreBadge+tooltip breakdown 7 dims, phone/email avec badges corrigé+valide+original strikethrough, address nettoyée+components, business status badge coloré+tooltip closure indicators, AI completions list avec confiance, merged count badge ; (2) Corrections — Table shadcn sticky header avec entity/champ/avant/après/méthode/confiance, couleurs par correctionType et method ; (3) Rapport — 12 StatCards (Entrées/Nettoyées/Doublons/Corrections/Complétions/Secteurs/Fermetures/Score moyen/Tél/Emails/Adresses/Appels LLM) + 3 Cards (Durée+par entité, Sources badges, Tokens LLM) + Card Doublons fusionnés (groupes avec mergedEntities) + Card Distribution scores qualité (3 buckets colorés)
+- formatEvent étendu avec 16 cases ai-* formatées en FR avec emojis (🚀/🔀/🔗/📞/✉️/📍/✨/🏭/📊/🔒/✅/✗)
+- Log streaming couleurs ai-* dédiées : ai-error rouge, corrections ambre, dedup/merge cyan, enrich emerald, sector/closed/quality violet, complete emerald bold, reste slate
+- 4 moteurs existants (Google Maps, Facebook, Business/LinkedIn, Site Web) préservés à l'identique — aucune régression (condition `engine !== "ai-cleaner"` sur la progress section existante)
+- Palette respectée : emerald (primary IA Cleaner) + orange (accent, badges fermetures/corrections tél) + ambre (warnings, scores moyens) + cyan (secteur/dedup) + violet (LLM/quality) + rouge (erreurs/scores faibles/fermetures). Aucun indigo, aucun bleu de fond
+- Lint 100% propre (0 erreur, 0 warning, exit code 0)
+- Test end-to-end réussi : POST 202 → polling 200 → completed 100% en 183s. 9 entités nettoyées sur 12 entrées, 3 doublons fusionnés, 8 corrections, 27 champs complétés par LLM, score moyen 65/100, 11 appels LLM, 5500 tokens. Tous les champs backend (cleanedName, detectedSector, sectorCode, qualityScore, qualityBreakdown 7 dims, businessStatus, aiCompletions, cleaningMetadata, sources, mergedCount, corrections[], duplicates[], stats{}) parfaitement alignés avec les types TS frontend
+
+---
+Task ID: 15
+Agent: Main (Architect)
+Task: Créer un moteur IA de nettoyage et d'enrichissement de données
+
+Work Log:
+- Chargé le skill LLM (z-ai-web-dev-sdk) pour l'API de chat completions
+- Architecture en 7 modules :
+  * ai-cleaner-types.ts — CleanedEntity (étend ScrapedPlace avec cleanedName, aliases, cleanedPhone, cleanedEmail, emailValid, cleanedAddress, addressComponents, detectedSector, sectorCode, qualityScore, qualityBreakdown, businessStatus, closureIndicators, aiCompletions, mergedCount, cleaningMetadata), AICleanerConfig, CleaningReport, MergedGroup, 18 secteurs référentiel, mots-clés fermeture
+  * ai-correctors.ts — correcteurs déterministes :
+    - fixPhone() : +225 XX XX XX XX XX, gère 00225, 22507..., 8 chiffres legacy, troncature
+    - fixEmail() : typos domaine (gmial→gmail, hotmial→hotmail), validation RFC, exclusion jetables
+    - normalizeAddress() : abréviations (bd→Boulevard), communes/villes CI, quartiers Abidjan, BP, rue
+    - cleanBusinessName() : retire SARL/SA/EURL, capitalise, garde acronymes
+  * sector-detector.ts — détection hybride :
+    - detectSectorByRules() : 18 secteurs × mots-clés, scoring
+    - detectSectorByLLM() : z-ai chat completions avec prompt structuré JSON
+    - detectSectorHybrid() : règles d'abord, LLM si confiance < 0.7
+  * quality-closed-detector.ts :
+    - calculateQualityScore() : 7 dimensions (complétude, validité contact, qualité nom, précision géo, fiabilité source, fraîcheur, présence online) pondérées → score 0-100
+    - detectClosureIndicators() : règles (mots-clés fermeture, note très basse, pas de contact)
+    - detectClosureByLLM() : z-ai pour cas ambigus
+  * ai-enricher.ts — enrichissement LLM :
+    - findMissingFields() : identifie champs manquants éligibles
+    - enrichWithLLM() : z-ai chat avec prompt structuré (email, website, description, hours)
+    - guessEmailFromWebsite() : déterministe (contact@, info@, service.client@)
+    - guessWebsiteFromName() : déterministe (slug.ci)
+  * ai-cleaner.ts — moteur principal (classe AICleaner) :
+    - Pipeline 7 phases : dédup → fusion → correction → secteur → enrichissement → score → fermetures
+    - Events emitter : 15 types d'événements (ai-start, ai-dedup-*, ai-merge-*, ai-correct-*, ai-enrich-*, ai-sector-detect, ai-quality-score, ai-closed-detect, ai-complete)
+    - Retourne { report, cleanedEntities }
+  * ai-cleaner-job-store.ts — store en mémoire (globalThis persistence)
+  * ai-cleaner-sample.ts — 12 entités de démo avec doublons (Orange ×3, MTN ×2, SIFCA ×2), erreurs (tél mal formaté, email typo gmial, email sans TLD), champs manquants, entreprise fermée
+- API routes (4 endpoints) :
+  * POST /api/scraper/ai-cleaner — lance (entities OU sourceJobId OU sample par défaut)
+  * GET /api/scraper/ai-cleaner/jobs — liste
+  * GET /api/scraper/ai-cleaner/jobs/[id] — état + entités + rapport (JSON ou CSV)
+  * DELETE /api/scraper/ai-cleaner/jobs/[id] — annule
+- UI mise à jour (sous-agent 7e-ai) :
+  * 5ème onglet "IA Cleaner" (icône BrainCircuit)
+  * Formulaire : alerte pipeline 7 étapes, source (sample ou job précédent), 4 toggles (LLM, fermetures, complétion, secteur), bouton Lancer
+  * Progression temps réel : 5 StatCards + log streaming avec 16 events ai-*
+  * 3 tabs résultats :
+    - Entités nettoyées : grid de CleanedEntityCard (nom nettoyé, aliases, badge secteur+code, score qualité coloré avec tooltip 7 dimensions, tél corrigé avec original barré, email corrigé+valide/invalide, adresse normalisée, statut entreprise, complétions IA, count fusion)
+    - Corrections : tableau (entité, champ, old→new, méthode, confiance)
+    - Rapport : 12 StatCards + cards détaillées (durée, sources, tokens LLM, distribution scores)
+- Tests end-to-end :
+  * POST /api/scraper/ai-cleaner → 202 + jobId ✓
+  * Job completed en ~60s pour 12 entités ✓
+  * 12 entrées → 9 nettoyées (3 doublons supprimés) ✓
+  * 8 champs corrigés (tél, email, adresse, nom) ✓
+  * 29 champs complétés par IA ✓
+  * 9 secteurs détectés (Télécommunications, Restauration, Pharmacie, Banque, Logistique...) ✓
+  * 1 entreprise fermée détectée (Ancienne Pharmacie de Plateau) ✓
+  * Score moyen : 65/100 ✓
+  * 11 appels LLM (z-ai) ✓
+  * Orange CI : 3 variantes fusionnées, email corrigé (service.client@orange.ci valide), secteur Télécommunications ✓
+  * Pharmacie Riviera : email corrigé (gmial.com → gmail.com) ✓
+  * BICICI : email invalide détecté (particuliers@bicici sans TLD) ✓
+  * Lint : 0 erreur ✓
+
+Stage Summary:
+- Moteur IA Enterprise complet et fonctionnel
+- 7 modules (types, correctors, sector-detector, quality-closed, enricher, cleaner, job-store) + 4 API routes
+- Pipeline 7 phases : déduplication → fusion → correction déterministe → détection secteur (hybride règles+LLM) → enrichissement LLM → score qualité 7 dimensions → détection fermetures
+- LLM z-ai-web-dev-sdk pour enrichissement et cas ambigus
+- Correcteurs déterministes pour téléphone (+225), email (typos), adresse (normalisation CI), nom (suffixes légaux)
+- 18 secteurs référentiel + mots-clés
+- Score qualité 0-100 avec breakdown 7 dimensions
+- Détection fermetures (règles + LLM)
+- Échantillon démo 12 entités avec doublons/erreurs/champs manquants
+- UI unifiée avec toggle 5 moteurs (Google Maps / Facebook / Business / Site Web / IA Cleaner)
