@@ -231,8 +231,89 @@ model ApiKey {
 }
 
 // ============================================================================
-// AUDIT LOGS (immutable security events)
+// SAAS — LICENCES, ABONNEMENTS, FACTURATION, QUOTA
 // ============================================================================
+
+model License {
+  id            String   @id @default(cuid())
+  key           String   @unique @default(cuid())
+  plan          String   // starter | pro | enterprise | custom
+  name          String   // nom du plan acheté
+  maxUsers      Int      @default(5)
+  maxCompanies  Int      @default(10000)
+  maxApiCalls   Int      @default(100000)
+  maxExports    Int      @default(100)
+  maxSources    Int      @default(3)
+  maxWorkspaces Int      @default(1)
+  features      String   @default("[]") // JSON array of feature strings
+  status        String   @default("inactive") // inactive | active | suspended | expired
+  activatedAt   DateTime?
+  expiresAt     DateTime?
+  organizationId String? // null = non activée
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([key])
+  @@index([status])
+  @@index([organizationId])
+}
+
+model Subscription {
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  licenseId           String?
+  plan                String   @default("starter") // starter | pro | enterprise | custom
+  status              String   @default("trialing") // trialing | active | past_due | cancelled | expired
+  billingCycle        String   @default("monthly") // monthly | yearly
+  amountXOF           Int      @default(25000) // FCFA
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean  @default(false)
+  paymentMethod       String?  // orange_money | mtn_momo | moov | card | bank_transfer
+  providerSubId       String?  // ID côté fournisseur de paiement
+  trialEndsAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  organizationId  String
+  subscriptionId  String?
+  number          String   @unique // INV-2026-001
+  amountXOF       Int      // montant en FCFA
+  taxXOF          Int      @default(0) // TVA 18%
+  totalXOF        Int      // amount + tax
+  status          String   @default("pending") // pending | paid | void | refunded
+  dueDate         DateTime
+  paidAt          DateTime?
+  items           String   @default("[]") // JSON array of line items
+  pdfUrl          String?
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([number])
+}
+
+model QuotaUsage {
+  id              String   @id @default(cuid())
+  organizationId  String
+  periodYear      Int
+  periodMonth     Int
+  apiCalls        Int      @default(0)
+  companiesStored Int      @default(0)
+  exportsCount    Int      @default(0)
+  scrapeJobs      Int      @default(0)
+  usersCount      Int      @default(0)
+  updatedAt       DateTime @default(now())
+
+  @@unique([organizationId, periodYear, periodMonth])
+  @@index([organizationId])
+}
 
 model AuditLog {
   id            String   @id @default(cuid())

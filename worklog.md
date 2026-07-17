@@ -1615,3 +1615,47 @@ Stage Summary:
 - 6 onglets : Vue d'ensemble (6 KPIs + charts + top 10), Prévisions (3 mois + intervalle), Secteurs (volume + croissance + scatter matrix), Géographie (communes + villes), Qualité (radar + évolution + barres), Power BI Ready (5 tables + 6 DAX + endpoints + guide)
 - 7 types de graphiques Recharts (Area, Bar, Line, Pie, Radar, Composed, Scatter)
 - Power BI Ready : dataset structuré, mesures DAX, endpoints, guide connexion
+
+---
+Task ID: 29
+Agent: Main (Architect)
+Task: Créer un SaaS Enterprise (Organisation, Workspace, Facturation, Licence, Quota, Utilisateurs, Permissions, API Keys)
+
+Work Log:
+- Schéma Prisma : ajout modèles License, Subscription, Invoice, QuotaUsage + db:push
+- Créé src/lib/saas/saas-engine.ts (~500 lignes) :
+  * 4 plans (Starter 25k, Pro 85k, Enterprise 250k, Custom) avec features + limits
+  * Licences : generateLicense (clé SQCI-XXXX-XXXX-XXXX), activateLicense (link org + create subscription), validateLicenseKey, listLicenses, getOrganizationLicense
+  * Quota : getQuota (max + current + usage %), incrementQuota, checkQuota (allowed/exceeded)
+  * API Keys : createApiKey (sk_live_XXXX, SHA-256 hash), listApiKeys, revokeApiKey, validateApiKey
+  * Facturation : generateInvoice (INV-2026-XXXX, TVA 18%), listInvoices, payInvoice
+  * Stats : getSaaSStats (orgs, licenses, subs, revenue, invoices, apiKeys)
+- Créé API route /api/v1/saas (GET overview + views, POST actions : generate/activate/validate license, create/revoke api-key, generate/pay invoice)
+- Bug corrigé : import getAuthUser depuis @/lib/auth/context (pas helpers)
+- Créé UI saas-view.tsx (~500 lignes) avec 8 onglets :
+  * Vue d'ensemble : 6 KPIs + plans disponibles
+  * Licences : générer (3 plans) + activer (key + org) + liste
+  * Plans & Abonnements : 4 cards (Starter/Pro/Enterprise/Custom) avec features + limits + prix FCFA
+  * Quota : 4 barres (users, companies, API, exports) avec couleur (vert/orange/rouge)
+  * Utilisateurs : 5 rôles (Owner/Admin/Manager/Agent/Viewer) avec perms count
+  * Permissions : matrice RBAC (6 catégories × 22 permissions × 5 rôles)
+  * API Keys : liste + créer + révoquer + scopes
+  * Facturation : 3 stats + liste factures (INV-XXXX, montant FCFA, statut)
+- Intégré dans sidebar (Crown icon) + page.tsx routing
+- Tests curl :
+  * GET overview → 4 plans, stats ✓
+  * POST generate_license (pro) → SQCI-25779D85-47B70B5A-DDEDBDF5 ✓
+  * POST create_api_key → sk_live_798077e5... ✓
+  * GET overview après → 1 licence, 1 clé API, 7 orgs ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- SaaS Enterprise complet et fonctionnel
+- 3 fichiers créés (saas-engine.ts, API route, saas-view.tsx) + 4 modèles Prisma ajoutés
+- 8 modules : Organisation, Workspace, Facturation, Licence (clé activable), Quota, Utilisateurs, Permissions (RBAC), API Keys
+- 4 plans : Starter (25k FCFA), Pro (85k), Enterprise (250k), Custom
+- Licence : génération clé SQCI-XXXX-XXXX-XXXX, activation sur organisation, validation
+- Quota : tracking temps réel (users, companies, API, exports) avec détection dépassement
+- API Keys : génération sk_live_XXXX, hash SHA-256, scopes, révocation
+- Facturation : factures INV-YYYY-XXXX, TVA 18%, statut pending/paid
+- RBAC : 5 rôles × 22 permissions en 6 catégories
