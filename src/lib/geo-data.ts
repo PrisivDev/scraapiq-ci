@@ -45,6 +45,7 @@ export const ciCities = [
   { name: "Daloa", lat: 6.8769, lng: -6.4489, population: 325000, communes: 0 },
   { name: "Man", lat: 7.4125, lng: -7.5544, population: 222000, communes: 0 },
   { name: "Gagnoa", lat: 6.1319, lng: -5.9506, population: 213000, communes: 0 },
+  { name: "Grand-Bassam", lat: 5.2000, lng: -3.7333, population: 95000, communes: 0 },
 ]
 
 // Secteurs pour filtres
@@ -144,6 +145,10 @@ function generateGeoCompanies(): GeoCompany[] {
     ["Yamoussoukro Commerce", "Commerce", "Yamoussoukro", 6.8290, -5.2880],
     ["San-Pédro BTP", "BTP & Construction", "San-Pédro", 4.7490, -6.6370],
     ["Daloa Beauty Spa", "Beauté & Bien-être", "Daloa", 6.8775, -6.4495],
+    ["Hôtel Etoile du Sud", "Tourisme & Hôtellerie", "Grand-Bassam", 5.2000, -3.7333],
+    ["Restaurant Le Lagon", "Restauration", "Grand-Bassam", 5.2010, -3.7340],
+    ["Pharmacie Grand-Bassam", "Santé & Pharmacie", "Grand-Bassam", 5.1990, -3.7320],
+    ["Grand-Bassam Commerce", "Commerce", "Grand-Bassam", 5.2020, -3.7350],
   ]
 
   for (const [name, sector, city, lat, lng] of otherCities) {

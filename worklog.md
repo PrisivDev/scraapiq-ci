@@ -884,3 +884,73 @@ Stage Summary:
 - Fly-to automatique sur sélection commune/ville
 - Légende dynamique + stats overlay
 - Dynamic import SSR-safe (Leaflet)
+
+---
+Task ID: 18
+Agent: Main (Architect)
+Task: Créer un moteur de recherche intelligent (IA + Elasticsearch) comprenant le langage naturel
+
+Work Log:
+- Créé src/lib/search/elasticsearch-engine.ts — moteur type Elasticsearch en mémoire :
+  * Analyzer (tokenizer + lowercase + accents stripping + stopwords FR/EN)
+  * Inverted index (terme → postings avec positions + termFrequency)
+  * BM25 scoring (Okapi BM25, k1=1.2, b=0.75, comme Elasticsearch par défaut)
+  * Fuzzy matching (Levenshtein distance, ~2 comme Elasticsearch)
+  * Multi-match (recherche sur 7 champs avec boosts : name=3, sector=2, commune=1.5, city=1.5, address=1, category=2, description=0.5)
+  * Bool query (filtres term exacts)
+  * Aggregations (terms par champ)
+  * Highlights (contexte de match avec <mark>)
+  * Suggestions (auto-complete sur préfixe)
+  * Classe InMemoryElasticsearch avec index(), indexBatch(), search(), stats()
+- Créé src/lib/search/intent-analyzer.ts — analyseur d'intention IA :
+  * analyzeIntentByRules() — déterministe, rapide :
+    - 18 secteurs avec synonymes (restaurant→Restauration, pharmacie→Santé, BTP→BTP & Construction, hôtel→Tourisme, clinique→Santé)
+    - 11 villes CI avec variantes orthographiques (Grand Bassam→Grand-Bassam, Bouaké/Bouake)
+    - 12 communes Abidjan + quartiers (Riviera, Angré, Zone 4)
+    - Détection intention (find_business, find_location, general_search)
+    - Construction requête reformulée + filtres dérivés
+  * analyzeIntentByLLM() — z-ai chat completions :
+    - Prompt structuré avec référentiel secteurs/villes/communes
+    - 5 exemples few-shot (Restaurant Cocody, Pharmacie Yopougon, BTP Bouaké, Hôtel Grand Bassam, Clinique Abidjan)
+    - Réponse JSON structuré
+  * analyzeIntentHybrid() — règles d'abord, LLM si confiance < 0.6
+- Créé src/lib/search/search-store.ts — singleton avec indexation de 76 entreprises :
+  * 64 entreprises géolocalisées (geo-data.ts) + 12 entreprises mock (mock-data.ts)
+  * 7 champs indexés par entreprise
+  * Versioning pour rebuild automatique quand données changent
+- Créé src/app/api/search/route.ts — API REST :
+  * POST /api/search — body: { query, useLLM, size, from, filters, aggregations }
+  * GET /api/search?q=... — variante GET simple
+  * Pipeline : analyse intention IA → fusion filtres → recherche ES → aggregations → suggestions
+  * Retourne : { query, intent, results, aggregations, suggestions, total, took, stats }
+- Créé src/components/dashboard/views/intelligent-search-view.tsx — UI complète :
+  * Barre de recherche avec debounce 500ms
+  * 8 exemples cliquables (Restaurant Cocody, Pharmacie Yopougon, BTP Bouaké, Hôtel Grand Bassam, Clinique Abidjan, Banque Plateau, École Marcory, Garage Abobo)
+  * Carte "Intention détectée" avec badges (méthode, confiance, secteur coloré, commune, ville, neighborhood)
+  * Requête Elasticsearch affichée
+  * Facets/aggregations cliquables (Secteurs, Villes, Communes avec compteurs)
+  * Liste des résultats avec highlights, score BM25, localisation, téléphone, note
+  * Suggestions auto-complete si 0 résultat
+  * Stats temps réel (docs indexés, termes, durée recherche)
+- Intégré dans page.tsx : activeNav === "search" → IntelligentSearchView
+- Ajouté 4 entreprises Grand-Bassam + ville dans geo-data.ts
+- Tests curl sur les 5 exemples demandés :
+  * "Restaurant Cocody" → Restauration + Cocody + Abidjan → 2 résultats (Restaurant Le Wôyô) ✓
+  * "Pharmacie Yopougon" → Santé & Pharmacie + Yopougon + Abidjan → 1 résultat (Yopougon Pharma) ✓
+  * "BTP Bouaké" → BTP & Construction + Bouaké → 1 résultat (Bouaké BTP) ✓
+  * "Hôtel Grand Bassam" → Tourisme & Hôtellerie + Grand-Bassam → 1 résultat (Hôtel Etoile du Sud) ✓
+  * "Clinique Abidjan" → Santé & Pharmacie + Abidjan → 6 résultats (pharmacies/cliniques) ✓
+- Tests Agent Browser + VLM :
+  * Barre de recherche avec placeholder + 8 exemples cliquables ✓
+  * Recherche "Restaurant Cocody" → carte intention (Règles 70%, Restauration orange, Cocody, Abidjan) ✓
+  * 2 résultats avec cards (nom, secteur, localisation, score BM25) ✓
+  * Aucune erreur console/runtime
+
+Stage Summary:
+- Moteur de recherche intelligent Enterprise complet et fonctionnel
+- 3 modules (elasticsearch-engine, intent-analyzer, search-store) + 1 API route + 1 UI
+- Elasticsearch-like : index inversé, BM25, fuzzy matching, aggregations, highlights, suggestions
+- IA intention : règles déterministes (18 secteurs, 11 villes, 12 communes) + LLM z-ai (hybride)
+- 76 entreprises indexées sur 7 champs
+- Les 5 exemples demandés fonctionnent : Restaurant Cocody, Pharmacie Yopougon, BTP Bouaké, Hôtel Grand Bassam, Clinique Abidjan
+- UI : barre de recherche + debounce, carte intention IA, facets cliquables, résultats avec highlights + score

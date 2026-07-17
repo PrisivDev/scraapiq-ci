@@ -15,7 +15,7 @@ import {
 
 // Views
 import { AnalyticsDashboard } from "@/components/dashboard/analytics/analytics-dashboard"
-import { SearchView } from "@/components/dashboard/views/search-view"
+import { IntelligentSearchView } from "@/components/dashboard/views/intelligent-search-view"
 import { CompaniesView } from "@/components/dashboard/views/companies-view"
 import { OSMMapViewWrapper } from "@/components/dashboard/views/osm-map-wrapper"
 import { SourcesView } from "@/components/dashboard/views/sources-view"
@@ -119,7 +119,7 @@ export default function Home() {
             )}
 
             {activeNav === "search" && (
-              <SearchView onSearch={handleSearch} />
+              <IntelligentSearchView />
             )}
 
             {activeNav === "companies" && (
