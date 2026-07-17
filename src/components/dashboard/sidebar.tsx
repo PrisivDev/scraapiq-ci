@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 
 export type NavKey =
   | "dashboard"
+  | "assistant"
   | "search"
   | "companies"
   | "map"
@@ -52,7 +53,8 @@ const navItems: {
   section: string
 }[] = [
   { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard, section: "Pilotage" },
-  { key: "search", label: "Recherche multicritère", icon: Search, badge: "Nouveau", section: "Pilotage" },
+  { key: "assistant", label: "Assistant IA", icon: Sparkles, badge: "Nouveau", section: "Pilotage" },
+  { key: "search", label: "Recherche multicritère", icon: Search, section: "Pilotage" },
   { key: "companies", label: "Entreprises", icon: Building2, section: "Données" },
   { key: "map", label: "Cartographie", icon: Map, section: "Données" },
   { key: "sources", label: "Sources de données", icon: Database, section: "Données" },

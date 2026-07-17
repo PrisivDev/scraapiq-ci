@@ -15,6 +15,7 @@ import {
 
 // Views
 import { AnalyticsDashboard } from "@/components/dashboard/analytics/analytics-dashboard"
+import { AssistantView } from "@/components/dashboard/views/assistant-view"
 import { IntelligentSearchView } from "@/components/dashboard/views/intelligent-search-view"
 import { CompaniesView } from "@/components/dashboard/views/companies-view"
 import { OSMMapViewWrapper } from "@/components/dashboard/views/osm-map-wrapper"
@@ -31,6 +32,7 @@ import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   dashboard: { title: "Tableau de bord", subtitle: "Vue d'ensemble — Abidjan & Côte d'Ivoire" },
+  assistant: { title: "Assistant IA", subtitle: "Recherche en langage naturel" },
   search: { title: "Recherche multicritère", subtitle: "Découvrez des entreprises ivoiriennes" },
   companies: { title: "Entreprises", subtitle: "Toutes les entreprises indexées" },
   map: { title: "Cartographie", subtitle: "Géolocalisation sur Abidjan" },
@@ -89,7 +91,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "settings"].includes(key)) {
+    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -122,6 +124,10 @@ export default function Home() {
           <div className="p-4 lg:p-6 space-y-5 max-w-[1800px] mx-auto">
             {activeNav === "dashboard" && (
               <AnalyticsDashboard onNavigate={handlePaletteNavigate} />
+            )}
+
+            {activeNav === "assistant" && (
+              <AssistantView />
             )}
 
             {activeNav === "search" && (

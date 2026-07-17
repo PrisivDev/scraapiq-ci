@@ -1365,3 +1365,50 @@ Stage Summary:
 - Charts Recharts (area, bar, pie, line)
 - Responsive + dark mode
 - Intégré dans sidebar + command palette
+
+---
+Task ID: 24
+Agent: Main (Architect)
+Task: Créer un assistant IA qui traduit le langage naturel en recherche (hôtels Marcory, cliniques Bouaké, BTP site web)
+
+Work Log:
+- Créé src/lib/assistant/assistant-engine.ts :
+  * analyzeNaturalLanguage() — LLM z-ai qui extrait secteur/ville/commune/filtres depuis le langage naturel
+    - Prompt structuré avec 15 secteurs + synonymes, 11 villes CI, 12 communes Abidjan
+    - Réponse JSON avec sector, city, commune, hasWebsite, hasPhone, hasEmail, minRating, keywords, intent, confidence, summary
+    - Fallback déterministe si LLM indisponible
+  * generateNaturalResponse() — LLM z-ai qui génère une réponse en langage naturel à partir des résultats
+    - Résumé conversationnel, 3-4 phrases max
+    - Fallback sans LLM si erreur
+  * generateSuggestions() — suggestions de requêtes suivantes basées sur l'analyse
+  * processAssistantQuery() — pipeline complet : analyse IA → recherche Elasticsearch → filtres post-recherche → réponse naturelle
+- Créé src/app/api/assistant/route.ts — POST /api/assistant
+- Créé src/components/dashboard/views/assistant-view.tsx — UI chat complète :
+  * Interface chat avec bulles utilisateur/assistant
+  * Avatar Brain (IA) / User
+  * 6 exemples cliquables (hôtels Marcory, cliniques Bouaké, BTP site web, restaurants téléphone Cocody, combien Yopougon, pharmacies 4 étoiles)
+  * Badges d'analyse (secteur, commune, ville, hasWebsite, hasPhone, minRating, confiance)
+  * Cards de résultats (nom, secteur, localisation, téléphone, site web, email, note, score)
+  * Suggestions cliquables après chaque réponse
+  * Input avec Enter pour envoyer
+  * Loading spinner "L'IA analyse votre requête…"
+  * Auto-scroll
+- Intégré dans sidebar (Assistant IA, badge Nouveau, section Pilotage) + page.tsx routing
+- Tests curl sur les 3 exemples demandés :
+  * "Trouve les hôtels de Marcory" → Tourisme & Hôtellerie + Marcory + Abidjan, 0 résultat (réponse naturelle avec suggestions alternatives) ✓
+  * "Trouve les cliniques privées de Bouaké" → Santé & Pharmacie + Bouaké + keywords ["privées"], 1 résultat (Bouaké Pharma 4.7/5) ✓
+  * "Trouve les entreprises BTP ayant un site web" → BTP & Construction + hasWebsite=true, 1 résultat (BTP Afrique Construction, btp-afrique.ci) ✓
+- Tests Agent Browser :
+  * UI assistant avec exemples cliquables ✓
+  * Requête "BTP ayant un site web" → réponse IA avec BTP Afrique Construction + 95% confiance + suggestions ✓
+  * Aucune erreur console ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- Assistant IA Enterprise complet et fonctionnel
+- 3 fichiers créés (assistant-engine.ts, API route, UI view)
+- Pipeline : langage naturel → LLM z-ai (analyse) → Elasticsearch (recherche) → filtres post-recherche → LLM z-ai (réponse naturelle)
+- Comprend : secteur, ville, commune, quartier, filtres (site web, téléphone, email, note min), keywords, intention
+- Réponses en langage naturel conversationnel
+- Suggestions contextuelles
+- Interface chat moderne avec exemples
