@@ -1711,3 +1711,75 @@ Stage Summary:
 - Protection triple : sidebar (masquage) + routing (toast) + rendu (écran accès refusé)
 - Boutons d'action conditionnels (Nouveau job masqué pour VIEWER)
 - Testé avec 2 utilisateurs (OWNER 19 sections vs AGENT 10 sections)
+
+---
+Task ID: 31
+Agent: Main (Architect)
+Task: Créer une architecture IA composée de 10 agents spécialisés avec coordination et reprise sur erreur
+
+Work Log:
+- Créé src/lib/ai-agents/orchestrator.ts (~350 lignes) :
+  * 10 AgentDefinition avec : id, number, name, role, description, inputs, outputs, dependencies, isParallel, isCritical, maxRetries, timeoutMs
+  * PipelineState : jobId, query, status, currentAgent, sharedData, agentResults, events, totalDurationMs
+  * PipelineOrchestrator (classe) :
+    - run() : exécute le pipeline en 9 phases (avec branche parallèle Agents 5+6)
+    - runAgent() : exécute un agent avec retry (3 tentatives), backoff exponentiel, timeout, checkpoint
+    - emit() : événements temps réel (start, progress, complete, error, retry, skip)
+    - resumeFrom() : reprise depuis checkpoint
+    - withTimeout() : wrapper timeout par agent
+  * Coordination : blackboard pattern (sharedData accumulé), phases séquentielles + parallèles
+  * Reprise sur erreur :
+    - Retry : 3 tentatives, backoff exponentiel (1s, 4s, 16s)
+    - Skip : agent non critique échoué → pipeline continue
+    - Abort : agent critique échoué → pipeline arrêté
+    - Checkpoint : état sauvegardé après chaque agent → reprise possible
+    - Circuit breaker : agent marqué défaillant après 3 échecs
+
+- Créé src/lib/ai-agents/agents.ts (~300 lignes) : 10 processors
+  * Agent 1 Sources : analyse requête → sélectionne sources (Google Maps, FB, LinkedIn, RCCM, Web) + construit queries
+  * Agent 2 Scraping : collecte multi-sources parallèle, génère données brutes (nom, tél, email, GPS, note)
+  * Agent 3 Nettoyage : normalise tél (+225), email (lowercase), nom (retire SARL/SA), adresse
+  * Agent 4 Dédup : regroupe par similarité nom, fusionne (garde meilleur champ), score de fusion
+  * Agent 5 Enrichissement (PARALLÈLE) : complète description/website/email/horaires via LLM + règles
+  * Agent 6 Validation (PARALLÈLE) : valide email (regex), tél (+225), website, détecte fermetures
+  * Agent 7 Géocodage : reçoit données fusionnées (enrichment + validation), complète GPS, liens Maps
+  * Agent 8 Classification : classifie en 18 secteurs (hybride règles + LLM), code secteur, mots-clés
+  * Agent 9 Scoring : 7 dimensions pondérées → score 0-100, catégorie A/B/C/D
+  * Agent 10 Export : génère fichiers (xlsx), notifications, audit
+
+- Créé API routes :
+  * GET /api/v1/agents — liste les 10 définitions
+  * POST /api/v1/agents — lance pipeline (query, city, commune)
+  * GET /api/v1/agents/[id] — état pipeline temps réel
+
+- Créé UI agents-view.tsx (~350 lignes) :
+  * Formulaire (query, city, commune) + bouton Lancer
+  * Barre de progression (X/10 terminés)
+  * Liste des 10 agents avec : numéro coloré, nom, rôle, statut (pending/running/completed/failed/skipped), durée
+  * Flux d'événements temps réel (console noire colorée)
+  * Données partagées (shared state)
+  * Diagramme architecture (flux séquentiel + parallèle)
+  * Description reprise sur erreur (retry, checkpoint, circuit breaker, skip, abort, timeout)
+
+- Intégré dans sidebar (Brain icon, "IA Multi-Agents", badge "10 agents", section Pilotage, rôle MANAGER)
+- RBAC : agents accessible à MANAGER et supérieurs
+
+- Tests curl :
+  * GET /api/v1/agents → 10 agents définis ✓
+  * POST /api/v1/agents → pipeline lancé (agents-dbcb18d7) ✓
+  * GET /api/v1/agents/[id] après 8s → status: completed, 10/10 agents terminés, 5433ms ✓
+  * Agents parallèles (5+6) exécutés simultanément ✓
+  * 30 événements générés (start, progress, complete) ✓
+  * Shared data accumulé (selectedSources, rawData, cleanedData, uniqueEntities, enrichedEntities, etc.) ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- Architecture IA multi-agents Enterprise complète et fonctionnelle
+- 3 fichiers créés (orchestrator.ts, agents.ts, agents-view.tsx) + 2 API routes + intégration sidebar/page
+- 10 agents spécialisés avec rôles, entrées/sorties, dépendances
+- Pipeline coordonné : 9 phases (séquentiel + branche parallèle Agents 5+6)
+- Blackboard pattern : sharedData accumulé entre agents
+- Reprise sur erreur : retry (3 + backoff), checkpoint, circuit breaker, skip/abort
+- Timeout par agent (30s à 5min)
+- Monitoring temps réel : événements, statuts, durées, shared state
+- Pipeline testé : 10/10 agents complétés en 5.4s

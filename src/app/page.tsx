@@ -33,6 +33,7 @@ import { SecurityView } from "@/components/dashboard/views/security-view"
 import { PWAView } from "@/components/dashboard/views/pwa-view"
 import { BusinessIntelView } from "@/components/dashboard/views/business-intel-view"
 import { SaasView } from "@/components/dashboard/views/saas-view"
+import { AgentsView } from "@/components/dashboard/views/agents-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 import { canAccess, canPerform, type UserRole, DEFAULT_ROLE } from "@/lib/rbac-nav"
 import { ShieldX } from "lucide-react"
@@ -56,6 +57,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   pwa: { title: "Progressive Web App", subtitle: "Offline · Sync · Notifications · Installation · IndexedDB" },
   bi: { title: "Business Intelligence", subtitle: "Power BI Ready · Prévisions · Secteurs · Croissance · Qualité" },
   saas: { title: "SaaS Enterprise", subtitle: "Licence · Quota · Abonnements · API Keys · Facturation" },
+  agents: { title: "IA Multi-Agents", subtitle: "10 agents spécialisés · Pipeline coordonné · Retry · Checkpoint" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
 
@@ -123,7 +125,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "security", "pwa", "bi", "saas", "settings"].includes(key)) {
+    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "security", "pwa", "bi", "saas", "agents", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -216,6 +218,8 @@ export default function Home() {
             {activeNav === "bi" && <BusinessIntelView />}
 
             {activeNav === "saas" && <SaasView />}
+
+            {activeNav === "agents" && <AgentsView />}
 
             {activeNav === "settings" && <SettingsView />}
               </>

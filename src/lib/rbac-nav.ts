@@ -34,6 +34,7 @@ export const NAV_ROLE_ACCESS: Record<NavKey, UserRole> = {
   assistant: "VIEWER",
   search: "VIEWER",
   bi: "MANAGER",
+  agents: "MANAGER",
 
   // Données — accessible à tous en lecture
   companies: "VIEWER",
