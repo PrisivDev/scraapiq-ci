@@ -821,3 +821,66 @@ Stage Summary:
 - Stats temps réel système (CPU/mémoire/disque)
 - Command palette ⌘K avec recherche globale (25+ items, navigation clavier)
 - Header enrichi avec recherche, notifications, theme toggle, user menu
+
+---
+Task ID: 17
+Agent: Main (Architect)
+Task: Créer une carte OpenStreetMap avec entreprises, clusters, filtres, heatmap, rayon, distance, communes, villes
+
+Work Log:
+- Installé leaflet@1.9.4 + react-leaflet@5.0.0 + leaflet.markercluster@1.5.3 + leaflet.heat@0.2.0 + types
+- Créé src/lib/geo-data.ts avec :
+  * 60 entreprises géolocalisées (40 à Abidjan réparties sur 10 communes + 20 dans 7 autres villes CI)
+  * 12 communes d'Abidjan avec coordonnées centroïde + count
+  * 8 villes de Côte d'Ivoire (Abidjan, Bouaké, Yamoussoukro, San-Pédro, Korhogo, Daloa, Man, Gagnoa)
+  * 12 secteurs avec couleurs distinctes
+  * haversineDistance() pour calcul de distance entre 2 points GPS
+  * sectorColors mapping (12 couleurs)
+- Créé src/lib/leaflet-css.ts pour imports CSS Leaflet + MarkerCluster
+- Ajouté import CSS dans layout.tsx
+- Construit osm-map-view.tsx (composant carte complet) :
+  * Tuiles OpenStreetMap standard
+  * 60 markers custom (gouttes colorées par secteur, icônes L.divIcon)
+  * Popups détaillés (nom, secteur, adresse, commune, ville, tél, note, avis, distance si rayon)
+  * Heatmap layer (leaflet.heat) avec gradient bleu→vert→jaune→orange→rouge
+  * Toggle Markers / Heatmap
+  * Filtres : recherche texte, ville (8), commune (12), statut (3), secteurs multi-select (12)
+  * Bouton Rayon de recherche : clic sur carte → cercle vert + slider km (1-30)
+  * Calcul distance haversine depuis le centre du rayon
+  * Liste "Plus proches" triée par distance (top 5) avec fly-to au clic
+  * Liste latérale des entreprises (20 max) avec fly-to au clic
+  * Stats overlay (total, vérifiées, secteurs, note moyenne)
+  * Légende des secteurs (colors + counts)
+  * Bouton recentrer (Crosshair)
+  * Fly-to automatique sur sélection commune/ville
+  * RecenterButton component
+  * ClickHandler component (pour rayon)
+  * HeatmapLayer component (useMap + L.heatLayer)
+- Créé osm-map-wrapper.tsx avec dynamic import (ssr: false) pour éviter "window is not defined"
+- Intégré dans page.tsx : activeNav === "map" → OSMMapViewWrapper
+- Bug corrigé : Leaflet accède à window pendant SSR → wrapper dynamic ssr:false
+- Tests Agent Browser + VLM :
+  * Carte OpenStreetMap avec tuiles ✓
+  * 60 marqueurs colorés par secteur (gouttes) ✓
+  * Popups détaillés ✓
+  * Barre de filtres (recherche, ville, commune, statut, secteurs) ✓
+  * Toggle Marqueurs/Heatmap ✓
+  * Heatmap avec gradient bleu→rouge, densité visible (Cocody/Plateau plus intenses) ✓
+  * Bouton Rayon + clic carte → cercle vert ✓
+  * Liste "Plus proches" avec distances en km ✓
+  * Stats overlay (33 affichées, 17 vérifiées, 6 secteurs, note 4.2) ✓
+  * Légende secteurs en bas à gauche ✓
+  * Sélection ville Bouaké → fly-to Bouaké + 3 entreprises visibles ✓
+  * Sélection commune → fly-to commune ✓
+  * Aucune erreur console/runtime
+
+Stage Summary:
+- Carte OpenStreetMap Enterprise complète et fonctionnelle
+- 60 entreprises géolocalisées sur 8 villes CI (Abidjan + 7 autres)
+- 4 modes d'affichage : Marqueurs colorés, Heatmap, Rayon de recherche, Liste latérale
+- 5 filtres : recherche texte, ville, commune, statut, secteurs (multi-select)
+- Rayon de recherche circulaire (1-30 km) avec calcul distance haversine
+- Liste des entreprises les plus proches triée par distance
+- Fly-to automatique sur sélection commune/ville
+- Légende dynamique + stats overlay
+- Dynamic import SSR-safe (Leaflet)

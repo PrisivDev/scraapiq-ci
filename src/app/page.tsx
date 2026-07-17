@@ -17,7 +17,7 @@ import {
 import { AnalyticsDashboard } from "@/components/dashboard/analytics/analytics-dashboard"
 import { SearchView } from "@/components/dashboard/views/search-view"
 import { CompaniesView } from "@/components/dashboard/views/companies-view"
-import { MapViewFull } from "@/components/dashboard/views/map-view-full"
+import { OSMMapViewWrapper } from "@/components/dashboard/views/osm-map-wrapper"
 import { SourcesView } from "@/components/dashboard/views/sources-view"
 import { JobsView } from "@/components/dashboard/views/jobs-view"
 import { ScraperView } from "@/components/dashboard/views/scraper-view"
@@ -130,10 +130,7 @@ export default function Home() {
             )}
 
             {activeNav === "map" && (
-              <MapViewFull
-                onSelectCompany={handleSelectCompany}
-                highlightedId={highlightedId}
-              />
+              <OSMMapViewWrapper />
             )}
 
             {activeNav === "sources" && <SourcesView />}
