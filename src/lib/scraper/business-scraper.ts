@@ -320,7 +320,7 @@ export class BusinessScraper {
     // Stealth
     await this.context.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false })
-      // @ts-expect-error - delete on window
+      // Cast Record<string, unknown> makes `delete` type-safe — no @ts-expect-error needed
       delete (window as unknown as Record<string, unknown>).__playwright
     })
 
@@ -421,7 +421,7 @@ export class BusinessScraper {
         if (block.blocked) {
           if (block.recoverable) {
             await exponentialBackoff(attempt, this.config.backoffMs)
-            retries++
+            // NOTE: `retries` is not in scope here — the for-loop already increments `attempt`.
             continue
           }
           // Non récupérable (auth, captcha) → fallback avec slug deviné
@@ -435,7 +435,7 @@ export class BusinessScraper {
 
         loaded = true
       } catch (err) {
-        retries++
+        // NOTE: removed undefined `retries++` — the for-loop already increments `attempt`.
         if (attempt === this.config.retries - 1) {
           this.emit({
             type: "biz-error",
@@ -472,7 +472,7 @@ export class BusinessScraper {
         if (slug === "anonymous" || seen.has(slug)) continue
         seen.add(slug)
 
-        const name = (await link.textContent()?.trim()) || slug
+        const name = (await link.textContent())?.trim() || slug
         if (name.length < 2) continue
 
         const base = this.config.mobileVersion ? LINKEDIN_MOBILE : LINKEDIN_DESKTOP

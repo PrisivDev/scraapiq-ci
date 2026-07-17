@@ -16,6 +16,10 @@ import {
   type SendResult,
 } from "./providers"
 
+// Re-export so consumers (alerts.ts, reports.ts) can import the channel type
+// from a single entry point alongside sendMultiChannel().
+export type { NotificationChannel } from "./providers"
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

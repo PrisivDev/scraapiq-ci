@@ -11,26 +11,28 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
+interface ChatResult {
+  id: string
+  name: string
+  sector: string
+  commune: string
+  city: string
+  phone?: string
+  email?: string
+  website?: string
+  address?: string
+  rating?: number
+  reviewCount?: number
+  status?: string
+  score: number
+}
+
 interface ChatMessage {
   id: string
   role: "user" | "assistant"
   content: string
   timestamp: string
-  results?: Array<{
-    id: string
-    name: string
-    sector: string
-    commune: string
-    city: string
-    phone?: string
-    email?: string
-    website?: string
-    address?: string
-    rating?: number
-    reviewCount?: number
-    status?: string
-    score: number
-  }>
+  results?: ChatResult[]
   analysis?: {
     sector?: string
     city?: string
@@ -360,7 +362,7 @@ function MessageBubble({
   )
 }
 
-function ResultCard({ result }: { result: ChatMessage["results"] extends (infer T)[] ? T : never }) {
+function ResultCard({ result }: { result: ChatResult }) {
   return (
     <div className="rounded-lg border p-2.5 hover:bg-accent/30 transition-colors">
       <div className="flex items-start gap-2">

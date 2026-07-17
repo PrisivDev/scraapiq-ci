@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     // Si sourceJobId fourni, récupère les entités du job source
     if (sourceJobId) {
-      let sourceResult: { places?: unknown[] } | null = null
+      let sourceResult: { places?: unknown[] } | null | undefined = null
 
       if (source === "google-maps") {
         const job = getGMJob(sourceJobId)

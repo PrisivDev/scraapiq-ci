@@ -12,7 +12,7 @@ interface AICleanerJobState {
   cleanedEntities: CleanedEntity[]
   report?: CleaningReport
   progress: {
-    status: "queued" | "running" | "completed" | "failed"
+    status: "queued" | "running" | "completed" | "failed" | "cancelled"
     progress: number
     phase: string
     processedCount: number

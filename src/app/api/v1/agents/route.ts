@@ -15,7 +15,7 @@ import "@/lib/ai-agents/agents" // enregistre les processors
 import { jsonResponse, errorResponse } from "@/lib/auth/helpers"
 
 // Store global pour les pipelines
-const globalForAgents = globalThis as unknown as { __agentPipelines?: Map<string, PipelineState> }
+const globalForAgents = globalThis as unknown as { __agentPipelines?: Map<string, { state: PipelineState; orchestrator: PipelineOrchestrator }> }
 const pipelines = globalForAgents.__agentPipelines ?? new Map<string, { state: PipelineState; orchestrator: PipelineOrchestrator }>()
 if (process.env.NODE_ENV !== "production") globalForAgents.__agentPipelines = pipelines
 

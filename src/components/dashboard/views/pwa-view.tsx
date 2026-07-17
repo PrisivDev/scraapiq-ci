@@ -12,14 +12,14 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { usePWA } from "@/lib/pwa/use-pwa"
-import { getPendingActions } from "@/lib/pwa/indexeddb"
+import { getPendingActions, type PendingAction } from "@/lib/pwa/indexeddb"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 export function PWAView() {
   const pwa = usePWA()
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
-  const [pendingList, setPendingList] = useState<Array<Record<string, unknown>>>([])
+  const [pendingList, setPendingList] = useState<PendingAction[]>([])
 
   // Load pending actions
   useEffect(() => {

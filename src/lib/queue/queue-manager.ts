@@ -341,4 +341,4 @@ if (process.env.NODE_ENV !== "production") {
   globalForQueue.__queueManager = queueManager
 }
 
-export { MemoryQueue, type QueueJob, type QueueMetrics, type WorkerStats, type JobProcessor }
+export { MemoryQueue, type JobProcessor }

@@ -301,9 +301,8 @@ export class FacebookScraper {
     await this.context.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false })
       // Supprime les propriétés qui révèlent Playwright
-      // @ts-expect-error - delete on window
+      // Cast Record<string, unknown> makes `delete` type-safe — no @ts-expect-error needed
       delete (window as unknown as Record<string, unknown>).__playwright
-      // @ts-expect-error
       delete (window as unknown as Record<string, unknown>).__pw_manual
     })
 
@@ -425,7 +424,7 @@ export class FacebookScraper {
           if (block.reason === "rate_limited" && block.recoverable) {
             this.emit({ type: "block-detected", reason: block.reason, retrying: true } as ScrapeEvent)
             await exponentialBackoff(attempt, this.config.backoffMs * 3)
-            retries++
+            // NOTE: `retries` is not in scope here — the for-loop already increments `attempt`.
             continue
           }
           // Login required ou bot detected : non récupérable sans cookies
@@ -435,7 +434,7 @@ export class FacebookScraper {
         loaded = true
       } catch (err) {
         if (err instanceof FacebookBlockError && !err.recoverable) throw err
-        retries++
+        // NOTE: removed undefined `retries++` — the for-loop already increments `attempt`.
         if (attempt === this.config.retries - 1) throw err
         this.emit({
           type: "error",
@@ -505,7 +504,7 @@ export class FacebookScraper {
           seen.add(pageSlug)
 
           // Le texte du lien est souvent le nom de la page
-          const name = (await link.textContent()?.trim()) || pageSlug
+          const name = (await link.textContent())?.trim() || pageSlug
           if (name.length < 2) continue
 
           results.push({

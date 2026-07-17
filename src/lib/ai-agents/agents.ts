@@ -13,7 +13,7 @@ import { PipelineOrchestrator, registerProcessor, type PipelineState, type Pipel
 // ============================================================================
 
 registerProcessor("sources", async (state, config) => {
-  const sources = []
+  const sources: Array<{ id: string; name: string; priority: number; expectedResults: number }> = []
   const queries: Record<string, string> = {}
 
   // Analyse la requête pour déterminer les sources

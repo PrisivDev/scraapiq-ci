@@ -92,7 +92,7 @@ export function ExportEngineView() {
       const data: ExportJobInfo = await res.json()
       setCurrentJob(data)
 
-      if (data.status === "running" || data.status === "processing" || data.status === "queued") {
+      if (data.status === "processing" || data.status === "queued") {
         setTimeout(() => pollJob(jobId), 800)
       } else if (data.status === "completed") {
         toast.success("Export terminé !", {

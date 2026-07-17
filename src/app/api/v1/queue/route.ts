@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   // Test : envoie des jobs sur toutes les queues
   if (action === "test") {
-    const jobs = []
+    const jobs: Array<{ id: string; queue: QueueName; name: string; priority: number }> = []
     const testJobs: Array<{ queue: QueueName; name: string; data: Record<string, unknown>; priority: number }> = [
       { queue: "scraping", name: "test-scrape", data: { keyword: "restaurant", city: "Abidjan", source: "google-maps" }, priority: 10 },
       { queue: "ai-cleaner", name: "test-clean", data: { entities: [{ id: "1", name: "Test" }] }, priority: 5 },

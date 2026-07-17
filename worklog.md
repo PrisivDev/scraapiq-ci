@@ -1810,3 +1810,284 @@ Stage Summary:
 - 149 pages denses avec 19 chapitres complets
 - Couvre tous les aspects demandés : contexte, objectifs, fonctionnalités, architecture, cas d'utilisation, wireframes, UML, Mermaid, API, BDD, sécurité, déploiement, tests, planning, budget, roadmap, maintenance, évolutions, annexes
 - Disponible dans download/cahier_des_charges_scraapiq_ci.pdf
+
+---
+Task ID: 33-c
+Agent: Security Middleware Builder
+Task: Create Next.js middleware with security headers (CSP, HSTS, X-Frame-Options) + configurable CORS
+
+Work Log:
+- Read worklog.md to understand project context (auth system, RBAC, API routes, OAuth callbacks).
+- Found existing middleware at `/home/z/my-project/src/middleware.ts` — pure auth/route-protection logic
+  (PUBLIC_ROUTES = /auth/login|register|verify-2fa; PUBLIC_PATTERNS = /api/auth/, /api/oauth/,
+  /api/twofa/(setup|disable), GET /api/v1, /api/v1/docs[/ui]; everything else requires
+  access/refresh cookie OR Bearer token OR X-API-Key, otherwise 401 JSON for /api/* or redirect
+  to /auth/login?redirect=... for pages).
+- Confirmed `next.config.ts` already had a `headers()` block applying a permissive static CSP
+  (allows fonts.googleapis.com, http: img-src) + X-Frame-Options, X-Content-Type-Options,
+  Referrer-Policy, Permissions-Policy and HSTS (prod only, max-age=31536000). Left it in place
+  as a fallback for static-asset routes that the middleware matcher excludes; the middleware
+  overrides these headers with stricter values at runtime.
+- Verified Next.js 16 dev server was already running (PID 9003, port 3000) — no need to spawn
+  a duplicate. Note: Next.js 16 logs `⚠ The "middleware" file convention is deprecated. Please
+  use "proxy" instead.` — kept `middleware.ts` filename per task spec (still functional).
+- Rewrote `src/middleware.ts` to PRESERVE 100% of the original auth/route-protection logic
+  and ADD on top:
+  1. OPTIONS preflight handling for /api/* → 204 with CORS headers (BEFORE auth check, since
+     browser preflights never carry credentials — would break all cross-origin API calls if
+     auth ran first).
+  2. Security headers applied to every response via `applySecurityHeaders(res)`:
+     - Content-Security-Policy (strict: no fonts.googleapis.com, no http: img-src, no
+       upgrade-insecure-requests; tech-debt note added re: 'unsafe-inline' for scripts/styles
+       pending future nonce-based CSP)
+     - X-Frame-Options: DENY (kept for legacy browsers, in addition to CSP frame-ancestors)
+     - X-Content-Type-Options: nosniff
+     - Referrer-Policy: strict-origin-when-cross-origin
+     - Permissions-Policy: camera=(), microphone=(), geolocation=(self), interest-cohort=()
+     - X-DNS-Prefetch-Control: on
+     - Cross-Origin-Opener-Policy: same-origin
+     - Cross-Origin-Resource-Policy: same-origin
+     - Strict-Transport-Security: max-age=63072000; includeSubDomains; preload (PROD ONLY)
+  3. CORS for /api/* via `applyCorsHeaders(res, req, allowedOrigins)`:
+     - Origins: NEXT_PUBLIC_APP_URL + ALLOWED_ORIGINS (comma-separated). In dev, also
+       permissively allow any localhost/127.0.0.1 origin (any port).
+     - Sets Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+     - Sets Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Key, X-Request-Id
+     - Sets Access-Control-Allow-Credentials: true
+     - Sets Access-Control-Max-Age: 86400
+     - Sets Access-Control-Allow-Origin to the EXACT matched Origin (not '*') + Vary: Origin
+     - In production, if Origin doesn't match allowed list → does NOT set ACAO (browser blocks)
+  4. Matcher expanded to exclude static extensions (png|jpg|jpeg|gif|webp|svg|ico|xml|txt|js|
+     css|woff|woff2|map) + favicon.ico, logo.svg, robots.txt, manifest.json, sw.js, icon-192.png,
+     icon-512.png, plus _next/static and _next/image. Original matcher only excluded the first
+     four — extension-based exclusion prevents middleware from running on every static asset
+     request (perf).
+- Refactored the auth logic into a single `let res: NextResponse` flow so security + CORS
+  headers are applied exactly once at the end (no missed branches). Behaviour preserved:
+  - Public API patterns → NextResponse.next()
+  - Public pages → next(), or redirect to "/" if already logged in and hitting /auth/login
+  - Protected routes → 401 JSON for /api/* or redirect to /auth/login?redirect=... for pages
+  when no access/refresh cookie + no Bearer + no X-API-Key is present.
+- Ran `bun run lint` → clean, no errors, no warnings.
+- Smoke-tested via curl on the live dev server (PID 9003):
+  - `GET /` → 307 redirect to /auth/login?redirect=%2F + ALL security headers present
+    (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy,
+    X-DNS-Prefetch-Control, COOP, CORP). NO HSTS in dev (correct).
+  - `GET /api/v1` (no Origin) → security headers + CORS Allow-Methods/Headers/Credentials/
+    Max-Age, but NO Access-Control-Allow-Origin (correct — no Origin to mirror).
+  - `OPTIONS /api/v1` with Origin: http://localhost:3000 → HTTP 204 + ACAO: http://localhost:3000
+    + full CORS header set + security headers.
+  - `GET /api/v1` with Origin: http://localhost:3000 → ACAO mirrored + Vary: Origin.
+  - `GET /api/v1` with Origin: http://localhost:5173 (different port) → ACAO mirrored (dev
+    permissive for localhost).
+  - `GET /api/v1` with Origin: https://evil.example.com → NO ACAO (browser will block — correct).
+  - Auth protection preserved: `GET /account/permissions` (no cookie) → 307 to
+    /auth/login?redirect=%2Faccount%2Fpermissions + security headers.
+  - `GET /api/me` (no auth) → 401 JSON (preserved).
+  - `OPTIONS /api/me` (no cookie, but Origin set) → 204 (preflight bypasses auth correctly —
+    critical so that browser preflights for authenticated APIs don't get 401'd).
+  - `GET /favicon.ico` → 404 (no middleware headers — correctly excluded by matcher; 404 is
+    because the project uses logo.svg instead, not a real error).
+
+Stage Summary:
+- `/home/z/my-project/src/middleware.ts` rewritten with 3 concerns layered cleanly:
+  (a) OPTIONS preflight → 204, (b) security headers on every response, (c) CORS on /api/*,
+  (d) preserved auth/route-protection. No auth logic was modified — only wrapped.
+- Security headers added: Content-Security-Policy (strict), X-Frame-Options: DENY,
+  X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin,
+  Permissions-Policy (camera/mic/geolocation/interest-cohort locked down), X-DNS-Prefetch-Control:
+  on, Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Resource-Policy: same-origin,
+  Strict-Transport-Security (prod only, 2 years + subdomains + preload).
+- CORS: configurable via NEXT_PUBLIC_APP_URL + ALLOWED_ORIGINS (comma-separated). Credentials
+  allowed. Preflight cached 24h. Dev = permissive on any localhost port. Prod = strict allowlist,
+  unmatched origins get no ACAO → browser blocks.
+- Lint: clean. No build performed (per task rules).
+- Curl verification: all 9 curl checks produced expected results (security headers on pages +
+  API, CORS preflight 204, origin matching with Vary: Origin, dev permissive on localhost,
+  production-style blocking of non-allowed origins, auth redirect still works, preflight bypasses
+  auth, matcher excludes static assets).
+- Tech debt noted in code comments: CSP still uses 'unsafe-inline'/'unsafe-eval' for scripts
+  (Next.js hydration requirement) — future task should implement nonce-based CSP via
+  `res.headers.set('Content-Security-Policy', csp.replace('unsafe-inline', \`'nonce-${nonce}'\`))`
+  and a generateNonce() helper.
+
+---
+Task ID: 33-a
+Agent: P0-1 env-secrets (sub-agent)
+Task: Generate a complete `.env.example` covering EVERY env var used by the ScrapIQ CI codebase, plus a `scripts/generate-secrets.sh` that produces all the cryptographic secrets needed for production deployment. The existing dev `.env` (which only contains `DATABASE_URL`) must be left untouched; the new `.env.example` must be safe to commit (placeholders only, no real secrets).
+
+Work Log:
+- Read worklog.md (1912 lines, ~40 prior tasks) to understand the platform: Next.js 16 SaaS for Ivory Coast with auth (JWT + refresh rotation + 2FA TOTP + OAuth Google/Microsoft), RBAC, multi-tenant orgs/workspaces, multi-source scraping (Google Maps, Facebook, LinkedIn, Web), AI cleaning/enrichment via z-ai-web-dev-sdk, BullMQ + Redis queues, SaaS billing (Stripe + Orange Money + MTN MoMo), notifications (email/sms/whatsapp/push/webhook), REST API with API keys + webhooks, PWA, scheduled reports, alerts, analytics, export engine (xlsx/csv/pdf/json/zip).
+- Inspected the two existing files I was asked to (re)build:
+  - `.env.example` — minimal 87-line template, covered the basics but missed: NEXT_PUBLIC_API_URL, ALLOWED_ORIGINS, DIRECT_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, JWT_ISSUER, JWT_AUDIENCE, SESSION_ENCRYPTION_KEY, OAUTH_GOOGLE_CALLBACK_URL, OAUTH_MICROSOFT_TENANT, OAUTH_MICROSOFT_CALLBACK_URL, STRIPE_PUBLISHABLE_KEY, MTN_MOMO_API_USER, FROM_NAME.
+  - `scripts/generate-secrets.sh` — already existed with --write/--check modes, but only generated 5 secrets (JWT_SECRET, ENCRYPTION_KEY, TWOFACTOR_ENCRYPTION_KEY, WEBHOOK_SIGNING_SECRET, API_KEY_SALT); the task spec requires JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, TWOFACTOR_ENCRYPTION_KEY, API_KEY_SALT, WEBHOOK_SIGNING_SECRET, SESSION_ENCRYPTION_KEY.
+- Exhaustively grepped the codebase for env-var references:
+  - `rg -no 'process\.env\.[A-Z_][A-Z0-9_]*' src/ mini-services/` → 14 distinct names.
+  - `rg 'env\("[A-Z0-9_]+"\)' prisma/` → `env("DATABASE_URL")` in `prisma/schema.prisma:10`.
+  - Cross-checked every `src/lib/auth/*`, `src/lib/queue/*`, `src/lib/security/*`, `src/lib/notifications/*`, `src/lib/saas/*`, `src/lib/assistant/*`, `src/lib/scraper/*`, `src/middleware.ts`, `next.config.ts`, `src/app/api/ready/route.ts`, `src/app/api/v1/queue/route.ts`.
+- Compiled the COMPLETE list of env vars actually referenced in code (15 total — see Stage Summary below) and merged it with the production-anticipated vars listed in the task description (forward-looking OAuth callbacks, split JWT secrets, Stripe/Orange/MTN, SMTP, Sentry, Playwright, proxy pool, etc.).
+- Rewrote `/home/z/my-project/.env.example` (now 178 lines, 9 categorized sections):
+  - APPLICATION, DATABASE, AUTH & SECURITY, OAUTH PROVIDERS, AI, REDIS / BULLMQ, EMAIL / SMTP, PAYMENTS, MONITORING / OBSERVABILITY, SCRAPING / PLAYWRIGHT.
+  - Every variable carries an inline comment explaining its purpose AND a marker: `[CODE]` (actually read by the codebase today), `[PROD]` (anticipated for production), `[GENERATE]` (must be generated with the script).
+  - Placeholders only: `<replace: openssl rand -base64 32>` for secrets, `postgresql://USER:PASSWORD@HOST:5432/...` for DB, `sk_live_xxx` / `pk_live_xxx` / `whsec_xxx` for Stripe. No real secret anywhere.
+  - AES-256-GCM keys (ENCRYPTION_KEY, TWOFACTOR_ENCRYPTION_KEY, SESSION_ENCRYPTION_KEY) documented as "exactly 32 bytes UTF-8" with the correct `openssl rand -base64 24 | tr -d '\n' | head -c 32` recipe (the cipher rejects 44-char base64 output).
+- Rewrote `/home/z/my-project/scripts/generate-secrets.sh` (now 269 lines, chmod +x):
+  - `#!/usr/bin/env bash` + `set -euo pipefail` (per task spec).
+  - Three modes: default (print secrets), `--write [PATH]` (write full `.env.production`), `--check [PATH]` (verify no placeholders/weak secrets). Plus `--help`.
+  - Generates 8 secrets (covers the 6 required by the task spec + the 2 legacy names actually used by the codebase today):
+    - `JWT_SECRET` (48-byte base64 — what `src/lib/auth/jwt.ts` actually reads today).
+    - `JWT_ACCESS_SECRET` (32-byte base64 — forward-looking split-secret per task spec).
+    - `JWT_REFRESH_SECRET` (32-byte base64 — forward-looking split-secret per task spec).
+    - `ENCRYPTION_KEY` (32-byte UTF-8 — what `src/lib/security/security-module.ts` actually reads today; AES-256-GCM).
+    - `TWOFACTOR_ENCRYPTION_KEY` (32-byte UTF-8 — per task spec).
+    - `SESSION_ENCRYPTION_KEY` (32-byte UTF-8 — per task spec).
+    - `WEBHOOK_SIGNING_SECRET` (32-byte base64 — per task spec).
+    - `API_KEY_SALT` (32-char hex — per task spec).
+  - `gen_bytes <len> <fmt>` helper centralises the openssl invocations. `gen_aes_key` helper emits exactly 32 bytes of UTF-8 (24 random bytes → base64 → strip newlines → take 32 chars).
+  - `--write` mode backs up any existing target to `.bak`, then writes a full `.env.production` skeleton with the generated secrets + placeholder slots for all the manual-fill vars (DATABASE_URL, ZAI_API_KEY, OAuth, REDIS_URL, SMTP, payments, Sentry, Playwright, ...).
+  - `--check` mode parses an env file once into an associative array, then validates: presence, non-emptiness, absence of placeholder strings (`<replace...`, `CHANGE_ME`, `dev-secret`, `dev-key-change`, `*-change-in-prod*`), and length constraints (JWT_SECRET ≥32 chars, AES keys exactly 32 chars).
+  - Tested all 4 modes:
+    - `bash scripts/generate-secrets.sh` → prints 8 secrets + manual-fill block (exit 0).
+    - `bash scripts/generate-secrets.sh --write /tmp/test-env-prod` → writes 60-line file with all sections (exit 0; cleaned up after).
+    - `bash scripts/generate-secrets.sh --check .env` → correctly reports the dev `.env` (which only has `DATABASE_URL`) as missing 7 critical secrets (exit 1, expected).
+    - `bash scripts/generate-secrets.sh --help` → shows usage + the 8 generated secrets (exit 0).
+- Did NOT touch the dev `.env` (still contains just `DATABASE_URL=file:/home/z/my-project/db/custom.db` — verified with `Read`).
+- Ran `bun run lint` → clean, 0 errors, 0 warnings (no source files changed; only `.env.example` + `scripts/generate-secrets.sh`).
+
+Stage Summary:
+- `.env.example` (178 lines, 9 sections) now documents every env var the codebase needs (15 actually-used + 17 production-anticipated = 32 total) with inline comments + `[CODE]` / `[PROD]` markers. Safe to commit — placeholders only.
+- `scripts/generate-secrets.sh` (269 lines, executable, `set -euo pipefail`) generates the 8 cryptographic secrets required for production (covers the 6 task-spec vars + the 2 actually-used legacy names), with `--write` / `--check` / `--help` convenience modes.
+- Both files verified end-to-end with all 4 script modes and a lint run.
+
+COMPLETE list of env vars found in the codebase (15 — actually referenced in src/ + prisma/):
+
+  APPLICATION (3):
+    - NODE_ENV                [CODE] src/lib/db.ts, src/lib/security/security-module.ts, src/lib/auth/config.ts, src/middleware.ts, next.config.ts, src/lib/queue/queue-manager.ts, all *-job-store.ts, src/lib/export/export-store.ts, src/lib/search/search-store.ts, src/app/api/v1/agents/route.ts
+    - NEXT_PUBLIC_APP_URL     [CODE] src/middleware.ts → getAllowedOrigins()
+    - ALLOWED_ORIGINS         [CODE] src/middleware.ts → getAllowedOrigins()
+
+  DATABASE (1):
+    - DATABASE_URL            [CODE] prisma/schema.prisma:10 → env("DATABASE_URL")
+
+  AUTH & SECURITY (2):
+    - JWT_SECRET              [CODE] src/lib/auth/jwt.ts (jose HS256, ≥32 bytes)
+    - ENCRYPTION_KEY          [CODE] src/lib/security/security-module.ts:569 (AES-256-GCM, exactly 32-byte UTF-8)
+
+  OAUTH PROVIDERS (4):
+    - GOOGLE_CLIENT_ID        [CODE] src/lib/auth/oauth.ts (falls back to "demo-client-id" if empty)
+    - GOOGLE_CLIENT_SECRET    [CODE] src/lib/auth/oauth.ts
+    - MICROSOFT_CLIENT_ID     [CODE] src/lib/auth/oauth.ts (falls back to "demo-client-id" if empty)
+    - MICROSOFT_CLIENT_SECRET [CODE] src/lib/auth/oauth.ts
+
+  AI (1):
+    - ZAI_API_KEY             [CODE] src/app/api/ready/route.ts (verified) + z-ai-web-dev-sdk auto-reads it in src/lib/assistant/assistant-engine.ts, src/lib/scraper/sector-detector.ts, src/lib/scraper/ai-enricher.ts, src/lib/scraper/quality-closed-detector.ts
+
+  REDIS / BULLMQ (4):
+    - REDIS_URL               [CODE] src/app/api/ready/route.ts (priority over host/port/password)
+    - REDIS_HOST              [CODE] src/lib/queue/config.ts, src/app/api/v1/queue/route.ts, src/app/api/ready/route.ts
+    - REDIS_PORT              [CODE] src/lib/queue/config.ts, src/app/api/v1/queue/route.ts, src/app/api/ready/route.ts
+    - REDIS_PASSWORD          [CODE] src/lib/queue/config.ts, src/app/api/ready/route.ts
+
+Production-anticipated vars (17) included in `.env.example` for forward-looking deployment readiness (not yet referenced in code, but designed per the worklog architecture: SaaS billing, OAuth providers, notifications, monitoring, scraping infra):
+
+  APPLICATION: NEXT_PUBLIC_API_URL
+  DATABASE: DIRECT_URL
+  AUTH & SECURITY: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, JWT_ISSUER, JWT_AUDIENCE, TWOFACTOR_ENCRYPTION_KEY, SESSION_ENCRYPTION_KEY, WEBHOOK_SIGNING_SECRET, API_KEY_SALT
+  OAUTH: OAUTH_GOOGLE_CALLBACK_URL, OAUTH_MICROSOFT_TENANT, OAUTH_MICROSOFT_CALLBACK_URL
+  EMAIL: SMTP_URL, FROM_EMAIL, FROM_NAME
+  PAYMENTS: STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, ORANGE_MONEY_CLIENT_ID, ORANGE_MONEY_CLIENT_SECRET, ORANGE_MONEY_MERCHANT_KEY, MTN_MOMO_SUBSCRIPTION_KEY, MTN_MOMO_API_USER, MTN_MOMO_API_KEY
+  MONITORING: SENTRY_DSN, LOG_LEVEL
+  SCRAPING: CHROMIUM_EXECUTABLE_PATH, PLAYWRIGHT_NO_SANDBOX, SCRAPER_PROXY_POOL
+
+Next actions for the operator:
+  1. `cp .env.example .env.production`
+  2. `bash scripts/generate-secrets.sh --write .env.production` (auto-fills the 8 secrets)
+  3. Edit `.env.production` to fill in DATABASE_URL, DIRECT_URL, ZAI_API_KEY, OAuth credentials, REDIS_URL, SMTP_URL, Stripe/Orange/MTN credentials.
+  4. `bash scripts/generate-secrets.sh --check .env.production` (must exit 0 before deploy)
+  5. Add `.env.production` to `.gitignore` (if not already).
+
+---
+Task ID: 33-b
+Agent: Next.js Config Fixer
+Task: Fix next.config.ts (ignoreBuildErrors=false, reactStrictMode=true) + surface hidden type errors
+
+Work Log:
+- Read worklog + git history. Found the committed HEAD version of `next.config.ts` was the dangerous one (`ignoreBuildErrors: true`, `reactStrictMode: false`), but the working tree had already been moved to a production-safe version with security headers (CSP, HSTS, X-Frame-Options, etc.) — likely from a prior 33-a pass.
+- Inspected the working tree `next.config.ts` (68 lines). It already had: `output: "standalone"`, `typescript.ignoreBuildErrors: false`, `reactStrictMode: true`, `compress: true`, `poweredByHeader: false`, plus a `headers()` block with security headers (X-Content-Type-Options, X-Frame-Options: DENY, Referrer-Policy, Permissions-Policy, HSTS in prod, CSP). No `experimental` block — verified by grepping the codebase for `experimental` usage: zero matches. So omitted `experimental` entirely (per task rules).
+- Tried to add `eslint.ignoreDuringBuilds: false` per the task spec. Ran `bunx tsc --noEmit` → got `next.config.ts(11,3): error TS2353: 'eslint' does not exist in type 'NextConfig'`. Investigated `node_modules/next/dist/server/config-shared.d.ts`: confirmed Next.js 16.1.3 REMOVED the `eslint` field from `NextConfig` (ESLint is no longer integrated into the build — must be run separately via `bun run lint`). Removed the `eslint` block I had just added and replaced it with an explanatory comment so future maintainers don't try to re-add it.
+- Final `next.config.ts` is the production-safe version described in the task (minus the removed `eslint` block) PLUS the bonus security headers from the previous pass.
+
+Type-check baseline (after deleting `tsconfig.tsbuildinfo` to defeat incremental cache):
+- `bunx tsc --noEmit` → **175 errors** spread across 26 files (mostly in `src/lib/scraper/*`, `src/lib/pwa/*`, `src/lib/notifications/*`, `src/lib/queue/*`).
+
+Error categorization:
+- **CRITICAL (real bugs that crash at runtime or break the build)**:
+  - TS2304 `Cannot find name 'retries'` (×4) — `business-scraper.ts:424,438` and `facebook-scraper.ts:428,438`. `retries` was declared inside the `scrape()` method but referenced inside `searchCompanies()` / `searchPages()` which are SEPARATE methods. Would throw `ReferenceError: retries is not defined` at runtime.
+  - TS2339 `Property 'trim' does not exist on type 'Promise<string | null>'` (×2) — `business-scraper.ts:475` and `facebook-scraper.ts:508`. Operator-precedence bug: `(await link.textContent()?.trim())` is parsed as `await (link.textContent()?.trim())`, calling `.trim()` on a Promise. Would throw `TypeError: ...trim is not a function` at runtime.
+  - TS2484 `Export declaration conflicts with exported declaration` (×3) — `queue-manager.ts:344`. `QueueJob`, `QueueMetrics`, `WorkerStats` were already declared as `export interface` at lines 19/38/51 AND re-exported in the trailing `export { ... }` block. Build-time error.
+  - TS2322 `Type '"cancelled"' is not assignable to '"queued" | "running" | "completed" | "failed"'` (×1) — `ai-cleaner-job-store.ts:138`. The status union was missing the `"cancelled"` value even though `cancelAICleanerJob()` assigns it.
+  - TS2459 `Module '"./engine"' declares 'NotificationChannel' locally, but it is not exported` (×2) — `alerts.ts:22`, `reports.ts:15`. `engine.ts` imported `NotificationChannel` from `./providers` without re-exporting it; consumers expected it from `./engine`.
+  - TS2459 `Module '"./ai-cleaner-types"' declares 'ScrapedPlace' locally, but it is not exported` (×1) — `ai-cleaner-job-store.ts:6`. Same pattern: `ai-cleaner-types.ts` imported `ScrapedPlace` from `./types` without re-exporting it.
+  - TS2578 `Unused '@ts-expect-error' directive` (×3) — `business-scraper.ts:323`, `facebook-scraper.ts:304,306`. Stale directives: the `delete (window as unknown as Record<string, unknown>).__playwright` cast already makes `delete` type-safe, so `@ts-expect-error` is dead code. tsc errors on stale directives under `--strict`.
+- **Cosmetic / type-safety improvements (deferred — NOT runtime crashes)**: ~140 TS2339/TS2352/TS2353 errors in scraper files where code accesses properties on `Record<string, unknown>` JSON payloads (Playwright `$eval` results, external page JSON). Runtime works fine because JS allows dynamic access; fixing requires defining proper interfaces for every external JSON shape — out of scope for this task.
+- **False positives (third-party / DOM lib)**: 6 × TS18046 in `pwa/use-pwa.ts` (`reg.sync is of type 'unknown'` — Background Sync API is not in TS's default DOM lib; runtime is gated by `"sync" in reg` checks so it's safe). 1 × TS2345 in `pwa/use-pwa.ts:182` (pending-action type narrowing). Deferred.
+
+Critical fixes applied (surgical edits only — no rewrites):
+1. `business-scraper.ts`: removed the 2 broken `retries++` lines (the for-loop header already increments `attempt`), fixed the `await` precedence on `link.textContent()`, removed the 1 stale `@ts-expect-error` directive on the `__playwright` delete cast.
+2. `facebook-scraper.ts`: same 3 fixes (2 × `retries++`, 1 × `await` precedence, 2 stale `@ts-expect-error` directives on `__playwright` and `__pw_manual` deletes).
+3. `queue-manager.ts:344`: dropped the duplicate `type QueueJob, type QueueMetrics, type WorkerStats` from the trailing `export { ... }` block (they're already exported at their declaration site). Kept `MemoryQueue` and `type JobProcessor` which are NOT exported elsewhere.
+4. `ai-cleaner-job-store.ts:15`: added `"cancelled"` to the job status union type.
+5. `notifications/engine.ts`: added `export type { NotificationChannel } from "./providers";` so `alerts.ts` and `reports.ts` can import it from `./engine` as they already do.
+6. `scraper/ai-cleaner-types.ts`: added `export type { ScrapedPlace } from "./types";` so `ai-cleaner-job-store.ts` can import it from `./ai-cleaner-types` as it already does.
+7. `notifications/seed.ts` (collateral): the `NotificationChannel` re-export in step 5 newly exposed a latent type bug — `DEFAULT_REPORTS.channels` was inferred as `string[]` instead of `NotificationChannel[]`, breaking `createScheduledReport(r)`. Fixed by importing `NotificationChannel` and annotating the two `channels: ["email"]` literals with `satisfies NotificationChannel[]`.
+
+Verification:
+- `bunx tsc --noEmit` (with cache cleared) → **175 errors → 159 errors** (16 critical fixed, 1 collateral surfaced+fixed, 0 regressions on critical patterns).
+- `bun run lint` → exit code 0, no errors, no warnings.
+- Did NOT run `bun run build` (sandbox forbids it; used `bunx tsc --noEmit` for type validation as instructed).
+- Did NOT touch `.env`, `prisma/schema.prisma`, or `package.json`.
+
+Stage Summary:
+- `next.config.ts` is now production-safe: `ignoreBuildErrors: false`, `reactStrictMode: true`, `poweredByHeader: false`, `compress: true`, plus a strong security-headers block (CSP, HSTS in prod, X-Frame-Options: DENY, Permissions-Policy, Referrer-Policy, X-Content-Type-Options). No `experimental` block (none needed). Note: `eslint.ignoreDuringBuilds` is NOT in the config because Next.js 16.1.3 removed the `eslint` field from `NextConfig` — ESLint now runs separately via `bun run lint`.
+- Surfaced 175 hidden TypeScript errors that were being silently ignored by the old `ignoreBuildErrors: true`.
+- Fixed all 16 critical errors (4 × `Cannot find name 'retries'`, 2 × missing `await` before `.trim()`, 3 × duplicate export, 1 × missing `"cancelled"` status, 3 × missing re-export, 3 × stale `@ts-expect-error`) plus 1 collateral type bug exposed by the re-export fix.
+- 159 remaining errors are non-critical type-safety improvements in scraper JSON-shape access (and a few PWA Background Sync API false positives). Recommend a follow-up task to add proper interfaces for the Playwright `$eval` return shapes — would clear ~120 of the 159.
+- Lint: clean (exit 0).
+- Type validation: `bunx tsc --noEmit` exit 1 (159 remaining non-critical errors), no longer hiding the dangerous `ignoreBuildErrors: true` situation.
+
+---
+Task ID: 33-d
+Agent: Health Endpoint Builder
+Task: Add /api/health (liveness) + /api/ready (readiness, checks DB/Redis/z-ai) for load balancer
+
+Work Log:
+- Read `worklog.md` and explored the codebase to map the three dependencies the readiness probe must verify:
+  - Prisma: `src/lib/db.ts` exports a singleton `db` (PrismaClient) — confirmed `import { db } from "@/lib/db"` is the canonical pattern (also used by `src/lib/api/helpers.ts`).
+  - Redis: there is NO long-lived Redis client helper. `src/lib/queue/config.ts` exposes `REDIS_CONFIG` (built from `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`) and an `isRedisAvailable()` helper that does a one-shot ioredis dynamic-import ping and returns a boolean (no latency). `.env.example` documents BOTH `REDIS_URL` (commented) and the separate `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` form, so the readiness probe must accept either.
+  - z-ai: `z-ai-web-dev-sdk` is declared in `package.json` (^0.0.18) and `ZAI_API_KEY` is referenced in `.env.example` / `scripts/generate-secrets.sh`, but no src file imports it yet — so the readiness check just verifies env-var presence (no API call, as instructed).
+  - Auth/middleware: `src/middleware.ts` already had a `PUBLIC_PATTERNS` allow-list for unauthenticated API routes (`/api/auth/*`, `/api/oauth/*`, `/api/v1`, `/api/v1/docs`). Note: while I was working, a concurrent agent (33-c) rewrote `src/middleware.ts` to also add CORS + security headers — I re-applied my PUBLIC_PATTERNS addition on top of the new file.
+- Created `src/app/api/health/route.ts` (liveness):
+  - `export const dynamic = "force-dynamic"` + `runtime = "nodejs"`.
+  - GET returns 200 with `{status, timestamp, uptime, env, version}`. No DB/Redis checks — pure process-alive probe, < 5 ms.
+- Created `src/app/api/ready/route.ts` (readiness):
+  - Same `dynamic`/`runtime` exports.
+  - `TIMEOUT_MS = 3000`. `withTimeout()` races each check against a 3 s timer and returns `{ok, latencyMs, error?}`.
+  - Database: `db.$queryRaw\`SELECT 1\`` wrapped in `withTimeout` (3 s).
+  - Redis: if `REDIS_URL` OR `REDIS_HOST` is set, dynamically imports `ioredis` and pings (supports both URL and host/port/password forms, with `connectTimeout: 3000`, `retryStrategy: () => null`, and `disconnect()` in a finally block to avoid leaking connections). If neither env var is set → `skipped: true` (dev mode), still counted as OK.
+  - z-ai: checks `process.env.ZAI_API_KEY` is present and non-empty (no API call).
+  - Returns 200 `{status: "ready", timestamp, checks}` if every check is OK, otherwise 503 `{status: "not_ready", ...}`.
+- Updated `src/middleware.ts` `PUBLIC_PATTERNS` to include `/^\/api\/(health|ready)$/` so load balancers can hit them without auth cookies/Bearer/API key (otherwise the LB would get 401). This was re-applied after a concurrent agent rewrote the file.
+- Verified: `bun run lint` → exit 0, no errors, no warnings.
+- Verified via curl against the running dev server (port 3000):
+  - `GET /api/health` → HTTP 200, body: `{"status":"healthy","timestamp":"2026-07-17T14:02:55.176Z","uptime":1021.67,"env":"development","version":"0.2.0"}`
+  - `GET /api/ready` → HTTP 503 (correct: `database.ok=true (83ms)`, `redis.skipped=true` (dev), `zai.ok=false` because `ZAI_API_KEY` is not set in the sandbox `.env`). The 503 is the expected behaviour — readiness correctly fails when a required dependency is unconfigured. In production with `ZAI_API_KEY` set, this would return 200.
+- Did NOT run `bun run build`. Did NOT touch `.env`, `prisma/schema.prisma`, or `package.json`.
+
+Stage Summary:
+- Two new public API routes added for production load balancing + monitoring:
+  - `GET /api/health` — liveness probe (process alive), 200, < 5 ms, no dependency checks. Use for k8s `livenessProbe` / Caddy `health_uri` passive checks.
+  - `GET /api/ready` — readiness probe (DB + Redis + z-ai config), 200 if all OK else 503, < 3.5 s (3 s per-check timeout). Use for k8s `readinessProbe` / Caddy active health checks — when 503, the LB stops routing traffic but does NOT restart the pod.
+- `src/middleware.ts` updated: added `/^\/api\/(health|ready)$/` to `PUBLIC_PATTERNS` so the endpoints bypass the auth check (otherwise the LB would get 401 and mark the pod unhealthy). Note: a concurrent agent (33-c) also rewrote the middleware to add CORS + security headers — my PUBLIC_PATTERNS addition was re-applied on top of that rewrite, so both changes coexist.
+- No new Redis client helper was created — the ready route does its own one-shot `ioredis` ping (dynamic import + `disconnect()` in finally) because the existing `isRedisAvailable()` in `src/lib/queue/config.ts` only returns a boolean and doesn't support `REDIS_URL`. The route's ping handles both `REDIS_URL` and `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` forms, matching the dual configuration documented in `.env.example`.
+- Lint: clean (exit 0).
+- curl verification: `/api/health` → 200 ✓, `/api/ready` → 503 (correct: `ZAI_API_KEY` not set in sandbox dev env).

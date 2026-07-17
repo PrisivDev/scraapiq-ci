@@ -197,7 +197,7 @@ export async function GET(
       name: user.name,
       role,
       orgId: membership?.organizationId,
-      workspaceId: membership?.workspaceId,
+      workspaceId: membership?.workspaceId ?? undefined,
       userAgent,
       ip,
       auditAction: "oauth_login",

@@ -1,0 +1,346 @@
+src/app/api/auth/login/route.ts(154,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/api/auth/refresh/route.ts(75,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/api/auth/verify-2fa/route.ts(127,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/api/oauth/[provider]/callback/route.ts(200,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/app/api/scraper/ai-cleaner/route.ts(39,9): error TS2322: Type 'ScrapeResult | undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+  Type 'undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+src/app/api/scraper/ai-cleaner/route.ts(42,9): error TS2322: Type 'ScrapeResult | undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+  Type 'undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+src/app/api/scraper/ai-cleaner/route.ts(45,9): error TS2322: Type 'ScrapeResult | undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+  Type 'undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+src/app/api/scraper/ai-cleaner/route.ts(48,9): error TS2322: Type 'ScrapeResult | undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+  Type 'undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+src/app/api/scraper/ai-cleaner/route.ts(55,9): error TS2322: Type 'ScrapeResult | undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+  Type 'undefined' is not assignable to type '{ places?: unknown[] | undefined; } | null'.
+src/app/api/v1/agents/route.ts(20,44): error TS2322: Type 'Map<string, PipelineState> | Map<string, { state: PipelineState; orchestrator: PipelineOrchestrator; }>' is not assignable to type 'Map<string, PipelineState> | undefined'.
+  Type 'Map<string, { state: PipelineState; orchestrator: PipelineOrchestrator; }>' is not assignable to type 'Map<string, PipelineState>'.
+    Type '{ state: PipelineState; orchestrator: PipelineOrchestrator; }' is missing the following properties from type 'PipelineState': jobId, query, startedAt, status, and 5 more.
+src/app/api/v1/agents/route.ts(51,26): error TS2345: Argument of type '{ state: PipelineState; orchestrator: PipelineOrchestrator; }' is not assignable to parameter of type '{ state: PipelineState; orchestrator: PipelineOrchestrator; } & PipelineState'.
+  Type '{ state: PipelineState; orchestrator: PipelineOrchestrator; }' is missing the following properties from type 'PipelineState': jobId, query, startedAt, status, and 5 more.
+src/app/api/v1/agents/route.ts(56,24): error TS2339: Property 'state' does not exist on type 'PipelineState | { state: PipelineState; orchestrator: PipelineOrchestrator; }'.
+  Property 'state' does not exist on type 'PipelineState'.
+src/app/api/v1/agents/route.ts(61,24): error TS2339: Property 'state' does not exist on type 'PipelineState | { state: PipelineState; orchestrator: PipelineOrchestrator; }'.
+  Property 'state' does not exist on type 'PipelineState'.
+src/app/api/v1/queue/route.ts(78,17): error TS2345: Argument of type '{ id: string; queue: QueueName; name: string; priority: number; }' is not assignable to parameter of type 'never'.
+src/components/dashboard/views/assistant-view.tsx(328,38): error TS2322: Type '{ id: string; name: string; sector: string; commune: string; city: string; phone?: string | undefined; email?: string | undefined; website?: string | undefined; address?: string | undefined; rating?: number | undefined; reviewCount?: number | undefined; status?: string | undefined; score: number; }' is not assignable to type 'never'.
+src/components/dashboard/views/assistant-view.tsx(368,19): error TS2339: Property 'name' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(371,63): error TS2339: Property 'name' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(373,73): error TS2339: Property 'sector' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(377,23): error TS2339: Property 'commune' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(377,41): error TS2339: Property 'city' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(381,21): error TS2339: Property 'phone' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(384,25): error TS2339: Property 'phone' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(387,21): error TS2339: Property 'website' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(393,21): error TS2339: Property 'email' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(399,21): error TS2339: Property 'rating' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(402,25): error TS2339: Property 'rating' does not exist on type 'never'.
+src/components/dashboard/views/assistant-view.tsx(408,19): error TS2339: Property 'score' does not exist on type 'never'.
+src/components/dashboard/views/export-engine-view.tsx(95,11): error TS2367: This comparison appears to be unintentional because the types '"completed" | "failed" | "queued" | "processing"' and '"running"' have no overlap.
+src/components/dashboard/views/intelligent-search-view.tsx(402,15): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/dashboard/views/intelligent-search-view.tsx(408,15): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/dashboard/views/intelligent-search-view.tsx(411,15): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/dashboard/views/intelligent-search-view.tsx(418,15): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/dashboard/views/intelligent-search-view.tsx(424,15): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/dashboard/views/osm-map-view.tsx(78,5): error TS2578: Unused '@ts-expect-error' directive.
+src/components/dashboard/views/pwa-view.tsx(26,58): error TS2345: Argument of type 'PendingAction[]' is not assignable to parameter of type 'SetStateAction<Record<string, unknown>[]>'.
+  Type 'PendingAction[]' is not assignable to type 'Record<string, unknown>[]'.
+    Type 'PendingAction' is not assignable to type 'Record<string, unknown>'.
+      Index signature for type 'string' is missing in type 'PendingAction'.
+src/lib/ai-agents/agents.ts(23,18): error TS2345: Argument of type '{ id: string; name: string; priority: number; expectedResults: number; }' is not assignable to parameter of type 'never'.
+src/lib/ai-agents/agents.ts(27,16): error TS2345: Argument of type '{ id: string; name: string; priority: number; expectedResults: number; }' is not assignable to parameter of type 'never'.
+src/lib/ai-agents/agents.ts(31,18): error TS2345: Argument of type '{ id: string; name: string; priority: number; expectedResults: number; }' is not assignable to parameter of type 'never'.
+src/lib/ai-agents/agents.ts(35,16): error TS2345: Argument of type '{ id: string; name: string; priority: number; expectedResults: number; }' is not assignable to parameter of type 'never'.
+src/lib/ai-agents/agents.ts(36,16): error TS2345: Argument of type '{ id: string; name: string; priority: number; expectedResults: number; }' is not assignable to parameter of type 'never'.
+src/lib/ai-agents/agents.ts(45,60): error TS2339: Property 'expectedResults' does not exist on type 'never'.
+src/lib/export/export-store.ts(60,18): error TS2339: Property 'address' does not exist on type 'Company'.
+src/lib/notifications/alerts.ts(22,8): error TS2459: Module '"./engine"' declares 'NotificationChannel' locally, but it is not exported.
+src/lib/notifications/reports.ts(15,33): error TS2459: Module '"./engine"' declares 'NotificationChannel' locally, but it is not exported.
+src/lib/notifications/reports.ts(238,18): error TS2339: Property 'address' does not exist on type 'Company'.
+src/lib/pwa/use-pwa.ts(60,13): error TS18046: 'reg.sync' is of type 'unknown'.
+src/lib/pwa/use-pwa.ts(61,13): error TS18046: 'reg.sync' is of type 'unknown'.
+src/lib/pwa/use-pwa.ts(62,13): error TS18046: 'reg.sync' is of type 'unknown'.
+src/lib/pwa/use-pwa.ts(165,15): error TS18046: 'reg.sync' is of type 'unknown'.
+src/lib/pwa/use-pwa.ts(166,15): error TS18046: 'reg.sync' is of type 'unknown'.
+src/lib/pwa/use-pwa.ts(167,15): error TS18046: 'reg.sync' is of type 'unknown'.
+src/lib/pwa/use-pwa.ts(182,30): error TS2345: Argument of type '{ url: string; method: string; data: Record<string, unknown>; type: string; }' is not assignable to parameter of type 'Omit<PendingAction, "id" | "createdAt">'.
+  Types of property 'type' are incompatible.
+    Type 'string' is not assignable to type '"export" | "job" | "search" | "notification"'.
+src/lib/queue/queue-manager.ts(344,23): error TS2484: Export declaration conflicts with exported declaration of 'QueueJob'.
+src/lib/queue/queue-manager.ts(344,38): error TS2484: Export declaration conflicts with exported declaration of 'QueueMetrics'.
+src/lib/queue/queue-manager.ts(344,57): error TS2484: Export declaration conflicts with exported declaration of 'WorkerStats'.
+src/lib/scraper/ai-cleaner-job-store.ts(6,15): error TS2459: Module '"./ai-cleaner-types"' declares 'ScrapedPlace' locally, but it is not exported.
+src/lib/scraper/ai-cleaner-job-store.ts(138,3): error TS2322: Type '"cancelled"' is not assignable to type '"completed" | "failed" | "running" | "queued"'.
+src/lib/scraper/ai-cleaner-sample.ts(12,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(30,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(46,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(59,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(76,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(90,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(108,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(122,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(141,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(160,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(175,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner-sample.ts(190,7): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'ScrapedPlace'.
+src/lib/scraper/ai-cleaner.ts(155,64): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(167,32): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(177,32): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(198,34): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(208,34): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(233,34): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(243,34): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(257,32): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(288,11): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/lib/scraper/ai-cleaner.ts(293,30): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(298,58): error TS2339: Property 'sector' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(299,20): error TS2339: Property 'sector' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(317,28): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(363,19): error TS2352: Conversion of type 'CleanedEntity' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(372,56): error TS2352: Conversion of type 'CleanedEntity' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(376,30): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(396,28): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(434,28): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-cleaner.ts(452,51): error TS2339: Property 'id' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(23,15): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(23,37): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(24,15): error TS2339: Property 'sector' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(59,47): error TS2339: Property 'sector' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(61,20): error TS2339: Property 'city' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(62,23): error TS2339: Property 'commune_label' does not exist on type 'CleanedEntity'.
+src/lib/scraper/ai-enricher.ts(66,27): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/business-scraper.ts(118,15): error TS2352: Conversion of type '{ type: "start"; jobId: string; query: Record<string, unknown>; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "start"; jobId: string; query: Record<string, unknown>; }' is not comparable to type '{ type: "start"; jobId: string; query: SearchQuery; }'.
+    Types of property 'query' are incompatible.
+      Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/business-scraper.ts(242,9): error TS2741: Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/business-scraper.ts(266,9): error TS2741: Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/business-scraper.ts(323,7): error TS2578: Unused '@ts-expect-error' directive.
+src/lib/scraper/business-scraper.ts(424,13): error TS2304: Cannot find name 'retries'.
+src/lib/scraper/business-scraper.ts(438,9): error TS2304: Cannot find name 'retries'.
+src/lib/scraper/business-scraper.ts(475,49): error TS2339: Property 'trim' does not exist on type 'Promise<string | null>'.
+src/lib/scraper/business-scraper.ts(698,21): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(698,51): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(699,14): error TS2339: Property 'sector' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(699,34): error TS2339: Property 'industry' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'industry' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(700,32): error TS2339: Property 'sector' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(702,21): error TS2339: Property 'locationAndFollowers' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'locationAndFollowers' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(703,35): error TS2339: Property 'locationAndFollowers' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'locationAndFollowers' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(706,30): error TS2339: Property 'location' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(710,35): error TS2339: Property 'dlFields' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'dlFields' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(745,21): error TS2339: Property 'about' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'about' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(746,16): error TS2339: Property 'description' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(746,41): error TS2339: Property 'about' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'about' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(747,28): error TS2339: Property 'tagline' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'tagline' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(748,16): error TS2339: Property 'description' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(748,40): error TS2339: Property 'tagline' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'tagline' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(752,21): error TS2339: Property 'website' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'website' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(753,49): error TS2339: Property 'website' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'website' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(757,21): error TS2339: Property 'followersText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'followersText' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(758,54): error TS2339: Property 'followersText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'followersText' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(762,33): error TS2339: Property 'people' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'people' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(797,21): error TS2339: Property 'images' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'images' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(797,55): error TS2339: Property 'images' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'images' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(798,36): error TS2339: Property 'images' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'images' does not exist on type '{}'.
+src/lib/scraper/business-scraper.ts(807,18): error TS2339: Property 'sector' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(808,18): error TS2339: Property 'description' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(809,18): error TS2339: Property 'location' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(818,18): error TS2339: Property 'location' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(820,16): error TS2339: Property 'googleMapsUrl' does not exist on type 'BusinessEntity'.
+src/lib/scraper/business-scraper.ts(821,36): error TS2339: Property 'location' does not exist on type 'BusinessEntity'.
+src/lib/scraper/facebook-scraper.ts(108,15): error TS2352: Conversion of type '{ type: "start"; jobId: string; query: Record<string, unknown>; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "start"; jobId: string; query: Record<string, unknown>; }' is not comparable to type '{ type: "start"; jobId: string; query: SearchQuery; }'.
+    Types of property 'query' are incompatible.
+      Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/facebook-scraper.ts(219,9): error TS2741: Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/facebook-scraper.ts(243,9): error TS2741: Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/facebook-scraper.ts(304,7): error TS2578: Unused '@ts-expect-error' directive.
+src/lib/scraper/facebook-scraper.ts(306,7): error TS2578: Unused '@ts-expect-error' directive.
+src/lib/scraper/facebook-scraper.ts(428,13): error TS2304: Cannot find name 'retries'.
+src/lib/scraper/facebook-scraper.ts(438,9): error TS2304: Cannot find name 'retries'.
+src/lib/scraper/facebook-scraper.ts(508,51): error TS2339: Property 'trim' does not exist on type 'Promise<string | null>'.
+src/lib/scraper/facebook-scraper.ts(740,21): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(740,50): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(741,35): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(742,34): error TS2339: Property 'category' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'category' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(743,37): error TS2339: Property 'description' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'description' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(744,36): error TS2339: Property 'isVerified' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'isVerified' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(745,31): error TS2339: Property 'phone' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'phone' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(747,34): error TS2339: Property 'whatsapp' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'whatsapp' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(752,21): error TS2339: Property 'email' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'email' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(753,48): error TS2339: Property 'email' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'email' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(756,21): error TS2339: Property 'website' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'website' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(757,48): error TS2339: Property 'website' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'website' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(759,33): error TS2339: Property 'address' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'address' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(760,21): error TS2339: Property 'hoursText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'hoursText' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(761,52): error TS2339: Property 'hoursText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'hoursText' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(763,21): error TS2339: Property 'images' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'images' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(763,55): error TS2339: Property 'images' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'images' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(764,35): error TS2339: Property 'images' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'images' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(769,35): error TS2339: Property 'messenger' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'messenger' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(770,36): error TS2339: Property 'facebookId' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'facebookId' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(773,21): error TS2339: Property 'likesText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'likesText' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(774,49): error TS2339: Property 'likesText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'likesText' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(776,21): error TS2339: Property 'followersText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'followersText' does not exist on type '{}'.
+src/lib/scraper/facebook-scraper.ts(777,53): error TS2339: Property 'followersText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'followersText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(704,21): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(704,50): error TS2339: Property 'name' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'name' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(705,34): error TS2339: Property 'category' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'category' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(706,33): error TS2339: Property 'address' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'address' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(707,32): error TS2339: Property 'phoneRaw' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'phoneRaw' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(707,66): error TS2339: Property 'phone' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'phone' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(709,21): error TS2339: Property 'websiteUrl' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'websiteUrl' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(710,48): error TS2339: Property 'websiteUrl' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'websiteUrl' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(711,28): error TS2339: Property 'website' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'website' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(712,48): error TS2339: Property 'website' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'website' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(714,21): error TS2339: Property 'placeId' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'placeId' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(714,56): error TS2339: Property 'placeId' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'placeId' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(715,21): error TS2339: Property 'lat' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'lat' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(715,38): error TS2339: Property 'lng' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'lng' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(716,38): error TS2339: Property 'lat' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'lat' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(716,68): error TS2339: Property 'lng' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'lng' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(721,21): error TS2339: Property 'ratingText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'ratingText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(721,70): error TS2339: Property 'ratingText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'ratingText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(722,21): error TS2339: Property 'reviewCountText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'reviewCountText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(722,85): error TS2339: Property 'reviewCountText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'reviewCountText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(723,21): error TS2339: Property 'isOpenText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'isOpenText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(724,30): error TS2339: Property 'isOpenText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'isOpenText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(727,21): error TS2339: Property 'hoursText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'hoursText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(728,44): error TS2339: Property 'hoursText' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'hoursText' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(730,21): error TS2339: Property 'photos' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'photos' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(730,55): error TS2339: Property 'photos' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'photos' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(731,35): error TS2339: Property 'photos' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'photos' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(736,21): error TS2339: Property 'priceLevel' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'priceLevel' does not exist on type '{}'.
+src/lib/scraper/google-maps-scraper.ts(736,62): error TS2339: Property 'priceLevel' does not exist on type 'Record<string, unknown> | {}'.
+  Property 'priceLevel' does not exist on type '{}'.
+src/lib/scraper/job-store.ts(45,5): error TS2353: Object literal may only specify known properties, and 'maxResults' does not exist in type 'ScraperConfig'.
+src/lib/scraper/job-store.ts(239,20): error TS2352: Conversion of type 'ScrapedPlace' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'ScrapedPlace'.
+src/lib/scraper/quality-closed-detector.ts(31,18): error TS2352: Conversion of type 'CleanedEntity' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CleanedEntity'.
+src/lib/scraper/quality-closed-detector.ts(88,14): error TS2339: Property 'socialLinks' does not exist on type 'CleanedEntity'.
+src/lib/scraper/quality-closed-detector.ts(88,36): error TS2339: Property 'socialLinks' does not exist on type 'CleanedEntity'.
+src/lib/scraper/quality-closed-detector.ts(89,53): error TS2339: Property 'socialLinks' does not exist on type 'CleanedEntity'.
+src/lib/scraper/quality-closed-detector.ts(128,12): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/quality-closed-detector.ts(191,27): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/sector-detector.ts(25,12): error TS2339: Property 'sector' does not exist on type 'CleanedEntity'.
+src/lib/scraper/sector-detector.ts(26,12): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/sector-detector.ts(86,27): error TS2339: Property 'description' does not exist on type 'CleanedEntity'.
+src/lib/scraper/sector-detector.ts(87,22): error TS2339: Property 'sector' does not exist on type 'CleanedEntity'.
+src/lib/scraper/website-job-store.ts(83,9): error TS2322: Type '"extraction-done"' is not assignable to type '"done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"'.
+src/lib/scraper/website-scraper.ts(93,15): error TS2352: Conversion of type '{ type: "start"; jobId: string; query: Record<string, unknown>; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "start"; jobId: string; query: Record<string, unknown>; }' is not comparable to type '{ type: "start"; jobId: string; query: SearchQuery; }'.
+    Types of property 'query' are incompatible.
+      Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/website-scraper.ts(125,17): error TS2352: Conversion of type '{ type: "progress"; progress: number; phase: "visiting-home"; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "progress"; progress: number; phase: "visiting-home"; }' is not comparable to type '{ type: "progress"; progress: number; phase: "done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"; }'.
+    Types of property 'phase' are incompatible.
+      Type '"visiting-home"' is not comparable to type '"done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"'.
+src/lib/scraper/website-scraper.ts(171,19): error TS2352: Conversion of type '{ type: "progress"; progress: number; phase: "discovering-pages"; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "progress"; progress: number; phase: "discovering-pages"; }' is not comparable to type '{ type: "progress"; progress: number; phase: "done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"; }'.
+    Types of property 'phase' are incompatible.
+      Type '"discovering-pages"' is not comparable to type '"done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"'.
+src/lib/scraper/website-scraper.ts(188,21): error TS2352: Conversion of type '{ type: "progress"; progress: number; phase: "visiting-pages"; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "progress"; progress: number; phase: "visiting-pages"; }' is not comparable to type '{ type: "progress"; progress: number; phase: "done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"; }'.
+    Types of property 'phase' are incompatible.
+      Type '"visiting-pages"' is not comparable to type '"done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"'.
+src/lib/scraper/website-scraper.ts(236,17): error TS2352: Conversion of type '{ type: "progress"; progress: number; phase: "finalizing"; }' to type 'ScrapeEvent' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: "progress"; progress: number; phase: "finalizing"; }' is not comparable to type '{ type: "progress"; progress: number; phase: "done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"; }'.
+    Types of property 'phase' are incompatible.
+      Type '"finalizing"' is not comparable to type '"done" | "init" | "searching" | "listing" | "extracting" | "deduplicating"'.
+src/lib/scraper/website-scraper.ts(257,9): error TS2741: Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/website-scraper.ts(259,18): error TS2322: Type 'WebsiteScrapedData' is not assignable to type 'ScrapedPlace'.
+  Types of property 'gps' are incompatible.
+    Type 'ExtractedGps[] | undefined' is not assignable to type 'GpsCoordinates | undefined'.
+      Type 'ExtractedGps[]' is missing the following properties from type 'GpsCoordinates': lat, lng
+src/lib/scraper/website-scraper.ts(281,9): error TS2741: Property 'keyword' is missing in type 'Record<string, unknown>' but required in type 'SearchQuery'.
+src/lib/scraper/website-types.ts(69,18): error TS2430: Interface 'WebsiteScrapedData' incorrectly extends interface 'ScrapedPlace'.
+  Types of property 'gps' are incompatible.
+    Type 'ExtractedGps[] | undefined' is not assignable to type 'GpsCoordinates | undefined'.
+      Type 'ExtractedGps[]' is missing the following properties from type 'GpsCoordinates': lat, lng
+src/lib/search/elasticsearch-engine.ts(224,61): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(predicate: (value: string, index: number, array: string[]) => value is string, thisArg?: any): string[]', gave the following error.
+    Argument of type '(id: never) => boolean' is not assignable to parameter of type '(value: string, index: number, array: string[]) => value is string'.
+      Types of parameters 'id' and 'value' are incompatible.
+        Type 'string' is not assignable to type 'never'.
+  Overload 2 of 2, '(predicate: (value: string, index: number, array: string[]) => unknown, thisArg?: any): string[]', gave the following error.
+    Argument of type '(id: never) => boolean' is not assignable to parameter of type '(value: string, index: number, array: string[]) => unknown'.
+      Types of parameters 'id' and 'value' are incompatible.
+        Type 'string' is not assignable to type 'never'.
+src/lib/search/search-store.ts(55,20): error TS2339: Property 'address' does not exist on type 'Company'.

@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       name: user.name,
       role,
       orgId: membership?.organizationId,
-      workspaceId: membership?.workspaceId,
+      workspaceId: membership?.workspaceId ?? undefined,
       userAgent,
       ip,
       auditAction: "login",

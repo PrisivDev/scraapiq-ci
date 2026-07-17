@@ -75,7 +75,7 @@ function HeatmapLayer({ points, radius }: { points: Array<[number, number, numbe
   useEffect(() => {
     if (!map || points.length === 0) return
 
-    // @ts-expect-error — leaflet.heat étend L avec .heatLayer
+    // leaflet.heat étend L avec .heatLayer (types fournis par @types/leaflet.heat)
     const heatLayer = L.heatLayer(points, {
       radius,
       blur: 25,

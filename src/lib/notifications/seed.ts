@@ -6,6 +6,7 @@
 
 import { db } from "@/lib/db"
 import { createScheduledReport } from "./reports"
+import type { NotificationChannel } from "./providers"
 
 const DEFAULT_ALERTS = [
   {
@@ -46,7 +47,7 @@ const DEFAULT_REPORTS = [
     description: "Rapport journalier des entreprises indexées (tous secteurs, Abidjan).",
     type: "daily" as const,
     schedule: "daily:08:00",
-    channels: ["email"],
+    channels: ["email"] satisfies NotificationChannel[],
     recipients: ["demo@scraapiq.ci"],
     filters: { cities: ["Abidjan"] },
     format: "pdf" as const,
@@ -56,7 +57,7 @@ const DEFAULT_REPORTS = [
     description: "Synthèse hebdomadaire des entreprises ajoutées et dédupliquées.",
     type: "weekly" as const,
     schedule: "weekly:mon:08:00",
-    channels: ["email"],
+    channels: ["email"] satisfies NotificationChannel[],
     recipients: ["demo@scraapiq.ci"],
     filters: {},
     format: "xlsx" as const,

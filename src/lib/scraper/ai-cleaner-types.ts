@@ -4,6 +4,10 @@
 
 import type { ScrapedPlace } from "./types"
 
+// Re-export so consumers (ai-cleaner-job-store.ts) can import ScrapedPlace
+// from this module alongside CleanedEntity, which extends it.
+export type { ScrapedPlace } from "./types"
+
 /** Statut d'activité d'une entreprise */
 export type BusinessStatus = "active" | "closed" | "temporarily_closed" | "relocated" | "unknown"
 

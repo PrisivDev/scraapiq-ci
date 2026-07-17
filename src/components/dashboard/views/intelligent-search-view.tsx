@@ -357,6 +357,12 @@ function ResultCard({ hit }: { hit: SearchHit }) {
   const source = hit.source
   const sector = source.sector as string
   const sectorColor = sectorColors[sector] || "#64748b"
+  const commune = source.commune as string | undefined
+  const city = source.city as string | undefined
+  const address = source.address as string | undefined
+  const phone = source.phone as string | undefined
+  const rating = source.rating as number | undefined
+  const reviewCount = source.reviewCount as number | undefined
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -399,32 +405,32 @@ function ResultCard({ hit }: { hit: SearchHit }) {
 
             {/* Localisation */}
             <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-              {source.commune && (
+              {commune && (
                 <span className="flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
-                  {source.commune as string}
+                  {commune}
                 </span>
               )}
-              {source.city && (
-                <span>{source.city as string}</span>
+              {city && (
+                <span>{city}</span>
               )}
-              {source.address && (
-                <span className="truncate">· {source.address as string}</span>
+              {address && (
+                <span className="truncate">· {address}</span>
               )}
             </div>
 
             {/* Contact */}
             <div className="flex items-center gap-3 mt-2">
-              {source.phone && (
+              {phone && (
                 <span className="flex items-center gap-1 text-xs">
                   <Phone className="h-3 w-3 text-muted-foreground" />
-                  {source.phone as string}
+                  {phone}
                 </span>
               )}
-              {source.rating && (
+              {rating && (
                 <span className="flex items-center gap-1 text-xs">
                   <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                  {source.rating as number} ({source.reviewCount as number})
+                  {rating} ({reviewCount})
                 </span>
               )}
             </div>
