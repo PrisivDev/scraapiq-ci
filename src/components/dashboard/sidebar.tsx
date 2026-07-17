@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Sparkles,
   Cpu,
+  Code,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -30,6 +31,7 @@ export type NavKey =
   | "scraper"
   | "exports"
   | "team"
+  | "api"
   | "settings"
 
 interface SidebarProps {
@@ -53,6 +55,7 @@ const navItems: {
   { key: "jobs", label: "Jobs de scraping", icon: Activity, badge: "12", section: "Opérations" },
   { key: "scraper", label: "Moteur Google Maps", icon: Cpu, badge: "Nouveau", section: "Opérations" },
   { key: "exports", label: "Exports", icon: Download, section: "Opérations" },
+  { key: "api", label: "API REST", icon: Code, badge: "v1", section: "Administration" },
   { key: "team", label: "Équipe & tenants", icon: Users, section: "Administration" },
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },
 ]

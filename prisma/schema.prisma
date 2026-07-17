@@ -252,3 +252,95 @@ model AuditLog {
   @@index([createdAt])
   @@index([category, createdAt])
 }
+
+// ============================================================================
+// COMPANIES (REST API CRUD — exposed via /api/v1/companies)
+// ============================================================================
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  sector      String?
+  commune     String?
+  city        String?
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  rccm        String?
+  lat         Float?
+  lng         Float?
+  rating      Float?
+  reviewCount Int?
+  status      String   @default("active") // active | closed | relocated
+  description String?
+  employees   String?
+  sources     String   @default("[]") // JSON array
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([sector])
+  @@index([city])
+  @@index([commune])
+  @@index([status])
+}
+
+// ============================================================================
+// REST API LOGS (audit trail for all REST API calls)
+// ============================================================================
+
+model RestApiLog {
+  id          String   @id @default(cuid())
+  method      String
+  endpoint    String
+  statusCode  Int
+  responseMs  Int
+  ip          String?
+  userAgent   String?
+  apiKeyId    String?
+  userId      String?
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([endpoint])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// ============================================================================
+// WEBHOOKS (outbound event delivery)
+// ============================================================================
+
+model Webhook {
+  id          String   @id @default(cuid())
+  url         String
+  events      String   @default("[]") // JSON array of event names
+  secret      String?  // signing secret
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deliveries  WebhookDelivery[]
+
+  @@index([isActive])
+}
+
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  webhookId   String
+  event       String
+  payload     String   @default("{}") // JSON
+  statusCode  Int?
+  response    String?
+  status      String   @default("pending") // pending | success | failed | retry
+  attempts    Int      @default(0)
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+}

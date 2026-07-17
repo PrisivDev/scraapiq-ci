@@ -24,6 +24,7 @@ import { ScraperView } from "@/components/dashboard/views/scraper-view"
 import { ExportEngineView } from "@/components/dashboard/views/export-engine-view"
 import { TeamView } from "@/components/dashboard/views/team-view"
 import { SettingsView } from "@/components/dashboard/views/settings-view"
+import { ApiDocsView } from "@/components/dashboard/views/api-docs-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
@@ -35,6 +36,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   jobs: { title: "Jobs de scraping", subtitle: "File d'attente et historique" },
   scraper: { title: "Moteur de scraping", subtitle: "Google Maps · Facebook · LinkedIn · Sites web · IA" },
   exports: { title: "Exports", subtitle: "Historique des exports générés" },
+  api: { title: "API REST", subtitle: "v1 · CRUD · Swagger · JWT · Pagination · Filtres · Tri · Recherche · Webhooks" },
   team: { title: "Équipe & tenants", subtitle: "Membres et permissions" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
@@ -83,7 +85,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "team", "settings"].includes(key)) {
+    if (["dashboard", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "team", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -140,6 +142,8 @@ export default function Home() {
             {activeNav === "scraper" && <ScraperView />}
 
             {activeNav === "exports" && <ExportEngineView />}
+
+            {activeNav === "api" && <ApiDocsView />}
 
             {activeNav === "team" && <TeamView />}
 

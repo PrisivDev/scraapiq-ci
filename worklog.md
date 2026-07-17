@@ -1065,3 +1065,101 @@ Stage Summary:
 - PDF export : résolu via générateur PDF natif (sans PDFKit)
 - Tous les 5 formats d'export fonctionnent (xlsx, csv, pdf, json, zip)
 - Aucune erreur console/runtime
+
+---
+Task ID: 21-rest-api
+Agent: REST API Builder
+Task: Build complete REST API with CRUD, Swagger, JWT, pagination, filters, sorting, search, webhooks, versioning
+
+Work Log:
+- Lu le worklog existant + prisma/schema.prisma + src/lib/auth/* + middleware.ts pour comprendre le contexte (auth JWT avec cookies HTTP-only déjà en place, edge middleware qui bloque les appels API non authentifiés)
+- Ajouté 4 nouveaux modèles Prisma (Company, RestApiLog, Webhook, WebhookDelivery) à prisma/schema.prisma avec index sur name/sector/city/commune/status + relations Webhook→WebhookDelivery
+- Exécuté `bun run db:push` pour synchroniser la base SQLite (custom.db)
+- Créé src/lib/api/helpers.ts : types ApiResponse<T>/PaginationMeta/Filters/SortParams, parsePagination (page default 1, limit default 20 max 100), parseFilters (allow-list + minRating numérique), parseSort, parseSearch, sendSuccess/sendError/buildPaginationMeta, logApiCall (best-effort écrit dans RestApiLog), startTimer (process.hrtime.bigint pour ms précis)
+- Créé src/lib/api/auth-middleware.ts : requireApiAuth(req) qui essaie dans l'ordre Authorization: Bearer <jwt>, cookie scraapiq_access, puis X-API-Key. Pour le JWT : verifyAccessToken + check blacklist + lookup user + permissions. Pour l'API key : SHA-256 hash + lookup dans ApiKey (non révoquée, non expirée) + update lastUsedAt
+- Créé src/lib/api/seed.ts : seedCompaniesIfEmpty() qui peuple la table Company avec les 60 entreprises de src/lib/geo-data.ts au premier GET (idempotent)
+- Créé src/app/api/v1/route.ts : GET /api/v1 (public) retourne version + 12 endpoints + 3 méthodes d'auth + features
+- Créé src/app/api/v1/companies/route.ts : GET (liste paginée avec filtres sector/city/commune/status/minRating + sort + search q + auto-seed) + POST (création avec validation name requis)
+- Créé src/app/api/v1/companies/[id]/route.ts : GET (404 si manquant) + PUT (update partielle, allow-list de champs) + DELETE (404 si manquant)
+- Créé src/app/api/v1/webhooks/route.ts : GET (liste avec _count deliveries) + POST (validation URL via new URL(), events non vide, secret auto-généré si manquant)
+- Créé src/app/api/v1/webhooks/[id]/route.ts : PUT (update partielle) + DELETE
+- Créé src/app/api/v1/webhooks/[id]/test/route.ts : POST envoie événement test.ping avec signature HMAC-SHA256, timeout 10s via AbortController, enregistre la delivery dans WebhookDelivery
+- Créé src/app/api/v1/docs/route.ts : GET retourne spec OpenAPI 3.0.3 complète (8 paths, 12 operations, schemas Company/Webhook/PaginationMeta/Error, 3 securitySchemes bearerAuth/apiKeyAuth/cookieAuth, base URL dynamique depuis les headers de la requête)
+- Créé src/app/api/v1/docs/ui/route.ts : GET retourne HTML avec topbar branding ScrapIQ + Swagger UI bundle depuis CDN (swagger-ui-dist@5.18.2)
+- Mis à jour src/middleware.ts : ajouté /api/v1 et /api/v1/docs(/ui) dans PUBLIC_PATTERNS + autorisé les requêtes avec Authorization: Bearer ou X-API-Key à bypasser le check cookie-only
+- Mis à jour src/lib/db.ts : invalidation du cache Prisma client basée sur le mtime du fichier schema.prisma — quand le schéma change (db:push), le client cached dans globalThis.prisma est détecté comme stale et recréé. Sans ça, le dev server gardait l'ancien client sans les nouveaux modèles Company/RestApiLog/Webhook
+- Créé src/components/dashboard/views/api-docs-view.tsx : dashboard complet avec header + 4 stat cards (endpoints, auth methods, rate limit, OpenAPI version) + card auth methods (cookie/Bearer/API key avec exemples) + 2 tabs (Explorateur d'API + Swagger UI iframe) + explorer avec endpoints groupés par tag, rows expandable avec badges méthode colorés (GET emerald, POST orange, PUT amber, DELETE red), liste paramètres, boutons Try it + Path + panel try-it avec path params, query params, body JSON editor, URL preview, commande cURL avec copy, bouton "Exécuter la requête" → fetch live avec cookies, affichage réponse avec badge statut + ms + JSON pretty-print
+- Mis à jour src/components/dashboard/sidebar.tsx : ajouté `api` au type NavKey + nav item `{ key: "api", label: "API REST", icon: Code, badge: "v1", section: "Administration" }`
+- Mis à jour src/app/page.tsx : importé ApiDocsView + ajouté entrée api dans navTitles + routing `{activeNav === "api" && <ApiDocsView />}`
+- Mis à jour src/lib/dashboard-data.ts : ajouté entrée `#api` au searchableItems du command palette
+- Rencontré un corruption du cache Turbopack en cours de dev ("Unable to open static sorted file 00000319.sst / No such file or directory (os error 2)") → tué le dev server (PID 20318) et re-exécuté le script init fullstack → le système a redémarré le dev server sur un nouveau PID avec cache propre
+- Lint final : `bun run lint` → 0 erreur, 0 warning
+- Tests curl e2e (26 tests) : tous passent — GET /api/v1 (200), GET /api/v1/companies sans auth (401), GET avec cookie (200, 64 entreprises seedées), search q=orange (2 résultats), filter sector=Restauration (5 résultats), sort name desc (Yopougon Pharma en premier), pagination page=2 limit=5 (meta correcte), minRating=4.5 (22 résultats), city=Bouaké (4 résultats), POST create (201), GET by id (200), PUT update (200), DELETE (200), GET after delete (404), POST sans name (422), Bearer token (200), X-API-Key invalide (401), GET /api/v1/docs (spec OpenAPI 3.0.3, 8 paths), GET /api/v1/docs/ui (HTML Swagger), GET/POST/PUT/DELETE/test webhooks (tous OK), POST webhook URL invalide (422)
+- Vérification audit log : 28 entrées dans RestApiLog avec method/endpoint/statusCode/responseMs/userId corrects (ex: `GET /api/v1/companies -> 200 (5ms)`, `POST /api/v1/companies -> 422 (4ms)`)
+- Vérification agent-browser : sidebar affiche "API REST v1" dans section Administration → clic ouvre ApiDocsView avec 12 endpoints groupés par tag → expand endpoint affiche paramètres + bouton Try it → panel try-it avec URL preview + cURL → "Exécuter la requête" retourne 200 avec JSON → tab Swagger UI charge l'iframe depuis /api/v1/docs/ui
+- Aucune erreur runtime, aucune erreur console
+
+Stage Summary:
+- 12 fichiers créés : 3 modules lib (helpers, auth-middleware, seed) + 8 routes API (v1/route, v1/companies/route, v1/companies/[id]/route, v1/webhooks/route, v1/webhooks/[id]/route, v1/webhooks/[id]/test/route, v1/docs/route, v1/docs/ui/route) + 1 composant dashboard (api-docs-view)
+- 6 fichiers modifiés : prisma/schema.prisma (+4 modèles), src/middleware.ts (+patterns publics + bypass Bearer/X-API-Key), src/lib/db.ts (invalidation cache Prisma par mtime schéma), src/components/dashboard/sidebar.tsx (+NavKey api), src/app/page.tsx (+routing ApiDocsView), src/lib/dashboard-data.ts (+entrée command palette)
+- API REST v1 complète et opérationnelle : 12 endpoints (companies CRUD + webhooks CRUD + test + docs + info)
+- Authentification multi-méthodes : cookie JWT, Bearer token, X-API-Key (toutes validées côté route via requireApiAuth)
+- Réponses standardisées : `{ success, data?, meta?, message?, error?, code? }` sur tous les endpoints
+- Audit logging automatique : chaque appel API enregistré dans RestApiLog (method, endpoint, statusCode, responseMs, userId, apiKeyId, ip, userAgent, error)
+- Swagger UI embarqué : spec OpenAPI 3.0.3 dynamique + page HTML avec branding ScrapIQ
+- Dashboard "API REST" : explorateur interactif avec try-it live + cURL preview + Swagger UI iframe
+- Lint 100% propre (0 erreur, 0 warning), dev server compile sans erreur
+- 26 tests curl e2e tous passent, 28 entrées RestApiLog créées
+- Palette conforme : emerald + orange + amber + red pour les badges méthode (pas d'indigo/bleu)
+
+---
+Task ID: 21
+Agent: Main (Architect) + Sous-agent REST API Builder
+Task: Créer une API REST complète (CRUD, Swagger, JWT, pagination, filtres, tri, recherche, webhooks, versioning)
+
+Work Log:
+- Sous-agent a construit l'API REST complète :
+  * Schéma Prisma : ajout modèles Company, RestApiLog, Webhook, WebhookDelivery + db:push
+  * Helpers API (src/lib/api/helpers.ts) : ApiResponse, PaginationMeta, parsePagination/Filters/Sort/Search, sendSuccess/sendError, logApiCall
+  * Auth middleware (src/lib/api/auth-middleware.ts) : JWT cookie + Bearer token + X-API-Key
+  * Seed automatique : 64 entreprises depuis geo-data.ts au premier GET
+  * Routes CRUD companies : GET list (pagination+filtres+tri+recherche), GET by id, POST, PUT, DELETE
+  * Routes CRUD webhooks : GET list, POST (avec HMAC secret), PUT, DELETE, POST test (avec signature HMAC-SHA256)
+  * Swagger OpenAPI 3.0.3 : GET /api/v1/docs (JSON spec dynamique, 8 paths, 12 operations), GET /api/v1/docs/ui (HTML Swagger UI via CDN)
+  * API info : GET /api/v1 (version, endpoints, auth methods)
+  * UI dashboard : ApiDocsView avec explorer interactif (Try it) + Swagger UI tab
+  * Sidebar : entrée "API REST v1" dans Administration
+  * Middleware : ajout bypass Bearer/X-API-Key pour /api/v1
+  * Bug corrigé : stale Prisma client en dev → schema-mtime cache invalidation dans db.ts
+- Tests curl (26 tests, tous réussis) :
+  * GET /api/v1 → 200 (API info) ✓
+  * GET /api/v1/companies → 200 (64 entreprises, pagination) ✓
+  * GET ?q=orange → 200 (2 résultats recherche) ✓
+  * GET ?sector=Restauration → 200 (5 résultats filtre) ✓
+  * GET ?sort=name&order=desc → 200 (tri descendant) ✓
+  * GET ?page=2&limit=5 → 200 (pagination correcte) ✓
+  * GET ?minRating=4.5 → 200 (22 résultats) ✓
+  * POST create → 201 ✓
+  * GET by id → 200 ✓
+  * PUT update → 200 ✓
+  * DELETE → 200 ✓
+  * GET after delete → 404 ✓
+  * Bearer token → 200 ✓
+  * Swagger docs → 200 (OpenAPI 3.0.3) ✓
+  * Webhooks CRUD → 200/201 ✓
+  * Webhook test → 200 (HMAC-SHA256) ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- API REST Enterprise complète et fonctionnelle
+- 12 fichiers créés (helpers, auth-middleware, seed, 8 routes API, UI view)
+- 6 fichiers modifiés (schema.prisma, middleware, db.ts, sidebar, page.tsx, dashboard-data)
+- CRUD complet : companies (GET/POST/PUT/DELETE) + webhooks (GET/POST/PUT/DELETE/test)
+- Swagger OpenAPI 3.0.3 dynamique + Swagger UI interactif
+- JWT auth (cookie + Bearer + API key)
+- Pagination, filtres, tri, recherche full-text
+- Webhooks avec signature HMAC-SHA256
+- Versioning v1 (/api/v1/*)
+- Logging automatique (RestApiLog)
+- Seed automatique (64 entreprises)
+- UI dashboard avec explorer interactif (Try it) + Swagger UI

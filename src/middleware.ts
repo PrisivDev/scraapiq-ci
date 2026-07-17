@@ -20,6 +20,8 @@ const PUBLIC_PATTERNS = [
   /^\/api\/auth\//,
   /^\/api\/oauth\//,
   /^\/api\/twofa\/(setup|disable)$/,
+  /^\/api\/v1\/?$/, // GET /api/v1 (API info)
+  /^\/api\/v1\/docs\/?(\/ui)?$/, // GET /api/v1/docs and /api/v1/docs/ui (Swagger)
 ]
 
 export function middleware(req: NextRequest) {
@@ -40,11 +42,15 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Routes protégées (/account/*, /api/me, /api/sessions, /api/permissions)
+  // Routes protégées (/account/*, /api/me, /api/sessions, /api/permissions, /api/v1/* sauf docs)
   const accessToken = req.cookies.get(AUTH_CONFIG.ACCESS_COOKIE_NAME)?.value
   const refreshToken = req.cookies.get(AUTH_CONFIG.REFRESH_COOKIE_NAME)?.value
+  const authHeader = req.headers.get("authorization")
+  const apiKeyHeader = req.headers.get("x-api-key")
+  const hasBearer = !!authHeader && /^Bearer\s+\S+/i.test(authHeader)
+  const hasApiKey = !!apiKeyHeader && apiKeyHeader.trim().length > 0
 
-  if (!accessToken && !refreshToken) {
+  if (!accessToken && !refreshToken && !hasBearer && !hasApiKey) {
     // Pour les API routes, retourne 401 JSON
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 })

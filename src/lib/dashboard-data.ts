@@ -559,6 +559,7 @@ export const searchableItems: SearchItem[] = [
   { id: "p8", type: "page", label: "Exports", icon: "download", keywords: ["export", "excel", "csv", "download"], url: "#exports" },
   { id: "p9", type: "page", label: "Équipe & tenants", icon: "users", keywords: ["team", "membres", "org"], url: "#team" },
   { id: "p10", type: "page", label: "Paramètres", icon: "settings", keywords: ["settings", "config", "profil"], url: "#settings" },
+  { id: "p11", type: "page", label: "API REST", icon: "database", keywords: ["api", "rest", "swagger", "webhooks", "documentation", "v1"], url: "#api" },
   // Actions
   { id: "a1", type: "action", label: "Lancer un job de scraping", icon: "play", keywords: ["lancer", "job", "scraping", "nouveau"] },
   { id: "a2", type: "action", label: "Exporter en Excel", icon: "file-spreadsheet", keywords: ["export", "excel", "xlsx"] },
