@@ -1528,3 +1528,61 @@ Stage Summary:
 - RGPD : conforme APIPD (Loi n°2013-450 CI)
 - Protection API : 7 security headers + CORS + CSP + validation
 - Score sécurité : 85/100
+
+---
+Task ID: 27
+Agent: Main (Architect)
+Task: Créer une Progressive Web App (Offline, Sync, Notifications, Installation, IndexedDB, Cache, Background Sync, Responsive)
+
+Work Log:
+- Créé public/manifest.json : name, short_name, start_url, display standalone, theme #059669, scope, lang fr, 3 shortcuts (Dashboard, IA, Carte), icons 192+512
+- Généré icônes PWA (icon-192.png, icon-512.png) via sharp
+- Créé public/sw.js (Service Worker) :
+  * INSTALL : pré-cache app shell (/, /offline, manifest, icons, logo)
+  * ACTIVATE : nettoyage vieux caches
+  * FETCH : 3 stratégies — cache-first (assets), stale-while-revalidate (pages), network-first (API avec fallback cache)
+  * BACKGROUND SYNC : syncPendingJobs + syncPendingExports (récupère actions IndexedDB, envoie vers API, supprime si succès)
+  * PUSH : notifications push avec titre/body/icon/vibrate/actions
+  * NOTIFICATION CLICK : focus client existant ou ouvre nouvelle fenêtre
+  * MESSAGE : SKIP_WAITING, GET_CACHE_STATS, CLEAR_CACHE
+  * Page offline HTML dédiée
+- Créé src/lib/pwa/indexeddb.ts : 4 stores (pending-actions, cached-companies, user-preferences, pending-exports)
+  * addPendingAction, getPendingActions, removePendingAction
+  * cacheCompanies, getCachedCompanies, getCachedCompanyCount
+  * setPreference, getPreference
+  * getDBStats
+- Créé src/lib/pwa/use-pwa.ts : hook usePWA()
+  * isOnline, isInstalled, isStandalone, canInstall, pendingActions, cachedCompanies, syncStatus, dbAvailable, swRegistered
+  * install() (beforeinstallprompt), registerSync() (Background Sync API), queueAction() (IndexedDB + sync), refreshStats(), clearCache()
+  * useMounted() via useSyncExternalStore (évite setState synchrone dans effect)
+  * Auto-sync quand online revient
+- Créé src/components/dashboard/views/pwa-view.tsx : UI complète
+  * Header avec badges Online/Offline + Installée
+  * Banner installation (si canInstall)
+  * 6 stats (Statut, Installation, SW, IndexedDB, Actions en attente, Entreprises cachées)
+  * Section Offline (4 features : cache shell, cache dynamique, page offline, fallback API)
+  * Section Sync (4 features + bouton "Sync maintenant")
+  * Section Notifications push (activate + test)
+  * Section IndexedDB (stats détaillées)
+  * Section Cache management (stratégies + bouton vider)
+  * Section Tests PWA (queue action, sync, notification test)
+  * Liste actions en attente
+  * Section Responsive (8 checks)
+- Intégré dans layout.tsx (manifest, icons, appleWebApp) + sidebar (Smartphone icon, badge Offline) + page.tsx routing
+- Bug corrigé : setState synchrone dans effect → setTimeout(0) + useMounted()
+- Tests Agent Browser :
+  * Page "Progressive Web App" avec titre + sous-titre ✓
+  * Badge "Online" ✓
+  * Sections Offline (cache app shell, cache dynamique, page offline) ✓
+  * Section IndexedDB ✓
+  * Section Sync ✓
+  * Aucune erreur console ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- PWA Enterprise complète et fonctionnelle
+- 6 fichiers créés (manifest.json, sw.js, indexeddb.ts, use-pwa.ts, pwa-view.tsx, icônes PNG)
+- 8 fonctionnalités : Offline (3 stratégies cache), Synchronisation (Background Sync), Notifications push, Installation (beforeinstallprompt), IndexedDB (4 stores), Cache (app shell + dynamique), Background Sync (jobs + exports), Responsive (mobile-first)
+- Service Worker avec 3 stratégies de cache + push + sync
+- Hook usePWA() avec auto-sync
+- UI dashboard avec monitoring complet
