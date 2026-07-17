@@ -1,0 +1,11 @@
+{
+  "name": "scraapiq-queue-worker",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.80.6",
+    "ioredis": "^5.11.1"
+  }
+}

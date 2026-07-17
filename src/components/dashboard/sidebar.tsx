@@ -18,6 +18,7 @@ import {
   Code,
   Bell,
   Shield,
+  Server,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,7 @@ export type NavKey =
   | "api"
   | "notifications"
   | "backoffice"
+  | "queue"
   | "settings"
 
 interface SidebarProps {
@@ -65,6 +67,7 @@ const navItems: {
   { key: "notifications", label: "Notifications", icon: Bell, badge: "Multi-canal", section: "Administration" },
   { key: "team", label: "Équipe & tenants", icon: Users, section: "Administration" },
   { key: "backoffice", label: "Back Office", icon: Shield, section: "Administration" },
+  { key: "queue", label: "Architecture distribuée", icon: Server, badge: "Live", section: "Administration" },
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },
 ]
 

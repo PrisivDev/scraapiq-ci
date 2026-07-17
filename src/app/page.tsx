@@ -28,6 +28,7 @@ import { SettingsView } from "@/components/dashboard/views/settings-view"
 import { ApiDocsView } from "@/components/dashboard/views/api-docs-view"
 import { NotificationsView } from "@/components/dashboard/views/notifications-view"
 import { BackOfficeView } from "@/components/dashboard/views/back-office-view"
+import { QueueMonitoringView } from "@/components/dashboard/views/queue-monitoring-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
@@ -44,6 +45,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   notifications: { title: "Notifications", subtitle: "Multi-canal · Alertes auto · Rapports planifiés" },
   team: { title: "Équipe & tenants", subtitle: "Membres et permissions" },
   backoffice: { title: "Back Office", subtitle: "Administration · Utilisateurs · Abonnements · API · Logs · Audit · Maintenance" },
+  queue: { title: "Architecture distribuée", subtitle: "Redis · BullMQ · Workers · Auto-scaling" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
 
@@ -91,7 +93,7 @@ export default function Home() {
   // Navigation depuis la command palette
   const handlePaletteNavigate = (url: string) => {
     const key = url.replace("#", "") as NavKey
-    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "settings"].includes(key)) {
+    if (["dashboard", "assistant", "search", "companies", "map", "sources", "jobs", "scraper", "exports", "api", "notifications", "team", "backoffice", "queue", "settings"].includes(key)) {
       handleNavSelect(key as NavKey)
     }
   }
@@ -160,6 +162,8 @@ export default function Home() {
             {activeNav === "team" && <TeamView />}
 
             {activeNav === "backoffice" && <BackOfficeView />}
+
+            {activeNav === "queue" && <QueueMonitoringView />}
 
             {activeNav === "settings" && <SettingsView />}
           </div>
