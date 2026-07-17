@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useSyncExternalStore } from "react"
 import {
   CheckCircle2, AlertTriangle, XCircle, Download, GitMerge, Sparkles,
   Building2, Play, UserPlus, Database, Lock, LogIn, Info, Bell,
@@ -56,9 +56,19 @@ const severityConfig = {
   info: { label: "Info", className: "bg-blue-500/10 text-blue-600 border-blue-500/30", icon: "info" },
 }
 
+// Hook pour éviter le mismatch d'hydration (Date.now() diffère serveur/client)
+function useMounted(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
+}
+
 export function ActivityAndAlerts() {
   const [activityFilter, setActivityFilter] = useState<"all" | "jobs" | "ai" | "system">("all")
   const [liveActivities, setLiveActivities] = useState<Activity[]>(recentActivities)
+  const mounted = useMounted()
 
   // Simule l'ajout d'activités en temps réel
   useEffect(() => {
@@ -131,7 +141,7 @@ export function ActivityAndAlerts() {
                       </div>
                       <span className="text-[10px] text-muted-foreground shrink-0 flex items-center gap-1">
                         <Clock className="h-2.5 w-2.5" />
-                        {timeAgo(activity.timestamp)}
+                        {mounted ? timeAgo(activity.timestamp) : ""}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -201,7 +211,7 @@ export function ActivityAndAlerts() {
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{alert.description}</p>
                     <div className="flex items-center justify-between mt-1.5">
                       <span className="text-[10px] text-muted-foreground">
-                        {alert.source} · {timeAgo(alert.triggeredAt)}
+                        {alert.source} · {mounted ? timeAgo(alert.triggeredAt) : ""}
                       </span>
                       {alert.status === "resolved" ? (
                         <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-500/10 text-emerald-600">

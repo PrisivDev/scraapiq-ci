@@ -1022,3 +1022,46 @@ Stage Summary:
 - API REST : POST launch, GET status/download, DELETE, bulk, stats
 - 76 entreprises exportables (geo + mock)
 - Progression temps réel + historique
+
+---
+Task ID: 20
+Agent: Main (Architect)
+Task: Fix hydration mismatch + PDF export broken
+
+Work Log:
+- Bug 1 : Hydration mismatch sur timeAgo() qui utilise Date.now() (différent serveur/client)
+  * Fix : hook useMounted() via useSyncExternalStore (pattern React 18+ officiel)
+    - retourne false sur serveur, true sur client
+    - pas de setState dans useEffect (passe le lint react-hooks/set-state-in-effect)
+  * Appliqué dans activity-alerts.tsx (2 usages timeAgo) + exports-leaderboard.tsx (1 usage)
+  * Bug sous-jacent : ExportRow (sous-composant) utilisait `mounted` sans l'avoir défini → ReferenceError
+    - Fix : ajout useMounted() dans ExportRow
+
+- Bug 2 : PDF export cassé (PDFKit ENOENT: Helvetica.afm not found)
+  * Cause : PDFKit cherche ses fichiers de fontes dans /ROOT/node_modules/pdfkit/js/data/ qui n'existe pas avec Turbopack
+  * Fix : remplacé PDFKit par générateur PDF natif (pdf-generator.ts)
+    - Construit la structure PDF manuellement (objets, xref, trailer)
+    - A4 paysage, pagination automatique
+    - Fonts Helvetica/Helvetica-Bold (standard PDF, pas de fichier externe)
+    - Échappement des caractères spéciaux (parenthèses, backslash)
+    - 76 entreprises sur 3 pages
+  * generateExport() mis à jour : PDF est maintenant synchrone (Promise.resolve)
+  * Supprimé import PDFDocument de generators.ts
+
+- Tests tous les 5 formats :
+  * xlsx : 43 562 bytes, Microsoft Excel 2007+ ✓
+  * csv : 9 009 bytes, CSV UTF-8 with BOM ✓
+  * pdf : 29 290 bytes, PDF document version 1.4, 3 pages ✓
+  * json : 20 840 bytes, JSON structuré avec métadonnées ✓
+  * zip : 74 005 bytes, Zip archive (xlsx+csv+json+README) ✓
+- Tests UI Agent Browser :
+  * Dashboard : aucune erreur d'hydration ✓
+  * Export PDF depuis l'UI : 76 lignes, 28.6 Ko, bouton Télécharger ✓
+  * Console : aucune erreur/warning ✓
+
+Stage Summary:
+- 2 bugs critiques corrigés
+- Hydration mismatch : résolu via useSyncExternalStore (pattern React 18+)
+- PDF export : résolu via générateur PDF natif (sans PDFKit)
+- Tous les 5 formats d'export fonctionnent (xlsx, csv, pdf, json, zip)
+- Aucune erreur console/runtime

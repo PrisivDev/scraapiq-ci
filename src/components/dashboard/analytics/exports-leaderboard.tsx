@@ -1,5 +1,6 @@
 "use client"
 
+import { useSyncExternalStore } from "react"
 import {
   Download, FileSpreadsheet, FileText, FileJson, File as FilePdf,
   CheckCircle2, Loader2, XCircle, Clock, User,
@@ -36,7 +37,17 @@ function timeAgo(iso: string): string {
   return `il y a ${d}j`
 }
 
+// Hook pour éviter le mismatch d'hydration (Date.now() diffère serveur/client)
+function useMounted(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
+}
+
 export function ExportsAndLeaderboard() {
+  const mounted = useMounted()
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Historique exports */}
@@ -112,6 +123,7 @@ export function ExportsAndLeaderboard() {
 }
 
 function ExportRow({ exp }: { exp: ExportRecord }) {
+  const mounted = useMounted()
   const formatMeta = formatIcons[exp.format]
   const statusMetaObj = statusMeta[exp.status]
   const FormatIcon = formatMeta.icon
@@ -131,7 +143,7 @@ function ExportRow({ exp }: { exp: ExportRecord }) {
           <span>·</span>
           <span className="flex items-center gap-0.5"><User className="h-2.5 w-2.5" />{exp.createdBy}</span>
           <span>·</span>
-          <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{timeAgo(exp.createdAt)}</span>
+          <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{mounted ? timeAgo(exp.createdAt) : ""}</span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
