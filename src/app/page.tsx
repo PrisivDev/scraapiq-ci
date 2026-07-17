@@ -21,7 +21,7 @@ import { OSMMapViewWrapper } from "@/components/dashboard/views/osm-map-wrapper"
 import { SourcesView } from "@/components/dashboard/views/sources-view"
 import { JobsView } from "@/components/dashboard/views/jobs-view"
 import { ScraperView } from "@/components/dashboard/views/scraper-view"
-import { ExportsView } from "@/components/dashboard/views/exports-view"
+import { ExportEngineView } from "@/components/dashboard/views/export-engine-view"
 import { TeamView } from "@/components/dashboard/views/team-view"
 import { SettingsView } from "@/components/dashboard/views/settings-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
@@ -139,7 +139,7 @@ export default function Home() {
 
             {activeNav === "scraper" && <ScraperView />}
 
-            {activeNav === "exports" && <ExportsView />}
+            {activeNav === "exports" && <ExportEngineView />}
 
             {activeNav === "team" && <TeamView />}
 

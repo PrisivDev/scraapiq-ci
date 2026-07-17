@@ -954,3 +954,71 @@ Stage Summary:
 - 76 entreprises indexées sur 7 champs
 - Les 5 exemples demandés fonctionnent : Restaurant Cocody, Pharmacie Yopougon, BTP Bouaké, Hôtel Grand Bassam, Clinique Abidjan
 - UI : barre de recherche + debounce, carte intention IA, facets cliquables, résultats avec highlights + score
+
+---
+Task ID: 19
+Agent: Main (Architect)
+Task: Créer un moteur d'export complet (Excel, CSV, PDF, JSON, API, ZIP, sélection, filtres, massif)
+
+Work Log:
+- Installé xlsx@0.18.5 (SheetJS), json2csv@6.0.0-alpha.2, jszip@3.10.1, pdfkit@0.19.1
+- Créé src/lib/export/types.ts :
+  * ExportFormat (xlsx|csv|pdf|json|zip), ExportColumn (20 colonnes par défaut)
+  * ExportFilters (sectors, communes, cities, status, minRating, hasPhone/Email/Website, searchQuery)
+  * ExportConfig, ExportJob, MIME_TYPES, FORMAT_LABELS
+- Créé src/lib/export/generators.ts — 5 générateurs :
+  * generateExcel() : SheetJS (json_to_sheet, largeurs colonnes, book_new)
+  * generateCSV() : json2csv (BOM UTF-8 pour Excel, headers, defaultValue)
+  * generateJSON() : JSON.stringify avec métadonnées (exportedAt, count, columns, source)
+  * generatePDF() : PDFKit (A4 paysage, en-têtes colorés, pagination auto, footer)
+  * generateZIP() : JSZip (combine xlsx+csv+json+README.txt)
+  * generateExport() : dispatcher async (ZIP est async)
+- Créé src/lib/export/export-store.ts — store de jobs async :
+  * getAllCompanies() : 76 entreprises (64 geo + 12 mock)
+  * filterCompanies() : filtres sectors/communes/cities/status/rating/searchQuery/hasPhone/Email/Website + selectedIds
+  * startExportJob() : async avec progression (10→30→50→70→90→100%), stockage base64 data URL
+  * getExportJob(), listExportJobs(), deleteExportJob(), getExportStats()
+  * Singleton globalThis (persistence dev mode)
+- Créé 4 API routes :
+  * POST /api/export — lance export (format, columns, filters, selectedIds, includeGps/Socials/Sources, filename, zipFormats)
+  * GET /api/export — liste tous les jobs
+  * GET /api/export/[id] — état du job OU ?download=true (binaire) OU ?format=base64 (data URL)
+  * DELETE /api/export/[id] — supprime
+  * POST /api/export/bulk — export massif multi-formats ZIP
+  * GET /api/export/stats — statistiques
+- Créé src/components/dashboard/views/export-engine-view.tsx — UI complète :
+  * Sélection format (5 boutons: Excel/CSV/PDF/JSON/ZIP avec icônes colorées)
+  * Toggle mode massif (ZIP multi-formats avec checkboxes)
+  * Sélection colonnes (20 colonnes, tout sélectionner/désélectionner)
+  * Options avancées (GPS, réseaux sociaux, sources)
+  * Filtres (secteurs, villes, communes avec pills cliquables, checkboxes hasPhone/Email/Website)
+  * Nom fichier personnalisable
+  * Bouton Exporter (adapte le label au format)
+  * Carte progression temps réel (nom, lignes, taille, barre %, bouton Télécharger)
+  * Stats rapides (colonnes sélectionnées, filtres actifs)
+  * Historique (liste avec icône format, taille, bouton télécharger)
+- Intégré dans page.tsx : activeNav === "exports" → ExportEngineView
+- Tests curl :
+  * CSV : 76 lignes, 9 Ko, BOM UTF-8, en-têtes corrects ✓
+  * Excel : 43 Ko, fichier .xlsx valide (Microsoft Excel 2007+) ✓
+  * JSON : métadonnées + 76 entreprises structurées ✓
+  * ZIP massif : 74 Ko, archive contenant xlsx+csv+json+README ✓
+  * Filtre (Restauration + Cocody) : 2 résultats filtrés ✓
+  * Téléchargement binaire via ?download=true ✓
+- Tests Agent Browser + VLM :
+  * UI complète : 5 formats, colonnes, filtres, bouton export ✓
+  * Lancement export Excel → progression 100% → 76 lignes, 42.5 Ko ✓
+  * Bouton Télécharger disponible ✓
+  * Historique avec 5 exports récents ✓
+  * Aucune erreur console/runtime
+
+Stage Summary:
+- Moteur d'export Enterprise complet et fonctionnel
+- 5 formats : Excel (xlsx), CSV, PDF, JSON, ZIP (multi-formats)
+- 3 modules (types, generators, export-store) + 4 API routes + 1 UI
+- Sélection personnalisée : 20 colonnes configurables + IDs spécifiques
+- Filtres avancés : secteurs, villes, communes, statut, rating, hasPhone/Email/Website
+- Export massif : multi-formats dans un ZIP avec README
+- API REST : POST launch, GET status/download, DELETE, bulk, stats
+- 76 entreprises exportables (geo + mock)
+- Progression temps réel + historique
