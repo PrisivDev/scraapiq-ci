@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { canAccess, type UserRole } from "@/lib/rbac-nav"
 
 export type NavKey =
   | "dashboard"
@@ -53,6 +54,7 @@ interface SidebarProps {
   active: NavKey
   onSelect: (key: NavKey) => void
   mobile?: boolean
+  userRole?: UserRole
 }
 
 const navItems: {
@@ -83,10 +85,12 @@ const navItems: {
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },
 ]
 
-export function Sidebar({ active, onSelect, mobile = false }: SidebarProps) {
+export function Sidebar({ active, onSelect, mobile = false, userRole = "VIEWER" }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
-  const sections = Array.from(new Set(navItems.map((i) => i.section)))
+  // Filtre les items selon le rôle de l'utilisateur
+  const visibleItems = navItems.filter((item) => canAccess(userRole, item.key))
+  const sections = Array.from(new Set(visibleItems.map((i) => i.section)))
 
   return (
     <aside
@@ -129,7 +133,7 @@ export function Sidebar({ active, onSelect, mobile = false }: SidebarProps) {
                 {section}
               </p>
             )}
-            {navItems
+            {visibleItems
               .filter((i) => i.section === section)
               .map((item) => {
                 const Icon = item.icon

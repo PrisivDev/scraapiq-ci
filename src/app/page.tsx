@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sidebar, type NavKey } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/analytics/dashboard-header"
 import { CompanyDetailDialog } from "@/components/dashboard/company-detail-dialog"
@@ -34,6 +34,8 @@ import { PWAView } from "@/components/dashboard/views/pwa-view"
 import { BusinessIntelView } from "@/components/dashboard/views/business-intel-view"
 import { SaasView } from "@/components/dashboard/views/saas-view"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
+import { canAccess, canPerform, type UserRole, DEFAULT_ROLE } from "@/lib/rbac-nav"
+import { ShieldX } from "lucide-react"
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   dashboard: { title: "Tableau de bord", subtitle: "Vue d'ensemble — Abidjan & Côte d'Ivoire" },
@@ -65,6 +67,19 @@ export default function Home() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [highlightedId, setHighlightedId] = useState<string | undefined>()
+  const [userRole, setUserRole] = useState<UserRole>(DEFAULT_ROLE)
+
+  // Fetch le rôle de l'utilisateur connecté
+  useEffect(() => {
+    fetch("/api/me", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d?.user?.role) {
+          setUserRole(d.user.role as UserRole)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const handleSelectCompany = (c: Company) => {
     setSelectedCompany(c)
@@ -92,6 +107,13 @@ export default function Home() {
   }
 
   const handleNavSelect = (key: NavKey) => {
+    // Vérifie si l'utilisateur a le droit d'accéder à cette section
+    if (!canAccess(userRole, key)) {
+      toast.error("Accès refusé", {
+        description: `Votre rôle (${userRole}) ne permet pas d'accéder à cette section.`,
+      })
+      return
+    }
     setActiveNav(key)
     setMobileNavOpen(false)
     const main = document.querySelector("main")
@@ -111,19 +133,19 @@ export default function Home() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar */}
-      <Sidebar active={activeNav} onSelect={handleNavSelect} />
+      <Sidebar active={activeNav} onSelect={handleNavSelect} userRole={userRole} />
 
       {/* Mobile sidebar */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-[260px] p-0">
-          <Sidebar active={activeNav} mobile onSelect={handleNavSelect} />
+          <Sidebar active={activeNav} mobile onSelect={handleNavSelect} userRole={userRole} />
         </SheetContent>
       </Sheet>
 
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0">
         <DashboardHeader
-          onNewJob={() => setNewJobOpen(true)}
+          onNewJob={canPerform(userRole, "job:create") ? () => setNewJobOpen(true) : undefined}
           onMobileMenu={() => setMobileNavOpen(true)}
           onNavigate={handlePaletteNavigate}
           title={currentTitle.title}
@@ -132,6 +154,20 @@ export default function Home() {
 
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 lg:p-6 space-y-5 max-w-[1800px] mx-auto">
+            {/* Protection RBAC : si l'utilisateur n'a pas accès, affiche un message */}
+            {!canAccess(userRole, activeNav) ? (
+              <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10 text-destructive mb-4">
+                  <ShieldX className="h-8 w-8" />
+                </div>
+                <h2 className="text-xl font-bold mb-2">Accès refusé</h2>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Votre rôle ({userRole}) ne vous permet pas d'accéder à cette section.
+                  Contactez un administrateur si vous pensez qu'il s'agit d'une erreur.
+                </p>
+              </div>
+            ) : (
+              <>
             {activeNav === "dashboard" && (
               <AnalyticsDashboard onNavigate={handlePaletteNavigate} />
             )}
@@ -182,6 +218,8 @@ export default function Home() {
             {activeNav === "saas" && <SaasView />}
 
             {activeNav === "settings" && <SettingsView />}
+              </>
+            )}
           </div>
         </main>
 

@@ -1659,3 +1659,55 @@ Stage Summary:
 - API Keys : génération sk_live_XXXX, hash SHA-256, scopes, révocation
 - Facturation : factures INV-YYYY-XXXX, TVA 18%, statut pending/paid
 - RBAC : 5 rôles × 22 permissions en 6 catégories
+
+---
+Task ID: 30
+Agent: Main (Architect)
+Task: Implémenter le RBAC pour masquer les sections selon le rôle utilisateur
+
+Work Log:
+- Créé src/lib/rbac-nav.ts : configuration RBAC pour la navigation
+  * 5 rôles hiérarchiques : OWNER(100), ADMIN(80), MANAGER(60), AGENT(40), VIEWER(20)
+  * NAV_ROLE_ACCESS : mapping de chaque section → rôle minimum requis
+    - VIEWER : dashboard, assistant, search, companies, map, settings
+    - AGENT : sources, jobs, scraper, exports
+    - MANAGER : bi, team, notifications
+    - ADMIN : api, backoffice, queue, security, pwa
+    - OWNER : saas
+  * canAccess(userRole, navKey) : vérifie si le rôle peut accéder
+  * canPerform(userRole, action) : vérifie si le rôle peut effectuer une action
+  * getAccessibleNavKeys(userRole) : liste les sections accessibles
+  * ROLE_LABELS + ROLE_COLORS pour l'affichage
+
+- Modifié sidebar.tsx :
+  * Ajout prop userRole (défaut VIEWER)
+  * Filtre navItems avec canAccess() → visibleItems
+  * Seules les sections accessibles sont rendues
+  * Les sections vides (aucun item accessible) ne s'affichent pas
+
+- Modifié page.tsx :
+  * Ajout état userRole (défaut VIEWER)
+  * Fetch /api/me au montage → setUserRole
+  * handleNavSelect() : vérifie canAccess() avant de changer de vue, toast "Accès refusé" si interdit
+  * Passe userRole aux 2 Sidebar (desktop + mobile)
+  * Passe onNewJob=undefined si !canPerform(userRole, "job:create") → masque le bouton
+  * Protection rendu : si !canAccess(userRole, activeNav) → affiche écran "Accès refusé" avec icône ShieldX
+
+- Modifié dashboard-header.tsx : bouton "Nouveau job" déjà conditionnel (onNewJob && ...)
+
+- Tests Agent Browser :
+  * OWNER (scraper-test) : 19 sections visibles (toutes) ✓
+  * AGENT (agent-test) : 10 sections visibles (Pilotage + Données + Opérations + Paramètres) ✓
+  * Sections masquées pour AGENT : API REST, Notifications, Équipe, Back Office, Architecture, Sécurité, PWA, BI, SaaS ✓
+  * Bouton "Nouveau scraping" visible pour AGENT (canPerform job:create) ✓
+  * Aucune erreur console ✓
+- Lint : 0 erreur ✓
+
+Stage Summary:
+- RBAC navigation implémenté et fonctionnel
+- 1 fichier créé (rbac-nav.ts) + 3 fichiers modifiés (sidebar.tsx, page.tsx, dashboard-header.tsx)
+- 5 rôles : OWNER, ADMIN, MANAGER, AGENT, VIEWER
+- 19 sections filtrées selon le rôle
+- Protection triple : sidebar (masquage) + routing (toast) + rendu (écran accès refusé)
+- Boutons d'action conditionnels (Nouveau job masqué pour VIEWER)
+- Testé avec 2 utilisateurs (OWNER 19 sections vs AGENT 10 sections)
