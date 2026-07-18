@@ -24,6 +24,7 @@ import {
   BarChart3,
   Crown,
   Brain,
+  Table2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -50,6 +51,7 @@ export type NavKey =
   | "bi"
   | "saas"
   | "agents"
+  | "db"
   | "settings"
 
 interface SidebarProps {
@@ -85,6 +87,7 @@ const navItems: {
   { key: "bi", label: "Business Intelligence", icon: BarChart3, section: "Pilotage" },
   { key: "agents", label: "IA Multi-Agents", icon: Brain, badge: "10 agents", section: "Pilotage" },
   { key: "saas", label: "SaaS Enterprise", icon: Crown, section: "Administration" },
+  { key: "db", label: "Base de données", icon: Table2, badge: "DB", section: "Administration" },
   { key: "settings", label: "Paramètres", icon: Settings, section: "Administration" },
 ]
 

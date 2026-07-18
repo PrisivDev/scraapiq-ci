@@ -2254,3 +2254,45 @@ Next actions for the operator:
   3. Login at `/auth/login` with the admin credentials.
   4. Run real scraping jobs (Google Maps / Facebook / Website / LinkedIn) to populate the Company table — the dashboard will then start showing real data.
   5. The default 3 alert rules + 2 scheduled reports will auto-seed on the first `/api/v1/alerts` GET (legitimate config, not mock).
+
+---
+Task ID: 36
+Agent: Main (Architect)
+Task: Ajouter un DB Viewer dans le dashboard (visible dans le preview panel)
+
+Work Log:
+- Problème : Prisma Studio (port 5555) lancé mais inaccessible via le preview panel (qui ne montre que le port 3000)
+- Solution : créer une vue "Base de données" intégrée au dashboard, accessible via la sidebar
+- Créé endpoint GET /api/admin/db :
+  * Retourne 23 tables + compte de lignes + 5 premières lignes de chaque
+  * Auth OWNER uniquement (401 si non authentifié, 403 si non OWNER)
+  * Champs sensibles masqués (passwordHash, twoFactorSecret, backupCodes → "***hidden***")
+  * Sanitize les Dates → ISO, objects → JSON string
+- Créé composant src/components/dashboard/views/db-viewer.tsx :
+  * Layout 3 colonnes (liste tables / détail table sélectionnée)
+  * Filtre de recherche sur les noms de tables
+  * Tableau des 5 premières lignes avec colonnes dynamiques
+  * Toggle "Afficher/Masquer" pour les champs sensibles
+  * Badges colorés (vert si count > 0, outline si 0)
+  * Empty state "Table vide — prête pour la production"
+  * Note d'aide avec rappel OWNER-only + prisma studio
+- Intégré dans la sidebar : nouvelle entrée "Base de données" (icon Table2, badge "DB", section Administration)
+- Intégré dans rbac-nav.ts : db: "OWNER" (réservé aux OWNER)
+- Intégré dans page.tsx : routing activeNav === "db" + navTitles
+- Bug corrigé : getAuthUser() retourne { user, error, status }, pas le user direct → check authUser.user.role au lieu de authUser.role
+- Vérification curl : GET /api/admin/db avec cookie OWNER → 200, 23 tables, 18 lignes au total (user:1, org:1, workspace:1, member:1, session:4, refreshToken:4, auditLog:6)
+- Vérification Agent Browser :
+  * Login admin@scraapiq.ci → redirect / ✓
+  * Sidebar affiche "Base de données DB" pour OWNER ✓
+  * Click → vue DB Viewer avec liste des 23 tables + comptes ✓
+  * Click table "user" → affiche admin@scraapiq.ci, passwordHash masqué (•••••) ✓
+  * Aucune erreur console ✓
+- VLM z-ai vision : "Ce DB viewer affiche une base SQLite avec 23 tables, dont 7 contiennent des données. Liste filtrable des tables + aperçu des colonnes/données de la table sélectionnée."
+- Prisma Studio laissé lancé en arrière-plan (port 5555) pour usage local via bunx prisma studio
+
+Stage Summary:
+- DB Viewer opérationnel dans le dashboard, visible dans le preview panel
+- 1 endpoint API (/api/admin/db) + 1 composant (db-viewer.tsx) + intégration sidebar/rbac/page
+- Accès sécurisé : OWNER uniquement, champs sensibles masqués par défaut
+- 23 tables inspectables avec compte + 5 lignes échantillon
+- Aucune régression, lint 0 erreur

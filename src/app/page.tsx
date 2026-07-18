@@ -34,6 +34,7 @@ import { PWAView } from "@/components/dashboard/views/pwa-view"
 import { BusinessIntelView } from "@/components/dashboard/views/business-intel-view"
 import { SaasView } from "@/components/dashboard/views/saas-view"
 import { AgentsView } from "@/components/dashboard/views/agents-view"
+import { DbViewerView } from "@/components/dashboard/views/db-viewer"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 import { canAccess, canPerform, type UserRole, DEFAULT_ROLE } from "@/lib/rbac-nav"
 import { ShieldX } from "lucide-react"
@@ -58,6 +59,7 @@ const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   bi: { title: "Business Intelligence", subtitle: "Power BI Ready · Prévisions · Secteurs · Croissance · Qualité" },
   saas: { title: "SaaS Enterprise", subtitle: "Licence · Quota · Abonnements · API Keys · Facturation" },
   agents: { title: "IA Multi-Agents", subtitle: "10 agents spécialisés · Pipeline coordonné · Retry · Checkpoint" },
+  db: { title: "Base de données", subtitle: "Inspector Prisma · 23 tables · OWNER uniquement" },
   settings: { title: "Paramètres", subtitle: "Profil, sécurité, facturation" },
 }
 
@@ -220,6 +222,8 @@ export default function Home() {
             {activeNav === "saas" && <SaasView />}
 
             {activeNav === "agents" && <AgentsView />}
+
+            {activeNav === "db" && <DbViewerView />}
 
             {activeNav === "settings" && <SettingsView />}
               </>

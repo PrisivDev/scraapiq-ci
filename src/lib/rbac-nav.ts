@@ -55,6 +55,7 @@ export const NAV_ROLE_ACCESS: Record<NavKey, UserRole> = {
   security: "ADMIN",
   pwa: "ADMIN",
   saas: "OWNER",
+  db: "OWNER",
 
   // Paramètres — accessible à tous (pour son propre profil)
   settings: "VIEWER",
