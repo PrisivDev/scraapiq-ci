@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Users, UserPlus, Building2, Crown, Shield, UserCog, User, Eye, MoreVertical, Mail } from "lucide-react"
+import { Users, UserPlus, Building2, Crown, Shield, UserCog, User, Eye, MoreVertical, Mail, Info } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { toast } from "sonner"
+import { OrganizationDetailsDialog } from "@/components/dashboard/organization-details-dialog"
 
 interface TeamMember {
   id: string
@@ -38,6 +39,7 @@ export function TeamView() {
   // Récupère le nom réel de l'organisation depuis /api/me
   // (mock "AgriBusiness CI" supprimé)
   const [organizationName, setOrganizationName] = useState<string>("Mon organisation")
+  const [orgDetailsOpen, setOrgDetailsOpen] = useState(false)
   useEffect(() => {
     let mounted = true
     fetch("/api/me", { credentials: "include" })
@@ -84,6 +86,10 @@ export function TeamView() {
             </div>
             <Button variant="outline" size="sm" onClick={() => toast.info("Paramètres org")}>
               Paramètres
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setOrgDetailsOpen(true)}>
+              <Info className="h-3.5 w-3.5 mr-1.5" />
+              Voir les détails
             </Button>
           </div>
         </CardContent>
@@ -204,6 +210,8 @@ export function TeamView() {
           </div>
         </CardContent>
       </Card>
+
+      <OrganizationDetailsDialog open={orgDetailsOpen} onOpenChange={setOrgDetailsOpen} />
     </div>
   )
 }

@@ -1999,4 +1999,4 @@
   1999→  MONITORING: SENTRY_DSN, LOG_LEVEL
   2000→  SCRAPING: CHROMIUM_EXECUTABLE_PATH, PLAYWRIGHT_NO_SANDBOX, SCRAPER_PROXY_POOL
 
-[showing lines 1-2000 of 2299; use offset=2001 with limit to continue reading]
+[showing lines 1-2000 of 2511; use offset=2001 with limit to continue reading]

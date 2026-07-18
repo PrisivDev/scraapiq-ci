@@ -24,8 +24,10 @@ import {
   KeyRound,
   User as UserIcon,
   Loader2,
+  Building2,
 } from "lucide-react"
 import { toast } from "sonner"
+import { OrganizationDetailsDialog } from "@/components/dashboard/organization-details-dialog"
 
 interface CurrentUser {
   id: string
@@ -51,6 +53,7 @@ export function UserMenu() {
   const [user, setUser] = React.useState<CurrentUser | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loggingOut, setLoggingOut] = React.useState(false)
+  const [orgDetailsOpen, setOrgDetailsOpen] = React.useState(false)
 
   React.useEffect(() => {
     let active = true
@@ -105,6 +108,7 @@ export function UserMenu() {
   }
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
@@ -142,6 +146,17 @@ export function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            setOrgDetailsOpen(true)
+          }}
+          className="cursor-pointer"
+        >
+          <Building2 className="h-4 w-4 mr-2" />
+          Organisation
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/account/security" className="cursor-pointer">
             <Shield className="h-4 w-4 mr-2" />
@@ -175,6 +190,8 @@ export function UserMenu() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+      <OrganizationDetailsDialog open={orgDetailsOpen} onOpenChange={setOrgDetailsOpen} />
+    </>
   )
 }
 

@@ -2508,3 +2508,93 @@ Stage Summary:
 - Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification passes (profile edit + persist, DB create + edit + delete).
 - 2 screenshots saved (profile-edit.png, db-edit-dialog.png).
 - Work record written to /home/z/my-project/agent-ctx/38-profile-db-editor-builder.md.
+
+---
+Task ID: 39
+Agent: Org Details Modal Builder
+Task: Create rich Organization Details modal with all pertinent info (members, workspaces, subscription, license, quota, invoices, API keys, audit log)
+
+Work Log:
+- Read worklog.md (Tasks 33-a, 36, 37, 38) to understand project state. The task brief expected admin@scraapiq.ci / AdminProd2026! / "Organisation de Admin Prod", but the actual DB now contains a different OWNER: Thierry FANHONA / admin@prisiv.biz (still OWNER role) owning the "PRISIV LAB" org (plan Starter, slug prisiv-lab). The endpoint is fully dynamic (reads from DB), so it works with whatever user/org is currently configured. Login verified with admin@prisiv.biz / AdminProd2026! (same password).
+
+Phase 1 — Created `/api/organization/details/route.ts` (new file, ~290 lines):
+  * `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"` per task spec.
+  * Auth: any authenticated user (`getAuthUser()` — 401 if not). Determines the org via `db.member.findFirst({ where: { userId, status: "active" } })` (404 if no membership).
+  * Response shape (matches the task spec exactly):
+    - `organization`: full Organization record (with `settings` parsed from JSON string to object).
+    - `owner`: User row joined from `organization.ownerId` (select: id, name, email, avatarUrl, lastLoginAt, createdAt) + `role` derived from the corresponding Member row.
+    - `workspaces`: all `db.workspace.findMany({ where: { organizationId } })`.
+    - `members`: `db.member.findMany({ where: { organizationId } })` mapped with their `db.user` info (id, name, email, avatarUrl, status, lastLoginAt, createdAt) + role + permissions (JSON-parsed) + invitedBy + invitedAt + acceptedAt.
+    - `subscription`: `db.subscription.findUnique({ where: { organizationId } })` (null if none).
+    - `license`: `db.license.findFirst({ where: { organizationId, status: "active" } })` (null if none) — exposes `keyMasked` only (full key never sent to client; masked as `XXXXXXXX-****-****-XXXX`).
+    - `quota`: `db.quotaUsage.findUnique({ where: { organizationId_periodYear_periodMonth: { organizationId, periodYear: currentYear, periodMonth: currentMonth } } })` — null if no row for the current month.
+    - `invoices`: all `db.invoice.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } })` (items JSON-parsed).
+    - `apiKeys`: `db.apiKey.findMany({ where: { userId: { in: memberUserIds } }, orderBy: { createdAt: "desc" } })` — only `keyPrefix` exposed (never `keyHash`), with ownerName/ownerEmail joined from the userMap.
+    - `stats`: computed aggregates — totalMembers (status="active"), totalMembersPending (status="pending"), totalWorkspaces, totalInvoices, totalApiKeys (not revoked), totalCompanies (`db.company.count()` — global since Company has no orgId), memberSince (org.createdAt), daysActive (now - createdAt in days).
+    - `auditLogs`: `db.auditLog.findMany({ where: { userId: { in: memberUserIds } }, orderBy: { createdAt: "desc" }, take: 20 })` — JOINED with userEmail/userName from userMap. Returned as `null` for non-OWNER/ADMIN users (canSeeAudit=false).
+    - `currentRole` + `canSeeAudit` (true if role ∈ {OWNER, ADMIN}).
+  * `parseJson<T>(value, fallback)` helper handles JSON parsing safely (returns fallback on null/invalid).
+  * `maskKey(key)` helper masks license keys: shows first 8 + last 4 chars with `****` in between (defensive — keys are cuid so this is cosmetic).
+
+Phase 2 — Created `/src/components/dashboard/organization-details-dialog.tsx` (new file, ~900 lines):
+  * Rich shadcn Dialog (`max-w-4xl`, `max-h-[90vh]`, scrollable body, header with org logo + name + plan/slug/member-since badges).
+  * KPI grid (2 cols mobile, 3 cols desktop): Membres actifs, Workspaces, Plan, Quota API, Entreprises, Jours actifs — each card has icon + label + value + sub-text.
+  * Tabs (9): Identité · Membres · Workspaces · Abonnement · Licence · Quota · Factures · API Keys · Audit. The Audit tab is only rendered for OWNER/ADMIN (`data.canSeeAudit`).
+  * Identité tab: Nom (inline editable for OWNER/ADMIN via Input + Save/X buttons calling `PUT /api/organization` with toast + refresh), Slug (code badge), Plan (colored badge), Owner (avatar + name + email + role badge), Créé le / Modifié le (formatted with date-fns fr locale), Settings JSON (pretty-printed in a `<pre>` block).
+  * Membres tab: shadcn Table with columns Membre (avatar+name+email), Rôle (icon badge with color per role: OWNER=amber, ADMIN=emerald, MANAGER=sky, AGENT=violet, VIEWER=slate), Statut (color-coded badge: active=green, pending=amber, revoked=red), Invité le / Accepté le / Dernier login (hidden on smaller screens for responsive). Empty state if 0 members.
+  * Workspaces tab: grid of cards (icon + name + slug badge + created date). Empty state if 0.
+  * Abonnement tab: Statut badge, Plan, Cycle, Montant (FCFA), Période start/end, Méthode de paiement, Annulation fin de période, Fin d'essai. Empty state if no subscription.
+  * Licence tab: Clé (masked code badge), Plan + Nom + Statut badges, 6 LimitTile cards (Utilisateurs/Entreprises/Appels API/Exports/Sources/Workspaces), Features chips (Badge components), Activée le / Expire le. Empty state if no license.
+  * Quota tab: 5 progress bars — Appels API, Entreprises stockées, Exports, Scrape jobs (no max shown), Utilisateurs. Each bar uses the QuotaBar sub-component which computes pct = current/max and colors: <60% green, 60-90% amber, ≥90% red. Empty state if no quota row for the current month.
+  * Factures tab: shadcn Table — Numéro (mono), Montant HT, TVA (hidden md), Total TTC, Statut (badge), Échéance (hidden lg), Payée le (hidden lg). Empty state if 0 invoices.
+  * API Keys tab: shadcn Table — Nom (with owner email), Préfixe (mono `sk_live_xxxx…`), Scopes (chips, +N overflow), Dernier usage (hidden lg), Expire le (hidden lg), Statut (computed from revokedAt/expiresAt → revoked/expired/active). Empty state if 0 keys.
+  * Audit tab (OWNER/ADMIN only): timeline of 20 last events. Each item: severity badge (color-coded), action badge, category badge, timestamp (formatted with date-fns fr), user email + IP. Collapsible metadata JSON viewer (`<Collapsible>` from shadcn — "Voir les détails" / "Masquer les détails"). Empty state if 0 logs.
+  * Loading state: 6 skeleton KPI cards + skeleton tabs + 4 skeleton rows (CSS `animate-pulse`).
+  * Error state: red icon + "Impossible de charger les détails" + error message + "Réessayer" button calling `fetchData()`.
+  * Empty states for every section (icon + title + descriptive message).
+  * Helper functions: `formatDate` (date-fns `format` with `fr` locale, default pattern `d MMM yyyy`), `formatDateTime` (`d MMM yyyy 'à' HH:mm`), `formatCurrency` (`new Intl.NumberFormat("fr-FR").format(n) + " FCFA"`), `formatNumber`, `getInitials`, `progressColorClass` (green/amber/red), `statusBadgeClass` (active/paid=green, pending/trialing=amber, revoked/cancelled/expired/failed=red), `severityBadgeClass`, `PLAN_BADGE`/`ROLE_BADGE` color maps.
+  * Fully responsive: dialog `max-w-4xl`, body scrolls vertically (`overflow-y-auto`), tabs wrap on small screens (`overflow-x-auto`), tables hide non-essential columns on mobile (`hidden md:table-cell` / `hidden lg:table-cell`).
+  * Fetches `/api/organization/details` with `credentials: "include"` on dialog open (useEffect on `open` prop).
+  * Inline org name edit (Identité tab, OWNER/ADMIN only): Input + Save/X buttons. Save calls `PUT /api/organization` with `{ name }`, toast "Organisation renommée" on success / error toast on failure, then re-fetches the details. Escape key cancels edit, Enter saves.
+  * All lucide-react icons used: Building2, Users, Calendar, CreditCard, KeyRound, FileText, ScrollText, Activity, Boxes, ShieldCheck, Loader2, Save, X, ChevronDown, ChevronRight, Crown, Shield, UserCog, User, Eye, Mail, AlertCircle, Hash, Layers, Gauge, Receipt, MapPin.
+
+Phase 3 — Wired the modal into 3 entry points:
+  1. **UserMenu** (`src/components/auth/user-menu.tsx`): added `Building2` icon import, `OrganizationDetailsDialog` import, `orgDetailsOpen` state, a new `DropdownMenuItem` labelled "Organisation" (placed between the user info header and the "Sécurité" link, separated by `DropdownMenuSeparator`s). The item uses `onSelect={(e) => { e.preventDefault(); setOrgDetailsOpen(true) }}` so the dropdown closes but the modal opens. Wrapped the existing `<DropdownMenu>` in a React fragment `<>...</>` to also render the dialog.
+  2. **Dashboard header** (`src/components/dashboard/analytics/dashboard-header.tsx`): added `Info` icon import, `OrganizationDetailsDialog` import, `orgDetailsOpen` state, and a new `DropdownMenuItem` labelled "Voir les détails" inside the existing tenant selector dropdown (placed after the orgs list, before "Créer une organisation"). Renders the dialog at the end of the component.
+  3. **Team view** (`src/components/dashboard/views/team-view.tsx`): added `Info` icon import, `OrganizationDetailsDialog` import, `orgDetailsOpen` state, and a new "Voir les détails" Button (with Info icon, `variant="outline" size="sm"`) next to the existing "Paramètres" button on the organisation card. Renders the dialog at the end of the view.
+
+Phase 4 — Verification:
+  * `bun run lint` → exit 0, 0 errors, 0 warnings (after each phase, run multiple times).
+  * Dev server log: GET /api/organization/details → 200 in ~25-45ms (multiple successful calls during browser testing). No errors, no warnings.
+  * curl test:
+    - `POST /api/auth/login` with `{"email":"admin@prisiv.biz","password":"AdminProd2026!"}` → 200, success=true, role=OWNER, orgId set.
+    - `GET /api/organization/details` (with auth cookie) → 200, full JSON returned: organization (PRISIV LAB, starter, slug prisiv-lab), owner (Thierry FANHONA / admin@prisiv.biz / avatarUrl / OWNER role), workspaces (1: "Workspace principal"), members (1: Thierry FANHONA / OWNER / active / invitedAt+acceptedAt 18 juil. 2026), subscription=null, license=null, quota=null, invoices=[], apiKeys=[], stats ({totalMembers:1, totalMembersPending:0, totalWorkspaces:1, totalInvoices:0, totalApiKeys:0, totalCompanies:0, memberSince, daysActive:0}), auditLogs (20 entries), currentRole=OWNER, canSeeAudit=true.
+  * Agent Browser end-to-end verification (login as admin@prisiv.biz / AdminProd2026!):
+    - Login → redirected to / (dashboard) ✓
+    - Opened UserMenu (top-right avatar) → "Organisation" menu item present (with Building2 icon) ✓
+    - Clicked "Organisation" → modal opened, KPI grid rendered with "1 membre actif, 0 en attente", "1 workspace", "Plan: starter", "Quota API: 0", "Entreprises: 0", "Jours actifs: 0" ✓
+    - All 9 tabs visible: Identité, Membres, Workspaces, Abonnement, Licence, Quota, Factures, API Keys, Audit ✓ (Audit visible because canSeeAudit=true for OWNER)
+    - Identité tab: shows "PRISIV LAB" + slug "prisiv-lab" + Plan "Starter" + Owner (Thierry FANHONA <admin@prisiv.biz> OWNER badge) + Créé le 18 juil. 2026 + Modifié le 18 juil. 2026 + Settings JSON `{}` + "Modifier" button (visible because OWNER can edit) ✓
+    - Clicked "Modifier" → inline Input appears with current name "PRISIV LAB" prefilled + Save (check) + Cancel (X) buttons ✓
+    - Membres tab: table with 1 row — Thierry FANHONA / admin@prisiv.biz / OWNER badge / active badge / 18 juil. 2026 invited/accepted/last-login ✓
+    - Quota tab: empty state "Aucun quota enregistré" with descriptive message ✓
+    - API Keys tab: empty state "Aucune clé API" with descriptive message ✓
+    - Audit tab: 20 timeline items, each with severity badge (info/warn/error), action badge (login, org_update, user_profile_update, db_record_create, db_record_delete), category badge (auth/admin), timestamp (formatted in French "18 juil. 2026 à 12:07"), user email + IP, collapsible "Voir les détails" button → expands to show metadata JSON (`sessionId`, `jti`, `role`, `organizationId`, `fields`, etc.) ✓
+    - Tested second entry point: opened tenant dropdown (top-left "PRISIV LAB" button) → "Voir les détails" item present → clicked → modal re-opened correctly ✓
+    - Tested third entry point: navigated to "Équipe & tenants" view → "Voir les détails" button visible next to "Paramètres" on the organisation card → clicked → modal re-opened correctly ✓
+    - `agent-browser errors` → empty (no page errors, no console errors). Console only shows React DevTools info + HMR Fast Refresh messages.
+  * Screenshots saved:
+    - `/home/z/my-project/org-details-modal-identity.png` (111 KB) — Identité tab with org info + owner + settings JSON.
+    - `/home/z/my-project/org-details-modal-members.png` (114 KB) — Membres tab with Thierry FANHONA row.
+    - `/home/z/my-project/org-details-modal-quota.png` (108 KB) — Quota tab with empty state.
+
+Phase 5 — Cleanup: no test data created or deleted (all data came from existing DB state). No DB modifications, no .env or schema.prisma changes.
+
+Stage Summary:
+- 1 new API endpoint: `GET /api/organization/details` — returns 11 sections (organization, owner, workspaces, members, subscription, license, quota, invoices, apiKeys, stats, auditLogs). OWNER/ADMIN see auditLogs; others get null. License keys masked. API keys show only keyPrefix. Auth required.
+- 1 new modal component: `OrganizationDetailsDialog` (~900 lines) — 9 tabs (Identité, Membres, Workspaces, Abonnement, Licence, Quota, Factures, API Keys, Audit), 6 KPI cards, inline org name edit (OWNER/ADMIN), loading skeletons, error state with retry, empty states per section, French dates (date-fns fr locale), FCFA currency (Intl.NumberFormat fr-FR), color-coded badges per role/status/severity/plan, color-coded progress bars (green/amber/red) for quota usage, collapsible audit metadata.
+- 3 integration points wired: UserMenu dropdown (new "Organisation" item with Building2 icon), dashboard header tenant dropdown (new "Voir les détails" item), team view organisation card (new "Voir les détails" button). All three share the same component with controlled `open`/`onOpenChange` props.
+- Responsive: max-w-4xl desktop, full-screen on mobile, scrollable body, tabs wrap with horizontal scroll on small screens, table columns hidden progressively (md/lg breakpoints).
+- Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification passes (modal opens from all 3 entry points, all tabs render, real data shown for members/audit/identity, empty states shown for subscription/license/quota/invoices/apiKeys).
+- 3 screenshots saved: org-details-modal-identity.png, org-details-modal-members.png, org-details-modal-quota.png.
+- No DB modifications, no .env or schema.prisma changes.

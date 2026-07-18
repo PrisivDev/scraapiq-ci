@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { Search, Bell, Plus, Sun, Moon, Menu, Building2, ChevronDown, Zap, Command } from "lucide-react"
+import { Search, Bell, Plus, Sun, Moon, Menu, Building2, ChevronDown, Zap, Command, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,7 @@ import { CommandPalette } from "./command-palette"
 import { dashboardAlerts } from "@/lib/dashboard-data"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { OrganizationDetailsDialog } from "@/components/dashboard/organization-details-dialog"
 
 interface DashboardHeaderProps {
   onNewJob?: () => void
@@ -31,6 +32,7 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, subtitle }: DashboardHeaderProps) {
   const { theme, setTheme } = useTheme()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [orgDetailsOpen, setOrgDetailsOpen] = useState(false)
   const activeAlerts = dashboardAlerts.filter((a) => a.status === "active")
 
   // Récupère le nom réel de l'organisation depuis /api/me
@@ -118,6 +120,16 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault()
+                setOrgDetailsOpen(true)
+              }}
+              className="cursor-pointer"
+            >
+              <Info className="h-4 w-4 mr-2" />
+              Voir les détails
+            </DropdownMenuItem>
             <DropdownMenuItem className="text-primary">
               <Plus className="h-4 w-4 mr-2" />
               Créer une organisation
@@ -195,6 +207,7 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
       </header>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onNavigate={handleNavigate} />
+      <OrganizationDetailsDialog open={orgDetailsOpen} onOpenChange={setOrgDetailsOpen} />
     </>
   )
 }
