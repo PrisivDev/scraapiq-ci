@@ -60,7 +60,10 @@ export function SourcesView() {
         <Card>
           <CardContent className="p-4">
             <p className="text-2xl font-bold">
-              {(dataSources.reduce((s, x) => s + x.successRate, 0) / dataSources.length).toFixed(1)}%
+              {dataSources.length > 0
+                ? (dataSources.reduce((s, x) => s + x.successRate, 0) / dataSources.length).toFixed(1)
+                : "—"}
+              %
             </p>
             <p className="text-xs text-muted-foreground mt-1">Taux succès moyen</p>
           </CardContent>

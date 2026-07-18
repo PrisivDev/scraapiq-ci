@@ -1,39 +1,23 @@
 /**
- * Seeds the Company table with the geoCompanies sample data on first call.
+ * Production: no auto-seed. Companies must come from real scraping.
  *
- * Called by `GET /api/v1/companies` when the table is empty.
+ * This file previously auto-seeded the Company table with the geoCompanies
+ * mock data when the table was empty. That behaviour has been disabled for
+ * production: the REST API `/api/v1/companies` now returns an empty list
+ * until real scraping jobs insert rows into the Company table.
+ *
+ * The function is kept (returns 0 immediately) so existing callers — e.g.
+ * `GET /api/v1/companies` — don't break their import.
  */
 import { db } from "@/lib/db"
-import { geoCompanies } from "@/lib/geo-data"
 
 export async function seedCompaniesIfEmpty(): Promise<number> {
-  const count = await db.company.count()
-  if (count > 0) return count
-
-  // Map geo-data status → REST API status
-  const statusMap: Record<string, string> = {
-    verified: "active",
-    enriched: "active",
-    partial: "active",
+  // Production: no auto-seed. Companies must come from real scraping.
+  // Return the current count (0 if empty) so callers can still branch on it.
+  try {
+    const count = await db.company.count()
+    return count
+  } catch {
+    return 0
   }
-
-  await db.company.createMany({
-    data: geoCompanies.map((c) => ({
-      name: c.name,
-      sector: c.sector,
-      commune: c.commune,
-      city: c.city,
-      address: c.address,
-      phone: c.phone || null,
-      lat: c.lat,
-      lng: c.lng,
-      rating: c.rating || null,
-      reviewCount: c.reviewCount || null,
-      status: statusMap[c.status] || "active",
-      employees: c.employees || null,
-      sources: JSON.stringify(["google-maps"]),
-    })),
-  })
-
-  return geoCompanies.length
 }

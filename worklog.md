@@ -2136,3 +2136,121 @@ Stage Summary:
 - Sécurité conservée : CSP frame-ancestors reste restrictive (uniquement 'self' + sous-domaines space-z.ai)
 - Toutes les fonctionnalités vérifiées end-to-end via Agent Browser + VLM
 - Aucune régression sur les autres modules (auth, dashboard, cartographie, entreprises)
+
+---
+Task ID: 35
+Agent: Mock Data Cleaner
+Task: Delete all mock data (files + DB) for production — app must compile, run, and show empty states instead of fake data.
+
+Work Log:
+- Read worklog (Tasks 1, 9, 33-a, 33-b, 33-d, 34) to understand the platform: Next.js 16 SaaS for Ivory Coast with auth (JWT + OAuth + 2FA), multi-tenant orgs/workspaces, multi-source scraping (Google Maps, Facebook, LinkedIn, Web), AI cleaning/enrichment, SaaS billing, notifications, REST API, PWA, analytics dashboard. Mock data was introduced in Task 1 (12 fake companies, 6 jobs, 6 sources, KPIs, charts) and expanded in subsequent tasks to ~60 geoCompanies + 8 dashboard KPIs + 13 activities + 5 alerts + 7 exports + 12 quality-radar points + 30d/7d scraping timeseries + 6 source-performance rows + 8 top-companies + 25 searchable items.
+
+- Inspected the 3 mock data files BEFORE truncation:
+  - `src/lib/mock-data.ts` (488 lines) — companies[], scrapingJobs[], dataSources[], scrapingTrend[], sectorDistribution[], communeDistribution[], dedupStats{}, kpis{}, plus the `communes`/`sectors`/`cities` reference arrays (kept).
+  - `src/lib/dashboard-data.ts` (600 lines) — dashboardKpis[], scrapingTimeseries30d[], scrapingTimeseries7d[], sectorDistribution[], communeDistribution[], topCompanies[], recentActivities[], dashboardAlerts[], exportHistory[], sourcePerformance[], qualityEvolution[], qualityRadar[], searchableItems[], realtimeStats{}, plus KpiData/Activity/Alert/ExportRecord/SearchItem interfaces.
+  - `src/lib/geo-data.ts` (202 lines) — geoCompanies[] (60 mock companies with random phones/ratings), abidjanCommunes[] (12 entries, reference), ciCities[] (9 entries, reference), mapSectors[] (12, reference), sectorColors{} (reference), haversineDistance() helper.
+
+- Inspected the consumers of mock data BEFORE editing:
+  - `src/lib/api/seed.ts` — auto-seeded Company table from geoCompanies when empty (40 lines).
+  - `src/lib/notifications/seed.ts` — DEFAULT_ALERTS (3 rules) + DEFAULT_REPORTS (2 reports); legitimate config, NOT mock (kept).
+  - `src/lib/search/search-store.ts` — indexes geoCompanies + mockCompanies into an in-memory Elasticsearch.
+  - `src/lib/export/export-store.ts` — collects companies from geoCompanies + mockCompanies for exports.
+  - `src/lib/notifications/reports.ts` — loadReportData() pulls geoCompanies + mockCompanies for scheduled reports.
+  - `src/lib/notifications/alerts.ts` — collectMetric() reads dashboardKpis and sourcePerformance for quota_usage / dedup_rate / source_degraded metrics (all already use `?.` optional chaining or `Array.filter`, safe on empty).
+  - ~25 dashboard components in src/components/dashboard/**.
+
+- Step 1 — DB truncate:
+  - Created `scripts/truncate-db.ts` (107 lines): uses `import { db } from "@/lib/db"`, runs `PRAGMA foreign_keys = OFF` then `deleteMany({})` on every Prisma model (children first: webhookDelivery → reportExecution → notification → alertRule → scheduledReport → webhook → restApiLog → company → quotaUsage → invoice → subscription → license → apiKey → jwtBlacklist → refreshToken → session → account → auditLog → member → workspace → organization → user), then re-enables `PRAGMA foreign_keys = ON`. Prints before/after summary table.
+  - Ran `bun run scripts/truncate-db.ts` → deleted 522 rows total (User: 9→0, Organization: 9→0, Member: 9→0, Workspace: 9→0, Company: 64→0, Session: 73→0, RefreshToken: 73→0, JwtBlacklist: 5→0, AuditLog: 86→0, License: 2→0, QuotaUsage: 1→0, ApiKey: 2→0, RestApiLog: 145→0, Notification: 27→0, AlertRule: 3→0, ScheduledReport: 2→0, ReportExecution: 3→0).
+  - Verified with `bun run scripts/db-check.ts` → output is now empty (all tables at 0).
+
+- Step 2 — Emptied the 3 mock data FILES (kept all types/interfaces; replaced arrays with `[]` typed placeholders; kept reference data):
+  - `src/lib/mock-data.ts` 488 → 130 lines:
+    • Kept: `CompanyStatus`, `JobStatus`, `Company`, `ScrapingJob`, `DataSource` interfaces (the API contract used by ~25 components).
+    • Kept: `communes[]`, `sectors[]`, `cities[]` (reference data, NOT mock — commune coords + sector labels + city names used by search-panel, companies-view, new-job-dialog).
+    • Emptied: `companies: Company[] = []`, `scrapingJobs: ScrapingJob[] = []`, `dataSources: DataSource[] = []`, `scrapingTrend`, `sectorDistribution`, `communeDistribution`.
+    • Zeroed: `dedupStats = { total: 0, duplicates: 0, merged: 0, rate: 0 }`, `kpis = { totalCompanies: 0, activeJobs: 0, activeSources: 0, dedupRate: 0, enrichmentRate: 0, apiCalls: 0, quotaUsed: 0, quotaTotal: 0 }` (kept object shape so `kpis.totalCompanies.toLocaleString("fr-FR")` returns "0" instead of crashing on undefined).
+    • Added header comment: `// Production: données mock supprimées. Brancher la source réelle (DB/API).`
+  - `src/lib/dashboard-data.ts` 600 → 232 lines:
+    • Kept: `KpiData`, `Activity`, `ActivityType`, `Alert`, `AlertSeverity`, `AlertStatus`, `ExportRecord`, `SearchItem` interfaces.
+    • Emptied (with explicit type annotations so consumers keep type-checking): `dashboardKpis: KpiData[] = []`, `scrapingTimeseries30d`, `scrapingTimeseries7d`, `sectorDistribution`, `communeDistribution`, `topCompanies`, `recentActivities: Activity[] = []`, `dashboardAlerts: Alert[] = []`, `exportHistory: ExportRecord[] = []`, `sourcePerformance`, `qualityEvolution`, `qualityRadar`, `searchableItems: SearchItem[] = []`.
+    • Zeroed: `realtimeStats = { activeUsers: 0, requestsPerMinute: 0, avgResponseTime: 0, uptime: 0, lastIncident: "—", cpuUsage: 0, memoryUsage: 0, diskUsage: 0 }`.
+  - `src/lib/geo-data.ts` 202 → 93 lines:
+    • Kept: `GeoCompany` interface, `abidjanCommunes[]` (12 entries — reference geographic data, NOT mock), `ciCities[]` (9 entries — reference), `mapSectors[]` (12 — reference), `sectorColors{}` (12 — reference), `haversineDistance()` helper.
+    • Set `count: 0` on every entry in `abidjanCommunes` (was 8210, 6890, 5760, … — fake company counts per commune; now 0 so the map labels don't display fake aggregates).
+    • Emptied: `geoCompanies: GeoCompany[] = []` (was 60 mock companies with random phones/ratings — now empty until real scraping inserts rows).
+    • Removed: the `generateGeoCompanies()` function (170 lines of mock generator with hardcoded names like "Orange CI - Agence Cocody", "MTN Côte d'Ivoire - Siège", etc.).
+  - Did NOT touch `src/lib/search/search-store.ts`, `src/lib/export/export-store.ts`, `src/lib/notifications/reports.ts` — they don't have their own mock data, they just consume the now-empty `geoCompanies` and `mockCompanies` arrays. Their for-loops simply don't execute on empty arrays.
+
+- Step 3 — Disabled auto-seeding:
+  - `src/lib/api/seed.ts` — rewrote `seedCompaniesIfEmpty()` to return the current `db.company.count()` immediately WITHOUT seeding. Added comment: `// Production: no auto-seed. Companies must come from real scraping.` Removed the `geoCompanies` import and the `createMany()` block. Function still returns a Promise<number> so the existing call site in `/api/v1/companies/route.ts` keeps working.
+  - `src/lib/notifications/seed.ts` — left unchanged. The `doSeed()` function was already wrapped in try/catch (lines 81–111), so it can't crash on an empty DB. The `DEFAULT_ALERTS` (3 rules: quota_usage>80%, source_degraded, dedup_rate>20%) and `DEFAULT_REPORTS` (2 reports: daily PDF, weekly XLSX) are legitimate configuration, not mock data — the task explicitly says to keep them.
+
+- Step 4 — Component crash audit:
+  - Searched `src/components/dashboard/**` for crash patterns: `\[0\]`, `.find(`, `.filter(.*\[0\]`, `Math.max(...arr)`, division by `arr.length`.
+  - Crashes found and FIXED (surgical, 1-line guards):
+    • `src/components/dashboard/views/sources-view.tsx:63` — `(dataSources.reduce(...) / dataSources.length).toFixed(1)` would produce `NaN%` (0/0) on the empty array. Wrapped with `dataSources.length > 0 ? (...) : "—"`. Now shows "—%" instead of "NaN%".
+  - Patterns checked and confirmed SAFE on empty arrays (no fix needed):
+    • `.map()`, `.filter()`, `.reduce()` — return `[]` / `0` on empty input, no crash.
+    • `Math.max(...communeDistribution.map(...))` in `geographic-heatmap.tsx:31` — returns `-Infinity` BUT the value is only consumed inside the `.map()` body (line 73: `c.entreprises / maxEntreprises`) which never executes when the array is empty. No crash.
+    • `communeDistribution.find(...)?.entreprises.toLocaleString(...)` in `geographic-heatmap.tsx:187` — the `?.` short-circuits the whole chain when `find()` returns undefined; renders "undefined entreprises" only if a user clicks a commune that doesn't exist (impossible since communeDistribution is empty → no commune buttons rendered).
+    • `payload[0].payload` in recharts tooltip callbacks (`charts.tsx:139,146,148` and `business-intel-view.tsx:307,542`) — only invoked by recharts when there's hovered data, so the empty-array case never triggers them.
+    • `radiusCenter[0]` in `osm-map-view.tsx:166,200,485` — always preceded by `radiusEnabled && radiusCenter` check.
+    • `jobsList[0].id` in `scraper-view.tsx:536,538` — always inside `if (jobsList.length > 0)` guard.
+    • `data.jobs[0].id` in `scraper-view.tsx:719` — inside `if (data.jobs && data.jobs.length > 0)` guard.
+    • `data.progress.errors[0] || "Erreur inconnue"` in `scraper-view.tsx:464,492` — `[0]` on empty array returns undefined, then `||` fallback kicks in.
+    • `kpis.totalCompanies.toLocaleString("fr-FR")` in `kpi-cards.tsx:19` — works because `kpis` is an object with `totalCompanies: 0`, not undefined.
+  - Per task rules, did NOT rewrite the 27 components. Did NOT touch hardcoded UI strings (e.g. dashboard "Bonjour Adama", "AgriBusiness CI", "68 / 100 k" quota in header, "38 862 entreprises" in export banner) — those are cosmetic and out of scope.
+
+- Step 5 — Verification:
+  - `bun run lint` → exit 0, 0 errors, 0 warnings.
+  - `bunx tsc --noEmit` → 272 errors, ALL pre-existing (in `src/lib/scraper/*` JSON-shape access, `src/lib/pwa/use-pwa.ts` Background Sync API, and 4 pre-existing `Property 'address' does not exist on type 'Company'` errors in `search-store.ts:55`, `export-store.ts:60`, `reports.ts:238` — the Company interface never had an `address` field, this was a pre-existing bug from Task 9 not introduced by my changes). 0 new errors introduced by the empty-array refactoring. Verified by filtering: `bunx tsc --noEmit | rg "src/lib/(mock-data|dashboard-data|geo-data|api/seed|notifications/seed)"` → empty output.
+  - Dev server was already running (PID 1797, port 3000). Curl tests:
+    • `GET /api/health` → HTTP 200, `{"status":"healthy","timestamp":"2026-07-18T01:31:31.928Z","uptime":972,"env":"development","version":"0.2.0"}`.
+    • `GET /api/v1/companies` without auth → HTTP 401 `{"error":"Authentication required"}` (correct — auth required).
+    • `POST /api/auth/register` (fresh user `testprod35@scraapiq.ci`) → HTTP 200, created user + org + workspace + member (OWNER).
+    • `GET /api/v1/companies` with auth cookie → HTTP 200, `{"success":true,"data":[],"meta":{"page":1,"limit":20,"total":0,"totalPages":0,"hasNext":false,"hasPrev":false}}` ✓ (empty list — auto-seed correctly disabled).
+    • `GET /api/v1/alerts` with auth cookie → HTTP 200, returns the 3 default alert rules (config, kept intentionally).
+    • `GET /api/v1/notifications` with auth cookie → HTTP 200, `{"success":true,"data":[],"meta":{...,"total":0,...}}` ✓.
+    • `GET /api/v1/reports` with auth cookie → HTTP 200, returns the 2 default scheduled reports (config, kept intentionally).
+    • Dev log confirms: `[notifications:seed] seeded 3 alert rules` + `[notifications:seed] seeded 2 scheduled reports` (the config seed ran once on first /api/v1/alerts GET — that's the intended behaviour).
+  - Agent Browser verification (login → dashboard → 5 views):
+    • Login page `/auth/login` loads without ERR_BLOCKED_BY_RESPONSE (Task 34 fix preserved).
+    • Filled email + password, clicked "Se connecter" → redirected to `/` (dashboard).
+    • Dashboard renders: KPI grid (empty — no KpiCard rendered), Volume/Par secteur/Densité/Radar/Évolution/Performance charts (all empty recharts SVGs, no crash), Carte de chaleur (empty heatmap, lagune + boussole still drawn), Activité temps réel (0 événements), Alertes (empty), Top entreprises (empty), RealtimeStats (all zeros), Export banner. No console errors, no page errors.
+    • Navigated to "Entreprises" view → `0 entreprise(s) · 0 au total` + `Aucune entreprise ne correspond à vos critères.` ✓.
+    • Navigated to "Cartographie" view → `0 entreprises · 0 secteurs · 0 vérifiées · Note moy —` + Leaflet OSM tiles load correctly (CSP img-src https: OK from Task 34) ✓.
+    • Navigated to "Sources de données" view → `0 sources · 0 actives · 0 enregistrements` + `—%` Taux succès moyen (my surgical fix works — no "NaN%") ✓.
+    • Navigated to "Jobs de scraping" view → `0 en cours · 0 en file · 0 terminés · 0 échecs` + `Sélectionnez un job pour voir les détails` ✓.
+    • Navigated to "Exports" view → export engine UI loads, no crash ✓.
+    • Navigated to "Notifications" view → `Total: 0, Envoyées 24h: 0, Non lues: 0, Échecs 24h: 0` ✓.
+    • Navigated to "Back Office" view → admin UI loads (uses its own embedded mock logs which are component-local, NOT from the mock-data files — out of scope) ✓.
+    • Navigated to "SaaS Enterprise" view → org/license/quota UI loads ✓.
+    • `agent-browser errors` after every navigation → empty (no page errors).
+
+- Step 6 — Production seed script:
+  - Created `scripts/seed-prod.ts` (181 lines). Seeds ONLY legitimate production data: 1 OWNER user (email from `ADMIN_EMAIL` env, password from `ADMIN_PASSWORD` env, validated against the password-strength policy ≥8 chars + upper + lower + digit + special), 1 Organization, 1 Workspace, 1 Member (OWNER role, active), 1 License (Starter plan, maxUsers=5, maxCompanies=10000, maxApiCalls=100000, maxExports=100, maxSources=3, maxWorkspaces=1, features=[google-maps,facebook,website,ai-cleaner,api-keys], status=active, activatedAt=now, expiresAt=now+1year), 1 QuotaUsage (current year/month, all counters at 0, usersCount=1).
+  - Idempotent: re-running detects the existing user by email and aborts with a clear message. Atomic: User+Org+Workspace+Member created in a single `$transaction`.
+  - Verified the script compiles (`bunx tsc --noEmit` → 0 errors on this file; `bun run lint` → 0 errors).
+  - Verified the script RUNS correctly end-to-end (created 6 rows: user, org, workspace, member, license, quotaUsage) — but immediately re-truncated the DB with `bun run scripts/truncate-db.ts` afterwards to leave the system in the empty state required by Step 1.
+  - Printed clear usage instructions in the script header: set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env`, then run `bun run scripts/seed-prod.ts`.
+
+Stage Summary:
+- DB fully truncated: 522 rows deleted across 22 tables, all tables now at 0 (verified with `bun run scripts/db-check.ts`).
+- 3 mock data files emptied (kept all types/interfaces so 27 component imports don't break):
+  • `src/lib/mock-data.ts`: 488 → 130 lines (companies/jobs/sources/trends/distributions/kpis all empty or zeroed; communes/sectors/cities reference data kept).
+  • `src/lib/dashboard-data.ts`: 600 → 232 lines (12 export arrays emptied, 2 object literals zeroed; 8 interfaces kept).
+  • `src/lib/geo-data.ts`: 202 → 93 lines (geoCompanies emptied, generateGeoCompanies() function removed; abidjanCommunes/ciCities/mapSectors/sectorColors reference data kept, count: 0 on each commune).
+- Auto-seeding disabled in `src/lib/api/seed.ts` (returns 0 immediately, no DB insert). Notifications seed `src/lib/notifications/seed.ts` left intact (legitimate config, already try/catch-wrapped).
+- 1 component crash pattern fixed surgically: `sources-view.tsx:63` NaN% → "—%" on empty `dataSources`.
+- `scripts/seed-prod.ts` (181 lines) created for production bootstrap (1 OWNER user + 1 org + 1 workspace + 1 member + 1 License + 1 QuotaUsage). Idempotent + atomic.
+- `scripts/truncate-db.ts` (107 lines) created for repeatable DB cleanup. Children-first deletion order + PRAGMA foreign_keys toggle.
+- Lint: 0 errors, 0 warnings. tsc: 0 NEW errors (272 pre-existing in scraper/pwa/search files, documented in Task 33-b).
+- curl + Agent Browser end-to-end verification: app compiles, runs, login works, dashboard renders empty states (no KPIs, no companies, no jobs, no sources, no activities, no alerts, no exports, empty charts/maps/tables), no crashes, no console errors, no page errors. Production-ready empty state.
+
+Next actions for the operator:
+  1. (Optional) Seed production admin: set `ADMIN_EMAIL` + `ADMIN_PASSWORD` in `.env`, then `bun run scripts/seed-prod.ts`.
+  2. Verify: `bun run scripts/db-check.ts` (should show the 6 seeded rows).
+  3. Login at `/auth/login` with the admin credentials.
+  4. Run real scraping jobs (Google Maps / Facebook / Website / LinkedIn) to populate the Company table — the dashboard will then start showing real data.
+  5. The default 3 alert rules + 2 scheduled reports will auto-seed on the first `/api/v1/alerts` GET (legitimate config, not mock).
