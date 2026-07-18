@@ -2,8 +2,12 @@
  * Configuration RBAC — contrôle d'accès par rôle pour la navigation
  *
  * Rôles hiérarchiques :
- *  OWNER  (100) — contrôle total, y compris SaaS, sécurité, facturation
- *  ADMIN  (80)  — gestion org, API, notifications, back office
+ *  OWNER  (100) — super-admin global (admin@prisiv.biz) : voit tout, y compris
+ *                 SaaS, sécurité, facturation, Back Office, DB admin, PWA, etc.
+ *  ADMIN  (80)  — admin d'org : gère son org (équipe, notifications, sources)
+ *                 mais n'a PAS accès aux fonctions de la plateforme (API REST
+ *                 docs, Back Office, Architecture distribuée, Sécurité, PWA,
+ *                 SaaS Enterprise, Base de données).
  *  MANAGER(60)  — gestion équipe, jobs, exports, BI
  *  AGENT  (40)  — opérations : recherche, scraping, entreprises
  *  VIEWER (20)  — lecture seule
@@ -49,11 +53,16 @@ export const NAV_ROLE_ACCESS: Record<NavKey, UserRole> = {
   // Administration — managers et supérieurs
   team: "MANAGER",
   notifications: "MANAGER",
-  api: "ADMIN",
-  backoffice: "ADMIN",
-  queue: "ADMIN",
-  security: "ADMIN",
-  pwa: "ADMIN",
+
+  // Plateforme — OWNER exclusif (super-admin global)
+  // api, backoffice, queue, security, pwa = outils de gestion de la plateforme
+  // (infra, sécurité, dev tooling). Réservés au OWNER (admin@prisiv.biz).
+  // Les ADMIN ne sont que des admins d'org : ils ne voient pas ces sections.
+  api: "OWNER",
+  backoffice: "OWNER",
+  queue: "OWNER",
+  security: "OWNER",
+  pwa: "OWNER",
   saas: "OWNER",
   db: "OWNER",
 

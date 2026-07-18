@@ -2,6 +2,12 @@
  * GET    /api/v1/companies/[id]  — Get a single company
  * PUT    /api/v1/companies/[id]  — Update a company
  * DELETE /api/v1/companies/[id]  — Delete a company
+ *
+ * Multi-tenant isolation:
+ *  - OWNER  : can GET/PUT/DELETE any company (including global, organizationId = null)
+ *  - Others : can only GET/PUT/DELETE companies in their own org
+ *             (organizationId === user.orgId). Returns 404 if not in their org
+ *             (don't leak existence to other tenants).
  */
 import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
@@ -12,9 +18,19 @@ import {
   startTimer,
 } from "@/lib/api/helpers"
 import { requireApiAuth } from "@/lib/api/auth-middleware"
+import { canAccessOrg } from "@/lib/auth/tenant"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 export const maxDuration = 60
+
+/**
+ * Returns 404 (not "403 forbidden") when the company exists but belongs to
+ * another org — don't leak cross-tenant existence.
+ */
+function notFoundResponse() {
+  return sendError("Company not found", 404, "NOT_FOUND")
+}
 
 export async function GET(
   req: NextRequest,
@@ -39,14 +55,14 @@ export async function GET(
     const { id } = await params
     const company = await db.company.findUnique({ where: { id } })
 
-    if (!company) {
-      const err = sendError("Company not found", 404, "NOT_FOUND")
+    if (!company || !canAccessOrg(auth.user, company.organizationId)) {
+      const err = notFoundResponse()
       await logApiCall({
         req,
         statusCode: 404,
         responseMs: timer(),
         userId: auth.user.id,
-        error: "Not found",
+        error: "Not found (or outside tenant)",
       })
       return err
     }
@@ -99,19 +115,22 @@ export async function PUT(
     const body = await req.json().catch(() => ({}))
 
     const existing = await db.company.findUnique({ where: { id } })
-    if (!existing) {
-      const err = sendError("Company not found", 404, "NOT_FOUND")
+    if (!existing || !canAccessOrg(auth.user, existing.organizationId)) {
+      const err = notFoundResponse()
       await logApiCall({
         req,
         statusCode: 404,
         responseMs: timer(),
         userId: auth.user.id,
-        error: "Not found",
+        error: "Not found (or outside tenant)",
       })
       return err
     }
 
-    // Build update payload — only allow known fields
+    // Build update payload — only allow known fields.
+    // NOTE: organizationId is intentionally NOT in this list — non-OWNER
+    // cannot move companies between orgs; OWNER can use the dedicated admin
+    // DB route if needed.
     const allowedFields = [
       "name", "sector", "commune", "city", "address", "phone", "email",
       "website", "rccm", "lat", "lng", "rating", "reviewCount",
@@ -191,14 +210,14 @@ export async function DELETE(
   try {
     const { id } = await params
     const existing = await db.company.findUnique({ where: { id } })
-    if (!existing) {
-      const err = sendError("Company not found", 404, "NOT_FOUND")
+    if (!existing || !canAccessOrg(auth.user, existing.organizationId)) {
+      const err = notFoundResponse()
       await logApiCall({
         req,
         statusCode: 404,
         responseMs: timer(),
         userId: auth.user.id,
-        error: "Not found",
+        error: "Not found (or outside tenant)",
       })
       return err
     }

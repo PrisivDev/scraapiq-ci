@@ -14,6 +14,15 @@ export interface SearchQuery {
   maxResults?: number
   /** Langue de l'UI Google, défaut fr */
   language?: string
+  /**
+   * Multi-tenant: ID de l'org qui possède ce job. Thread-through uniquement —
+   * pas utilisé par le scraper lui-même, mais conservé sur le JobState pour
+   * qu'une future persistance DB (Company.create) puisse attacher l'orgId.
+   * null = job global (OWNER seul).
+   */
+  organizationId?: string | null
+  /** ID de l'utilisateur qui a lancé le job (audit). */
+  userId?: string | null
 }
 
 /** Coordonnées GPS */

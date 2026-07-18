@@ -1,6 +1,12 @@
 import { PrismaClient } from '@prisma/client'
 import fs from 'fs'
 import path from 'path'
+import { createRequire } from 'module'
+
+// createRequire lets us imperatively require() in an ESM context (so we can
+// bust the @prisma/client cache at runtime when the schema changes) without
+// tripping the @typescript-eslint/no-require-imports rule.
+const require_ = createRequire(import.meta.url)
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -20,8 +26,43 @@ try {
   // ignore — fall back to "unknown"
 }
 
+/**
+ * Bust Turbopack's module cache for @prisma/client + .prisma/client so the
+ * latest generated client (with the new schema fields) is loaded after
+ * `bun run db:push` regenerates it. Without this, Turbopack keeps the OLD
+ * PrismaClient class in memory and reports new fields as "Unknown argument"
+ * at runtime — even though the file on disk has been regenerated.
+ *
+ * We compare the schema mtime against the cached hash; if they differ, we
+ * purge every @prisma/client / .prisma/client entry from require.cache and
+ * force a fresh `require()` on the next access.
+ */
+function bustPrismaCacheIfStale(): void {
+  if (
+    globalForPrisma.prisma &&
+    globalForPrisma.prismaSchemaHash === schemaHash
+  ) {
+    return // same schema — nothing to do
+  }
+  // Schema changed: purge all @prisma/client + .prisma/client entries from cache.
+  for (const key of Object.keys(require_.cache)) {
+    if (
+      key.includes("/node_modules/@prisma/client/") ||
+      key.includes("/node_modules/.prisma/client/")
+    ) {
+      delete require_.cache[key]
+    }
+  }
+}
+
+bustPrismaCacheIfStale()
+
 function createPrismaClient() {
-  return new PrismaClient({
+  // Re-import after cache bust (if it happened) so we get the freshest class.
+  const mod = require_("@prisma/client") as {
+    PrismaClient: typeof PrismaClient
+  }
+  return new mod.PrismaClient({
     log: ["warn", "error"],
   })
 }
@@ -34,8 +75,6 @@ if (process.env.NODE_ENV === "production") {
 } else {
   // Dev: invalidate the cached client if the schema has changed since it was created.
   // Touch the schema file (or run db:push) to force a fresh client on the next HMR reload.
-  // NOTE: in some cases (e.g. Prisma client regenerated externally), the dev server must
-  // be restarted so Turbopack re-reads node_modules/@prisma/client.
   if (globalForPrisma.prisma && globalForPrisma.prismaSchemaHash === schemaHash) {
     db = globalForPrisma.prisma
   } else {

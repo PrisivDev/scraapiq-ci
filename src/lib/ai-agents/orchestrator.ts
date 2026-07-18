@@ -98,6 +98,12 @@ export interface PipelineState {
   agentResults: Record<AgentId, AgentResult>
   events: AgentEvent[]
   totalDurationMs: number
+  /**
+   * Multi-tenant: org that owns this pipeline run. Mirrored from the
+   * PipelineConfig so consumers (e.g. GET /api/v1/agents/[id]) can enforce
+   * tenant isolation without reaching into the orchestrator's private config.
+   */
+  config?: { organizationId?: string | null; userId?: string | null }
 }
 
 export interface PipelineConfig {
@@ -107,6 +113,14 @@ export interface PipelineConfig {
   maxResults?: number
   skipAgents?: AgentId[]
   enableLLM?: boolean
+  /**
+   * Multi-tenant: org that owns this pipeline run. Thread-through only — used
+   * when the export agent eventually persists Company rows so they're scoped
+   * to the caller's org. null = global (OWNER only).
+   */
+  organizationId?: string | null
+  /** User who launched the pipeline (audit). */
+  userId?: string | null
 }
 
 // ============================================================================
@@ -327,6 +341,12 @@ export class PipelineOrchestrator {
       agentResults: {} as Record<AgentId, AgentResult>,
       events: [],
       totalDurationMs: 0,
+      // Mirror the tenant context so GET /api/v1/agents/[id] can enforce
+      // isolation without reaching into the orchestrator's private config.
+      config: {
+        organizationId: config.organizationId ?? null,
+        userId: config.userId ?? null,
+      },
     }
   }
 

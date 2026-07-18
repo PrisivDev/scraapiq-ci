@@ -201,7 +201,12 @@ export async function GET() {
     const totalWorkspaces = workspaces.length
     const totalInvoices = invoices.length
     const totalApiKeys = apiKeyRows.filter((k) => !k.revokedAt).length
-    const totalCompanies = await db.company.count()
+    // Multi-tenant: count only companies owned by this org. OWNER-sees-all
+    // behaviour is enforced elsewhere — this stat is always for the caller's
+    // org so it accurately reflects their tenant's data.
+    const totalCompanies = await db.company.count({
+      where: { organizationId },
+    })
     const memberSince = organization.createdAt
     const daysActive = Math.max(
       0,

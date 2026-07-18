@@ -363,7 +363,10 @@ async function buildQuota(orgId: string, max: {
 
   // Compte les ressources actuelles
   const userCount = await db.member.count({ where: { organizationId: orgId, status: "active" } })
-  const companyCount = await db.company.count()
+  // Multi-tenant: count only companies owned by this org (organizationId matches).
+  // Companies with organizationId = null are global/shared and excluded from
+  // per-org quota counts (they belong to the platform, not the tenant).
+  const companyCount = await db.company.count({ where: { organizationId: orgId } })
   const workspaceCount = await db.workspace.count({ where: { organizationId: orgId } })
 
   const current = {

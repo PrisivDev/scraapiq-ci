@@ -11,17 +11,31 @@
  *   language?: string,      // défaut "fr"
  * }
  *
+ * Multi-tenant: the authenticated user's orgId/userId are threaded into the
+ * SearchQuery so that any future persistence (Company.create from scraped
+ * places) can attach the right organizationId. OWNER jobs are global (null).
+ *
  * Returns: { jobId: string, status: "queued", estimatedDurationMs }
  */
 import { NextRequest } from "next/server"
 import { randomUUID } from "crypto"
 import { startScrapeJob } from "@/lib/scraper/job-store"
 import { errorResponse, jsonResponse } from "@/lib/auth/helpers"
+import { requireApiAuth } from "@/lib/api/auth-middleware"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes max pour Vercel (en local, pas de limite)
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth required — captures orgId/userId for tenant scoping of scraped
+    // companies when they're eventually persisted to DB.
+    const auth = await requireApiAuth(req)
+    if (!auth.user) {
+      return errorResponse(auth.error || "Unauthorized", auth.status)
+    }
+
     const body = await req.json()
     const { keyword, city, commune, neighborhood, maxResults, language } = body
 
@@ -38,6 +52,10 @@ export async function POST(req: NextRequest) {
       maxResults: Math.min(maxResults || 20, 100), // hard cap 100
       language: language || "fr",
       country: "ci",
+      // Multi-tenant: thread the caller's org/user into the job so any
+      // future Company.create from scraped places will be scoped correctly.
+      organizationId: auth.user.orgId,
+      userId: auth.user.id,
     }
 
     const state = startScrapeJob(jobId, query)

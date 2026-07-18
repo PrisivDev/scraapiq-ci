@@ -2,8 +2,14 @@
  * GET /api/v1/companies
  * List companies with pagination, filters, sort, search.
  *
+ * Multi-tenant isolation:
+ *  - OWNER  (super-admin global): sees ALL companies (including organizationId = null = global/shared)
+ *  - Others: see ONLY companies where organizationId === their orgId
+ *
  * POST /api/v1/companies
  * Create a new company.
+ *  - Non-OWNER: organizationId is FORCED to their orgId (cannot create global companies)
+ *  - OWNER    : can set organizationId explicitly (default = their own org)
  */
 import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
@@ -21,8 +27,10 @@ import {
 } from "@/lib/api/helpers"
 import { requireApiAuth } from "@/lib/api/auth-middleware"
 import { seedCompaniesIfEmpty } from "@/lib/api/seed"
+import { buildCompanyFilter } from "@/lib/auth/tenant"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 export const maxDuration = 60
 
 const ALLOWED_FILTERS = ["sector", "city", "commune", "status"]
@@ -53,8 +61,8 @@ export async function GET(req: NextRequest) {
     const sort = parseSort(req, ALLOWED_SORT)
     const q = parseSearch(req)
 
-    // Build where clause
-    const where: Prisma.CompanyWhereInput = {}
+    // Build where clause — start with tenant filter (org-scoped for non-OWNER)
+    const where: Prisma.CompanyWhereInput = buildCompanyFilter(auth.user)
 
     if (filters.sector) where.sector = { contains: filters.sector as string }
     if (filters.city) where.city = { contains: filters.city as string }
@@ -139,9 +147,52 @@ export async function POST(req: NextRequest) {
       return err
     }
 
+    // Multi-tenant: determine organizationId for the new company.
+    // - OWNER  (super-admin): can create global (null) or org-scoped.
+    //   * If `organizationId` is explicitly `null` in the body → global company
+    //     (visible to OWNER only, not to any org's members).
+    //   * If `organizationId` is a non-empty string → that org.
+    //   * Otherwise (undefined) → default to OWNER's own org.
+    // - Others: forced to their orgId. They CANNOT create global companies
+    //   nor companies in another org (cross-tenant isolation).
+    let organizationId: string | null
+    if (auth.user.role === "OWNER") {
+      if (body.organizationId === null) {
+        // Explicit null = global/shared company (OWNER-only visibility).
+        organizationId = null
+      } else if (
+        typeof body.organizationId === "string" &&
+        body.organizationId.trim().length > 0
+      ) {
+        organizationId = body.organizationId.trim()
+      } else {
+        // Undefined or empty → default to OWNER's own org.
+        organizationId = auth.user.orgId
+      }
+    } else {
+      // Non-OWNER: force their orgId. If they have no orgId, reject (no active membership).
+      if (!auth.user.orgId) {
+        const err = sendError(
+          "Aucune organisation associée à votre compte — impossible de créer une entreprise",
+          403,
+          "NO_ORG"
+        )
+        await logApiCall({
+          req,
+          statusCode: 403,
+          responseMs: timer(),
+          userId: auth.user.id,
+          error: "No org membership",
+        })
+        return err
+      }
+      organizationId = auth.user.orgId
+    }
+
     const created = await db.company.create({
       data: {
         name: body.name.trim(),
+        organizationId,
         sector: body.sector?.trim() || null,
         commune: body.commune?.trim() || null,
         city: body.city?.trim() || null,

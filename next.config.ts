@@ -16,6 +16,14 @@ const nextConfig: NextConfig = {
   compress: true,
   // Désactive le powered-by header (fingerprinting)
   poweredByHeader: false,
+  // Watch the generated Prisma client so HMR picks up schema changes after
+  // `bun run db:push` regenerates node_modules/.prisma/client/*.js. Without
+  // this, Turbopack keeps the stale PrismaClient in memory and the new fields
+  // (e.g. organizationId on Company) are reported as "Unknown argument" at
+  // runtime even though the file on disk has been regenerated.
+  watchOptions: {
+    paths: ["node_modules/.prisma/client/**/*.js"],
+  },
   // Headers de sécurité globaux appliqués à TOUTES les routes
   async headers() {
     return [

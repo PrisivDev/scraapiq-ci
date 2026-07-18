@@ -26,6 +26,7 @@ model Organization {
 
   members     Member[]
   workspaces Workspace[]
+  companies   Company[]   // NEW relation — multi-tenant scoping for Company
   owner       User     @relation("OrgOwner", fields: [ownerId], references: [id])
 
   @@index([slug])
@@ -339,32 +340,35 @@ model AuditLog {
 // ============================================================================
 
 model Company {
-  id          String   @id @default(cuid())
-  name        String
-  sector      String?
-  commune     String?
-  city        String?
-  address     String?
-  phone       String?
-  email       String?
-  website     String?
-  rccm        String?
-  lat         Float?
-  lng         Float?
-  rating      Float?
-  reviewCount Int?
-  status      String   @default("active") // active | closed | relocated
-  description String?
-  employees   String?
-  sources     String   @default("[]") // JSON array
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  organizationId  String?   // null = global/shared (visible OWNER only), set = org-scoped
+  name            String
+  sector          String?
+  commune         String?
+  city            String?
+  address         String?
+  phone           String?
+  email           String?
+  website         String?
+  rccm            String?
+  lat             Float?
+  lng             Float?
+  rating          Float?
+  reviewCount     Int?
+  status          String   @default("active") // active | closed | relocated
+  description     String?
+  employees       String?
+  sources         String   @default("[]") // JSON array
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([name])
   @@index([sector])
   @@index([city])
   @@index([commune])
   @@index([status])
+  @@index([organizationId])  // NEW index for tenant filtering
 }
 
 // ============================================================================

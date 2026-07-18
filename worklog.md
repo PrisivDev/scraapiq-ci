@@ -2856,3 +2856,192 @@ Stage Summary:
 - Agent Browser : modal layout amélioré (desktop + mobile full-screen), invite button fonctionne, sub-dialog s'ouvre avec email + role select, toast de confirmation, refresh de la liste, errors empty.
 - 9 screenshots sauvegardés.
 - Pas de modification de .env ou prisma/schema.prisma.
+
+---
+Task ID: 41
+Agent: Multi-Tenant Isolation
+Task: Implement org-scoped data isolation (ADMIN and below only see their org) + OWNER-only management tabs
+
+Work Log:
+
+Phase 0 — Pré-requis :
+- Lu worklog.md (Tasks 30, 38, 40) pour comprendre : 1 OWNER (admin@prisiv.biz), nouveaux signups = ADMIN de leur org, Company model sans orgId (WRONG pour multi-tenant), RBAC avec backoffice/security/queue/pwa/api à "ADMIN" (devrait être OWNER).
+- Lu src/lib/rbac-nav.ts, prisma/schema.prisma, src/lib/auth/context.ts, src/lib/api/auth-middleware.ts, src/app/api/v1/companies/route.ts, src/app/api/v1/companies/[id]/route.ts, src/app/api/organization/details/route.ts, src/lib/saas/saas-engine.ts, src/lib/notifications/alerts.ts, src/app/api/v1/agents/route.ts, src/app/api/v1/agents/[id]/route.ts, src/app/api/scraper/google-maps/route.ts, src/lib/scraper/job-store.ts, src/lib/scraper/types.ts, src/lib/ai-agents/orchestrator.ts.
+- Confirmé : les scrapers (google-maps, business, facebook, website, ai-cleaner) ne persistaient RIEN en DB — ils stockent les jobs en mémoire. La seule écriture Company.create se faisait dans /api/v1/companies (POST) sans aucune notion d'org.
+
+Phase 1 — RBAC navigation (src/lib/rbac-nav.ts) :
+- Commentaire d'en-tête mis à jour : OWNER = super-admin global (voit tout), ADMIN = admin d'org (PAS accès aux fonctions de plateforme).
+- 5 clés changées de "ADMIN" → "OWNER" :
+  • api: "OWNER" (API REST docs — plateforme)
+  • backoffice: "OWNER" (Back Office — admin plateforme)
+  • queue: "OWNER" (Architecture distribuée — infra)
+  • security: "OWNER" (Sécurité — sécurité plateforme)
+  • pwa: "OWNER" (PWA — dev tooling)
+- Conservé inchangé : team "MANAGER", notifications "MANAGER", saas "OWNER", db "OWNER".
+- Matrice finale :
+  • VIEWER : dashboard, assistant, search, companies, map, settings
+  • AGENT  : + sources, jobs, scraper, exports
+  • MANAGER: + bi, agents, team, notifications
+  • OWNER  : + api, backoffice, queue, security, pwa, saas, db
+  • ADMIN  : (rien de plus que MANAGER — c'est un MANAGER avec permissions org-level, pas plateforme)
+
+Phase 2 — Schema Prisma (prisma/schema.prisma) :
+- model Company : ajout `organizationId String?` (null = global/shared, visible OWNER seulement ; set = org-scoped).
+- Ajout relation `organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)`.
+- Ajout index `@@index([organizationId])` pour le filtrage tenant.
+- model Organization : ajout `companies Company[]` (relation inverse).
+- `bun run db:push` : succès, "Your database is now in sync with your Prisma schema. Done in 44ms". Prisma Client régénéré (v6.19.2).
+- `bun run scripts/db-check.ts` : DB intacte (User 1, Organization 1, Member 1, sessions/refresh/audit préservés). 0 companie existante → pas de migration de données nécessaire.
+- Vérification runtime : `db.company.findFirst({ select: { id, organizationId, name } })` → fonctionne (null sur table vide), et `db.company.create({ data: { name, organizationId } })` → accepte organizationId.
+
+Phase 3 — Helper multi-tenant (src/lib/auth/tenant.ts, nouveau fichier ~135 lignes) :
+- Type `TenantContext` : `{ user, isOwner, filter, orgIdForCreate }`.
+- `getTenantContextFromRequest(req)` : pour API routes (utilise requireApiAuth). Throws Response 401 si non authentifié.
+- `getTenantContext()` : pour server components / routes avec getAuthUser(). Throws 401 si non auth.
+- `buildCompanyFilter(user)` : retourne `{}` pour OWNER (voit tout), `{ organizationId: user.orgId }` pour non-OWNER, `{ organizationId: "__NO_ORG__" }` pour non-OWNER sans org (matche rien — défensif).
+- `canAccessOrg(user, orgId)` : true si OWNER, true si orgId === user.orgId, false sinon (et false pour global null).
+- Exporté via `src/lib/auth/index.ts` barrel.
+
+Phase 4 — Endpoints API company :
+
+4a. GET /api/v1/companies (src/app/api/v1/companies/route.ts) :
+- Import `buildCompanyFilter` depuis `@/lib/auth/tenant`.
+- `where: Prisma.CompanyWhereInput = buildCompanyFilter(auth.user)` au lieu de `{}`.
+- Filtres sector/city/commune/status/minRating/q ajoutés APRÈS (spread sur la base tenant filter).
+- OWNER voit toutes les companies (y compris organizationId = null). Non-OWNER ne voit que celles où organizationId === leur orgId.
+- Ajout `export const runtime = "nodejs"`.
+
+4b. POST /api/v1/companies :
+- Logique organizationId multi-tenant :
+  • OWNER + body.organizationId === null → company globale (organizationId = null, visible OWNER seulement)
+  • OWNER + body.organizationId === string non-vide → cet org
+  • OWNER + body.organizationId === undefined/empty → défaut = OWNER.orgId
+  • Non-OWNER → FORCED à auth.user.orgId (ne peut PAS créer global ni cross-tenant)
+  • Non-OWNER sans orgId → 403 "Aucune organisation associée"
+- `data.organizationId` ajouté au Prisma create.
+
+4c. GET/PUT/DELETE /api/v1/companies/[id] (src/app/api/v1/companies/[id]/route.ts) :
+- Import `canAccessOrg` depuis `@/lib/auth/tenant`.
+- Helper `notFoundResponse()` retourne 404 (pas 403) pour ne pas leak l'existence cross-tenant.
+- Pour chaque handler : `if (!company || !canAccessOrg(auth.user, company.organizationId)) return 404`.
+- PUT : organizationId intentionnellement ABSENT de allowedFields — non-OWNER ne peut pas déplacer une company entre orgs.
+- Ajout `export const runtime = "nodejs"`.
+
+Phase 5 — Scrapers + AI agents (thread-through orgId pour future persistance) :
+
+5a. src/lib/scraper/types.ts :
+- SearchQuery : ajout `organizationId?: string | null` et `userId?: string | null` (thread-through only — pas utilisé par le scraper lui-même, mais conservé sur le JobState pour qu'une future persistance DB puisse attacher l'orgId).
+
+5b. src/app/api/scraper/google-maps/route.ts :
+- AVANT : pas d'auth du tout (n'importe qui pouvait lancer un scraping !).
+- APRÈS : `requireApiAuth(req)` obligatoire. `query.organizationId = auth.user.orgId`, `query.userId = auth.user.id`.
+- Ajout `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"`.
+
+5c. src/lib/ai-agents/orchestrator.ts :
+- PipelineConfig : ajout `organizationId?: string | null` et `userId?: string | null`.
+- PipelineState : ajout `config?: { organizationId?: string | null; userId?: string | null }` (miroir du config, pour que les consumers puissent vérifier l'isolation sans atteindre le config privé de l'orchestrator).
+- Constructor : `this.state.config = { organizationId: config.organizationId ?? null, userId: config.userId ?? null }`.
+
+5d. src/app/api/v1/agents/route.ts :
+- AVANT : GET sans auth, POST sans auth.
+- APRÈS : les deux exigent `requireApiAuth(req)`. POST thread `config.organizationId = auth.user.orgId` et `config.userId = auth.user.id`.
+- Ajout `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"`.
+
+5e. src/app/api/v1/agents/[id]/route.ts :
+- AVANT : pas d'auth — n'importe qui pouvait lire l'état d'un pipeline.
+- APRÈS : auth requise. Non-OWNER ne peut voir que les pipelines started in their own org (vérification `pipelineOrgId === auth.user.orgId`). Sinon 404 (pas de leak).
+- Ajout `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"`.
+
+Phase 6 — Stats / quota counts org-scoped :
+
+6a. src/app/api/organization/details/route.ts :
+- `totalCompanies` : avant `db.company.count()` (global), après `db.company.count({ where: { organizationId } })` (org-scoped). Le stat reflète maintenant correctement le tenant de l'appelant.
+
+6b. src/lib/saas/saas-engine.ts (buildQuota) :
+- `companyCount` : avant `db.company.count()` (toutes companies de toutes orgs confondues — quota erroné), après `db.company.count({ where: { organizationId: orgId } })`. Les companies globales (organizationId = null) sont exclues du quota par-org (elles appartiennent à la plateforme, pas au tenant).
+
+Phase 7 — Cache-busting Prisma client (src/lib/db.ts) :
+- Problème : après `bun run db:push` (régénération de node_modules/.prisma/client/*.js), Turbopack gardait en mémoire l'ANCIEN PrismaClient. Runtime error : "Unknown argument organizationId" sur db.company.create, même si le fichier disque avait été régénéré.
+- Solution : ajout d'une fonction `bustPrismaCacheIfStale()` qui compare le hash du mtime de prisma/schema.prisma contre le hash caché. Si différent, purge toutes les entrées `node_modules/@prisma/client/*` et `node_modules/.prisma/client/*` de `require.cache`, puis `createPrismaClient()` fait un `require_("@prisma/client")` frais via `createRequire(import.meta.url)` (pour rester en ESM sans déclencher la règle `@typescript-eslint/no-require-imports`).
+- Testé : après le 1er appel à db.company.create (post db:push), le cache est busté à la volée et le nouveau champ organizationId est reconnu.
+
+Phase 8 — Vérification :
+
+8.1. `bun run lint` → exit 0, 0 errors, 0 warnings. ✓
+
+8.2. `bun run db:push` → "Your database is now in sync with your Prisma schema. Done in 44ms". ✓
+
+8.3. `bun run scripts/db-check.ts` → DB intacte (User 1, Organization 1, Member 1). ✓
+
+8.4. curl tests (avec cookies auth) :
+
+OWNER (admin@prisiv.biz / AdminProd2026!) :
+- POST /api/auth/login → 200, role: "OWNER", orgId: "cmrpp5vgm001qsndx5iaem2rr" ✓
+- GET /api/v1/companies → 200, data: [], total: 0 (DB vide initialement) ✓
+- POST /api/v1/companies `{"name":"GlobalTech CI","sector":"Technologie"}` → 201, organizationId: "cmrpp5vgm001qsndx5iaem2rr" (défaut = OWNER.orgId) ✓
+- POST /api/v1/companies `{"name":"GlobalCorp Shared","organizationId":null}` → 201, organizationId: null (global, OWNER-only) ✓
+- GET /api/v1/companies → 200, total: 2 (les deux companies visibles — OWNER voit tout y compris global null) ✓
+
+ADMIN (tenantadmin@scraapiq.ci / TenantAdmin2026!, org "Tenant Org Alpha") :
+- POST /api/auth/register → 200, role: "ADMIN", orgId: "cmrqgutz00009t52uw0olyldd" ✓
+- GET /api/v1/companies → 200, data: [], total: 0 (ne voit NI les companies de l'OWNER NI la globale — isolation cross-tenant) ✓
+- POST /api/v1/companies `{"name":"Tenant Alpha SARL","organizationId":null}` → 201, organizationId: "cmrqgutz00009t52uw0olyldd" (le null est ignoré, forcé à leur orgId — non-OWNER ne peut PAS créer global) ✓
+- GET /api/v1/companies → 200, total: 1 (leur propre company) ✓
+- GET /api/v1/companies/{OWNER_company_id} → 404 "Company not found" (pas de leak cross-tenant) ✓
+- GET /api/v1/companies/{global_company_id} → 404 ✓
+- GET /api/v1/companies/{own_company_id} → 200 ✓
+- DELETE /api/v1/companies/{global_company_id} → 404 ✓
+
+Cross-tenant isolation parfaitement vérifiée : ADMIN ne peut ni LIRE ni CRÉER ni MODIFIER ni SUPPRIMER des companies hors de son org.
+
+8.5. Agent Browser end-to-end verification :
+- viewport 1440x900 (desktop)
+- OWNER (admin@prisiv.biz) login → sidebar affiche 19 sections : Tableau de bord, Assistant IA, Recherche multicritère, Business Intelligence, IA Multi-Agents, Entreprises, Cartographie, Sources de données, Jobs de scraping, Moteur Google Maps, Exports, API REST v1, Notifications, Équipe & tenants, Back Office, Architecture distribuée, Sécurité, PWA Offline, SaaS Enterprise, Base de données, Paramètres ✓
+- Screenshot saved : /home/z/my-project/sidebar-owner.png (147 KB) ✓
+- Register nouveau user (tenantbeta@scraapiq.ci / TenantBeta2026!, org "Tenant Beta Org") → auto-login as ADMIN
+- /api/me → status 200, role: "ADMIN", email: "tenantbeta@scraapiq.ci", perms: 20 (vs 21 pour OWNER — la perm manquante est "platform:admin") ✓
+- ADMIN sidebar affiche 13 sections : Tableau de bord, Assistant IA, Recherche multicritère, Business Intelligence, IA Multi-Agents, Entreprises, Cartographie, Sources de données, Jobs de scraping, Moteur Google Maps, Exports, Notifications Multi-canal, Équipe & tenants, Paramètres ✓
+- Sections masquées pour ADMIN (7) : API REST v1, Back Office, Architecture distribuée Live, Sécurité, PWA Offline, SaaS Enterprise, Base de données ✓
+- Screenshot saved : /home/z/my-project/sidebar-admin.png (147 KB) ✓
+- `agent-browser errors` → vide (aucune erreur JS, aucune erreur de parsing) ✓
+- `agent-browser console` → clean (uniquement HMR + React DevTools info messages) ✓
+
+8.6. Cleanup : tous les utilisateurs/orgs/companies de test supprimés (tenantadmin@scraapiq.ci + Tenant Org Alpha, tenantbeta@scraapiq.ci + Tenant Beta Org, et les 3 companies de test). DB revenue à son état initial : 1 user OWNER + 1 membre + 1 org PRISIV LAB.
+
+8.7. Screenshots sauvegardés :
+- `/home/z/my-project/sidebar-owner.png` (147 KB) — sidebar OWNER avec 19 sections.
+- `/home/z/my-project/sidebar-admin.png` (147 KB) — sidebar ADMIN avec 13 sections (pas de Back Office/DB/SaaS/API/Queue/Security/PWA).
+
+Phase 9 — Work record écrit à `/home/z/my-project/agent-ctx/41-multi-tenant-isolation.md`.
+
+Stage Summary:
+- 1 fichier RBAC modifié (rbac-nav.ts) : 5 clés (api, backoffice, queue, security, pwa) passées de "ADMIN" → "OWNER". ADMIN est maintenant strictement un admin d'org (pas plateforme).
+- 1 fichier schema modifié (prisma/schema.prisma) : Company.organizationId String? ajouté + relation Organization.companies + index @@index([organizationId]). db:push appliqué (44ms, 0 erreur).
+- 1 helper créé (src/lib/auth/tenant.ts, ~135 lignes) : getTenantContextFromRequest(), getTenantContext(), buildCompanyFilter(), canAccessOrg(). Exporté via barrel auth/index.ts.
+- 6 endpoints API modifiés :
+  • GET /api/v1/companies — filter by orgId pour non-OWNER
+  • POST /api/v1/companies — organizationId multi-tenant logic (OWNER peut global, non-OWNER forcé à leur org)
+  • GET/PUT/DELETE /api/v1/companies/[id] — canAccessOrg() check, 404 si cross-tenant
+  • GET /api/v1/agents + POST /api/v1/agents — auth ajoutée, organizationId/userId threadés dans config
+  • GET /api/v1/agents/[id] — auth + isolation tenant (non-OWNER ne voit que leurs pipelines)
+  • POST /api/scraper/google-maps — auth ajoutée, organizationId/userId threadés dans SearchQuery
+- 3 fichiers lib modifiés :
+  • src/lib/scraper/types.ts — SearchQuery.organizationId + userId (thread-through)
+  • src/lib/ai-agents/orchestrator.ts — PipelineConfig.organizationId + userId, PipelineState.config mirror
+  • src/lib/saas/saas-engine.ts — buildQuota compte companies par orgId (pas global)
+  • src/app/api/organization/details/route.ts — totalCompanies par orgId
+  • src/lib/db.ts — cache-busting Prisma client via createRequire (fixe le stale DMMF après db:push)
+- Sécurité :
+  • OWNER voit TOUT (y compris companies organizationId = null = global/shared).
+  • ADMIN/MANAGER/AGENT/VIEWER ne voient QUE leur org (organizationId === user.orgId).
+  • Cross-tenant GET/PUT/DELETE → 404 (pas de leak d'existence).
+  • Non-OWNER ne peut PAS créer de company globale (organizationId: null ignoré, forcé à leur orgId).
+  • Non-OWNER ne peut PAS créer de company dans une autre org (organizationId ignoré, forcé à leur orgId).
+  • Non-OWNER ne peut PAS voir les pipelines agents lancés par d'autres orgs.
+  • Scrapers + AI agents maintenant auth-required (avant : ouverts à tous).
+- Lint : 0 errors, 0 warnings. Dev server healthy.
+- curl verification : OWNER voit 3 companies (own-org + global + admin's org), ADMIN voit 1 (leur propre). Cross-tenant GET/DELETE → 404.
+- Agent Browser : OWNER sidebar = 19 sections (incluant Back Office, DB, SaaS, API, Queue, Security, PWA), ADMIN sidebar = 13 sections (ces 7 masquées). Errors empty.
+- 2 screenshots sauvegardés (sidebar-owner.png, sidebar-admin.png).
+- Pas de modification de .env.
+- prisma/schema.prisma modifié (ajout organizationId à Company + relation + index) — nécessaire et autorisé pour cette tâche.
