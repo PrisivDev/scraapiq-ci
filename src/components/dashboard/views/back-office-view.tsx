@@ -100,16 +100,8 @@ interface UserRow {
   org: string
 }
 
-const usersData: UserRow[] = [
-  { id: "u1", name: "Adama Koné", email: "adama@agribusiness.ci", role: "OWNER", status: "active", lastLogin: "En ligne", org: "AgriBusiness CI" },
-  { id: "u2", name: "Mariam Traoré", email: "mariam@agribusiness.ci", role: "ADMIN", status: "active", lastLogin: "Il y a 5 min", org: "AgriBusiness CI" },
-  { id: "u3", name: "Sekou Bamba", email: "sekou@agribusiness.ci", role: "MANAGER", status: "active", lastLogin: "Il y a 1 h", org: "AgriBusiness CI" },
-  { id: "u4", name: "Yasmine Koné", email: "yasmine@agribusiness.ci", role: "AGENT", status: "pending", lastLogin: "Invitation envoyée", org: "AgriBusiness CI" },
-  { id: "u5", name: "Ibrahim Cissé", email: "ibrahim@agribusiness.ci", role: "VIEWER", status: "disabled", lastLogin: "Il y a 3 j", org: "AgriBusiness CI" },
-  { id: "u6", name: "Fatou Diarra", email: "fatou@agribusiness.ci", role: "AGENT", status: "active", lastLogin: "Il y a 12 min", org: "AgriBusiness CI" },
-  { id: "u7", name: "Moussa Ouattara", email: "moussa@agribusiness.ci", role: "MANAGER", status: "active", lastLogin: "Il y a 2 h", org: "AgriBusiness CI" },
-  { id: "u8", name: "Aïcha Bamba", email: "aicha@agribusiness.ci", role: "VIEWER", status: "pending", lastLogin: "Invitation envoyée", org: "AgriBusiness CI" },
-]
+// Production: données mock supprimées. Brancher /api/admin/users quand disponible.
+const usersData: UserRow[] = []
 
 interface LogEntry {
   id: string
@@ -507,6 +499,19 @@ function UsersTab() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {/* Empty state — pas encore de membres */}
+          {filtered.length === 0 && (
+            <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
+                <Users className="h-7 w-7" />
+              </div>
+              <h3 className="text-base font-semibold mb-1">Aucun utilisateur</h3>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Les membres de votre organisation apparaîtront ici. Invitez vos collaborateurs pour les ajouter.
+              </p>
+            </div>
+          )}
+
           {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
             <Table>

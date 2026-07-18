@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Users, UserPlus, Building2, Crown, Shield, UserCog, User, Eye, MoreVertical, Mail } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -16,13 +17,8 @@ interface TeamMember {
   lastActive: string
 }
 
-const team: TeamMember[] = [
-  { id: "u1", name: "Adama Koné", email: "adama@agribusiness.ci", role: "OWNER", status: "active", lastActive: "En ligne" },
-  { id: "u2", name: "Mariam Traoré", email: "mariam@agribusiness.ci", role: "ADMIN", status: "active", lastActive: "Il y a 5 min" },
-  { id: "u3", name: "Sekou Bamba", email: "sekou@agribusiness.ci", role: "MANAGER", status: "active", lastActive: "Il y a 1 h" },
-  { id: "u4", name: "Yasmine Koné", email: "yasmine@agribusiness.ci", role: "AGENT", status: "pending", lastActive: "Invitation envoyée" },
-  { id: "u5", name: "Ibrahim Cissé", email: "ibrahim@agribusiness.ci", role: "VIEWER", status: "disabled", lastActive: "Il y a 3 j" },
-]
+// Production: données mock supprimées. Brancher /api/admin/users quand disponible.
+const team: TeamMember[] = []
 
 const roleMeta = {
   OWNER: { label: "Owner", icon: Crown, className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
@@ -39,6 +35,24 @@ const statusMeta = {
 }
 
 export function TeamView() {
+  // Récupère le nom réel de l'organisation depuis /api/me
+  // (mock "AgriBusiness CI" supprimé)
+  const [organizationName, setOrganizationName] = useState<string>("Mon organisation")
+  useEffect(() => {
+    let mounted = true
+    fetch("/api/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!mounted || !d?.user) return
+        const orgName = d.user.memberships?.[0]?.organization?.name
+        if (orgName) setOrganizationName(orgName)
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -65,7 +79,7 @@ export function TeamView() {
               <Building2 className="h-6 w-6" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold">AgriBusiness CI</p>
+              <p className="font-semibold">{organizationName}</p>
               <p className="text-xs text-muted-foreground">Plan Pro · 5 / 20 membres · Créée le 12 oct. 2026</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => toast.info("Paramètres org")}>
@@ -82,6 +96,18 @@ export function TeamView() {
           <CardDescription className="text-xs">Gérez les rôles et les accès</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
+          {/* Empty state — pas encore de membres */}
+          {team.length === 0 && (
+            <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
+                <Users className="h-7 w-7" />
+              </div>
+              <h3 className="text-base font-semibold mb-1">Aucun membre</h3>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Les membres de votre organisation apparaîtront ici. Invitez vos collaborateurs pour les ajouter.
+              </p>
+            </div>
+          )}
           <div className="divide-y">
             {team.map((m) => {
               const rMeta = roleMeta[m.role]

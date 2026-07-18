@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Search, Bell, Plus, Sun, Moon, Menu, Building2, ChevronDown, Zap, Command } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,6 +32,30 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
   const { theme, setTheme } = useTheme()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const activeAlerts = dashboardAlerts.filter((a) => a.status === "active")
+
+  // Récupère le nom réel de l'organisation depuis /api/me
+  // (mock "AgriBusiness CI" / "Pharma Distribution" / "BTP Express" supprimé)
+  const [organizationName, setOrganizationName] = useState<string>("...")
+  const [allOrgs, setAllOrgs] = useState<string[]>([])
+  useEffect(() => {
+    let mounted = true
+    fetch("/api/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!mounted || !d?.user?.memberships) return
+        const orgs = d.user.memberships
+          .map((m: { organization?: { name?: string } }) => m.organization?.name)
+          .filter((n: string | undefined): n is string => Boolean(n))
+        setAllOrgs(orgs)
+        setOrganizationName(orgs[0] || "Mon organisation")
+      })
+      .catch(() => {
+        if (mounted) setOrganizationName("Mon organisation")
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const handleNavigate = useCallback((url: string) => {
     if (url.startsWith("#")) {
@@ -80,14 +104,14 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="hidden sm:flex gap-2 max-w-[200px]">
               <Building2 className="h-4 w-4 text-primary" />
-              <span className="truncate">AgriBusiness CI</span>
+              <span className="truncate">{organizationName}</span>
               <ChevronDown className="h-3.5 w-3.5 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Organisations</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {["AgriBusiness CI", "Pharma Distribution", "BTP Express"].map((t) => (
+            {allOrgs.map((t) => (
               <DropdownMenuItem key={t}>
                 <Building2 className="h-4 w-4 mr-2" />
                 {t}

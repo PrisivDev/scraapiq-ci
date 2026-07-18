@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { AnalyticsKpis } from "./kpi-cards"
 import { AnalyticsCharts } from "./charts"
 import { GeographicHeatmap } from "./geographic-heatmap"
@@ -16,16 +17,38 @@ interface AnalyticsDashboardProps {
 }
 
 export function AnalyticsDashboard({ onNavigate }: AnalyticsDashboardProps) {
+  // Récupère le prénom et l'organisation réels depuis /api/me
+  // (mock "Adama" / "AgriBusiness CI" supprimé)
+  const [firstName, setFirstName] = useState<string>("")
+  const [organizationName, setOrganizationName] = useState<string>("votre organisation")
+  useEffect(() => {
+    let mounted = true
+    fetch("/api/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!mounted || !d?.user) return
+        const name: string | undefined = d.user.name
+        if (name) {
+          setFirstName(name.split(" ")[0])
+        }
+        const orgName = d.user.memberships?.[0]?.organization?.name
+        if (orgName) setOrganizationName(orgName)
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
   return (
     <div className="space-y-5">
       {/* Hero greeting */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Bonjour Adama 👋
+            {firstName ? `Bonjour ${firstName}` : "Bonjour"} 👋
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Voici l'activité de <span className="font-medium text-foreground">AgriBusiness CI</span> — Abidjan & Côte d'Ivoire
+            Voici l'activité de <span className="font-medium text-foreground">{organizationName}</span> — Abidjan & Côte d'Ivoire
           </p>
         </div>
         <div className="flex items-center gap-2">

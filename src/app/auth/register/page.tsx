@@ -146,7 +146,7 @@ export default function RegisterPage() {
                 <Input
                   id="orgName"
                   type="text"
-                  placeholder="AgriBusiness CI"
+                  placeholder="Mon entreprise"
                   className="pl-9"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}

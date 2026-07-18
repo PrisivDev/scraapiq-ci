@@ -2296,3 +2296,100 @@ Stage Summary:
 - Accès sécurisé : OWNER uniquement, champs sensibles masqués par défaut
 - 23 tables inspectables avec compte + 5 lignes échantillon
 - Aucune régression, lint 0 erreur
+
+---
+Task ID: 37
+Agent: Mock Org Cleaner
+Task: Remove all mock organization names from UI, replace with real /api/me data
+
+Work Log:
+- Read worklog (Tasks 33-a, 35, 36) to understand the project state: DB was just truncated for production, only 1 real org exists ("Organisation de Admin Prod" owned by admin@scraapiq.ci). Task 35 already emptied the 3 main mock-data files (mock-data.ts, dashboard-data.ts, geo-data.ts) and confirmed Back Office component-local mock logs were OUT OF SCOPE. Task 36 added a DB Viewer. The UI still showed 3 fake org names ("AgriBusiness CI", "Pharma Distribution", "BTP Express") plus "Bonjour Adama" in 6 files listed in the task brief.
+
+- Inspected all 6 target files BEFORE editing:
+  • src/components/dashboard/analytics/dashboard-header.tsx (ACTIVE header, 177 lines) — line 83 hardcoded `AgriBusiness CI`, line 90 array `["AgriBusiness CI", "Pharma Distribution", "BTP Express"]` for the tenant dropdown.
+  • src/components/dashboard/analytics/analytics-dashboard.tsx (105 lines) — line 25 hardcoded `Bonjour Adama`, line 28 hardcoded `Voici l'activité de <span>AgriBusiness CI</span>`.
+  • src/components/dashboard/views/back-office-view.tsx (1915 lines) — lines 103-112 `usersData` array of 8 fake users all with `@agribusiness.ci` emails and `org: "AgriBusiness CI"`. (auditData lines 268-281 with @agribusiness.ci emails left intact — out of scope per Task 35.)
+  • src/components/dashboard/views/team-view.tsx (184 lines) — lines 19-25 `team` array of 5 fake members with @agribusiness.ci emails; line 68 hardcoded `<p>AgriBusiness CI</p>`.
+  • src/components/dashboard/header.tsx (145 lines, OLD header) — verified NOT imported anywhere via `rg "from.*dashboard/header"` (0 matches) and `rg "dashboard/header"` (only 1 match: page.tsx imports the analytics/dashboard-header, not this one). Dead code — left untouched per task spec.
+  • src/app/auth/register/page.tsx — line 149 `placeholder="AgriBusiness CI"` on the org name input.
+
+- Confirmed /api/me response shape (route.ts): returns `user.memberships[].organization.{id,name,slug,plan}`. The DB has exactly 1 active membership per user (admin@scraapiq.ci → Organisation de Admin Prod, plan Starter). No list-members API exists yet, so empty-state approach (option a) was used for users arrays.
+
+- Step 1 — Fixed the ACTIVE dashboard-header.tsx (the one the user sees):
+  • Added `useEffect` import.
+  • Added `useState<string>("...")` for `organizationName` (loading state) and `useState<string[]>([])` for `allOrgs`.
+  • Added a `useEffect` on mount that fetches `/api/me` with `credentials: "include"`, maps `data.user.memberships` to extract `organization.name` (filtering falsy), sets `allOrgs` and `organizationName = orgs[0] || "Mon organisation"`. Wrapped with `mounted` flag to avoid setState after unmount. `.catch()` falls back to "Mon organisation".
+  • Replaced `<span className="truncate">AgriBusiness CI</span>` with `<span className="truncate">{organizationName}</span>`.
+  • Replaced `{["AgriBusiness CI", "Pharma Distribution", "BTP Express"].map((t) => ...)}` with `{allOrgs.map((t) => ...)}`.
+  • Kept the exact same DropdownMenu UI (trigger button + content + "Créer une organisation" item).
+  • Added French comment: `// Récupère le nom réel de l'organisation depuis /api/me` + `// (mock "AgriBusiness CI" / "Pharma Distribution" / "BTP Express" supprimé)`.
+  • 3 mock lines removed (1 trigger span + 1 array literal + 1 implicit count), replaced by dynamic data.
+
+- Step 2 — Fixed analytics-dashboard.tsx welcome message:
+  • Added `useState, useEffect` imports.
+  • Added state `firstName` (defaults to "") and `organizationName` (defaults to "votre organisation" — generic fallback).
+  • Added `useEffect` fetching `/api/me` — sets `firstName` from `user.name.split(" ")[0]` and `organizationName` from `user.memberships?.[0]?.organization?.name`. Wrapped with `mounted` flag + try/catch (silent fail → keep generic fallback).
+  • Replaced `Bonjour Adama 👋` with `{firstName ? \`Bonjour ${firstName}\` : "Bonjour"} 👋`.
+  • Replaced `<span className="font-medium text-foreground">AgriBusiness CI</span>` with `<span className="font-medium text-foreground">{organizationName}</span>`.
+  • 2 mock strings removed (1 user name + 1 org name), replaced by dynamic data.
+  • Did NOT touch the "38 862 entreprises" string in the export banner (out of scope — that's a company count, not an org name; Task 35 already documented it as cosmetic and out of scope).
+
+- Step 3 — Cleaned back-office-view.tsx mock users:
+  • Replaced the 8-element `usersData: UserRow[] = [...]` array (lines 103-112) with `usersData: UserRow[] = []`.
+  • Added comment: `// Production: données mock supprimées. Brancher /api/admin/users quand disponible.`
+  • Added an empty-state block in `UsersTab()` BEFORE the desktop table: when `filtered.length === 0`, renders a centered card with `<Users>` icon, heading "Aucun utilisateur", and message "Les membres de votre organisation apparaîtront ici. Invitez vos collaborateurs pour les ajouter." Matches the spec's suggested copy.
+  • Kept the table + mobile cards markup intact (they simply render nothing on empty arrays via `.map()`).
+  • 8 mock user rows removed, replaced by 1 empty-state block.
+  • Left `auditData` array (lines 268-281) intact — those @agribusiness.ci emails are part of the component-local audit logs that Task 35 explicitly noted as out of scope, and Task 37 Step 3 only mentions "the mock users array (lines ~104-111)".
+
+- Step 4 — Cleaned team-view.tsx:
+  • Added `useState, useEffect` imports.
+  • Replaced the 5-element `team: TeamMember[] = [...]` array (lines 19-25) with `team: TeamMember[] = []` + comment `// Production: données mock supprimées. Brancher /api/admin/users quand disponible.`
+  • Added `useState<string>("Mon organisation")` for `organizationName` + `useEffect` fetching `/api/me` to set it from `memberships[0].organization.name`.
+  • Replaced `<p className="font-semibold">AgriBusiness CI</p>` with `<p className="font-semibold">{organizationName}</p>`.
+  • Added empty-state block in the Membres card when `team.length === 0`: same style as back-office (icon + heading "Aucun membre" + message).
+  • 5 mock team rows removed + 1 org name string removed, replaced by 1 empty-state block + dynamic org name.
+  • Kept the roleMeta/statusMeta maps and RBAC matrix (legitimate configuration, not mock org data).
+
+- Step 5 — Verified old `src/components/dashboard/header.tsx` is dead code:
+  • `rg "from\s+[\"']@/components/dashboard/header[\"']"` → 0 matches.
+  • `rg "dashboard/header"` → only 1 match in `src/app/page.tsx:5` which imports `@/components/dashboard/analytics/dashboard-header` (the ACTIVE one).
+  • Per task spec ("If it's NOT imported anywhere, leave it (dead code)"), left header.tsx untouched.
+
+- Step 6 — Register page placeholder:
+  • Replaced `placeholder="AgriBusiness CI"` with `placeholder="Mon entreprise"` on the org name input (line 149).
+
+- Step 7 — Verification:
+  • `bun run lint` → exit 0, 0 errors, 0 warnings.
+  • Dev server already running (PID 1129, port 3000, uptime 7714s).
+  • `curl -s http://localhost:3000/api/health` → HTTP 200, `{"status":"healthy","env":"development","version":"0.2.0"}`.
+  • Agent Browser end-to-end verification (login as admin@scraapiq.ci / AdminProd2026!):
+    - Login → redirected to `/` (dashboard) ✓
+    - Header tenant button reads "Organisation de Admin Prod" (real org name from /api/me) instead of "AgriBusiness CI" ✓
+    - Clicked tenant dropdown → shows exactly 1 organization item "Organisation de Admin Prod" + the "Créer une organisation" action item (was previously 3 fake orgs) ✓
+    - Dashboard hero reads "Bonjour Admin 👋" (real user first name) + "Voici l'activité de Organisation de Admin Prod — Abidjan & Côte d'Ivoire" ✓
+    - Navigated to Back Office → "Aucun utilisateur" empty state with the message "Les membres de votre organisation apparaîtront ici. Invitez vos collaborateurs pour les ajouter." (was previously 8 fake @agribusiness.ci users) ✓
+    - Navigated to Équipe & tenants → "0 membres · 0 actifs" + organisation card reads "Organisation de Admin Prod" + "Aucun membre" empty state (was previously 5 fake members + "AgriBusiness CI" org card) ✓
+    - Navigated to /auth/register (after cookies clear) → org name input placeholder is now "Mon entreprise" (was "AgriBusiness CI") ✓
+    - Took 3 screenshots: task37-header-real-org.png, task37-backoffice-empty.png, task37-team-empty.png
+    - `agent-browser errors` → empty (no page errors)
+    - `agent-browser console` → only React DevTools info + HMR Fast Refresh messages (no warnings, no errors)
+
+- Files where mock data was NOT replaced (and why):
+  • `src/components/dashboard/header.tsx` — verified dead code (not imported anywhere). Per task spec, left untouched.
+  • `src/components/dashboard/views/back-office-view.tsx` auditData (lines 268-281) — Task 35 explicitly noted the Back Office component-local mock logs as OUT OF SCOPE ("uses its own embedded mock logs which are component-local, NOT from the mock-data files — out of scope"). Task 37 Step 3 specifically mentions only "the mock users array (lines ~104-111)".
+  • `src/components/dashboard/views/settings-view.tsx:52` `defaultValue="adama@agribusiness.ci"` — this is a user profile email mock, not in the task's list of 6 files; not an organization name.
+  • `src/components/dashboard/views/security-view.tsx:390` `{ type: "Email", original: "adama@agribusiness.ci", masked: "ad****@agribusiness.ci" }` — this is a PII/masking demonstration, not in the task's list of 6 files; not an organization name.
+
+Stage Summary:
+- All 6 files in the task scope processed:
+  • dashboard-header.tsx (ACTIVE): 3 mock org-name strings → /api/me fetch + dynamic org name + dynamic dropdown list. Loading state "..." + fallback "Mon organisation".
+  • analytics-dashboard.tsx: "Bonjour Adama" + "AgriBusiness CI" → "Bonjour {firstName}" + "{organizationName}" from /api/me. Generic fallback "votre organisation".
+  • back-office-view.tsx: 8 mock users emptied to `[]` + empty state "Aucun utilisateur".
+  • team-view.tsx: 5 mock members emptied to `[]` + empty state "Aucun membre" + dynamic org name from /api/me.
+  • header.tsx (OLD): left untouched (verified dead code).
+  • register/page.tsx: placeholder "AgriBusiness CI" → "Mon entreprise".
+- All 3 ACTIVE components (header, analytics, team) fetch /api/me client-side in a useEffect, with `mounted` flag and try/catch fallbacks. The /api/me endpoint is unchanged (Task 36 verified it returns `user.memberships[].organization.{name,slug,plan}`).
+- Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification confirms the user now sees "Organisation de Admin Prod" everywhere (header tenant selector, analytics hero, team view org card) instead of the 3 fake orgs. Back Office Users tab + Team view Membres card show clean empty states.
+- 3 screenshots saved: task37-header-real-org.png, task37-backoffice-empty.png, task37-team-empty.png.
+- Out-of-scope mock @agribusiness.ci emails in settings-view, security-view, and back-office auditData left intact (not in the task's 6-file scope; Task 35 already noted them as out of scope).

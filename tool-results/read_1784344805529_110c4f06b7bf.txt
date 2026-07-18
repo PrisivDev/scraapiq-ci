@@ -1,0 +1,1915 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useState, useMemo } from "react"
+     5→import {
+     6→  Shield, Users, CreditCard, ScrollText, Code2, Gauge, Receipt,
+     7→  BarChart3, Wrench, FileSearch,
+     8→  Crown, UserCog, User as UserIcon, Eye, Mail, Search, UserPlus,
+     9→  CheckCircle2, AlertCircle, AlertTriangle, XCircle, Clock,
+    10→  Activity, RefreshCw, Download, Plus, KeyRound, Zap, Server,
+    11→  Cpu, HardDrive, Database, Power, Trash2, ExternalLink,
+    12→  TrendingUp, TrendingDown, DollarSign, Building2, Globe,
+    13→  Smartphone, CreditCard as CardIcon, Calendar, ArrowUpRight,
+    14→  MoreVertical, Lock, ShieldAlert, ShieldCheck, FileText,
+    15→  ChevronRight, Pause, Play, Settings2, Wallet,
+    16→} from "lucide-react"
+    17→import {
+    18→  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart,
+    19→  Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    20→} from "recharts"
+    21→import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+    22→import { Button } from "@/components/ui/button"
+    23→import { Badge } from "@/components/ui/badge"
+    24→import { Input } from "@/components/ui/input"
+    25→import { Label } from "@/components/ui/label"
+    26→import { Switch } from "@/components/ui/switch"
+    27→import { Progress } from "@/components/ui/progress"
+    28→import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+    29→import {
+    30→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    31→} from "@/components/ui/table"
+    32→import {
+    33→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    34→} from "@/components/ui/select"
+    35→import {
+    36→  Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+    37→} from "@/components/ui/tooltip"
+    38→import {
+    39→  ChartContainer, ChartTooltipContent, type ChartConfig,
+    40→} from "@/components/ui/chart"
+    41→import { cn } from "@/lib/utils"
+    42→import { toast } from "sonner"
+    43→
+    44→// ===========================================================================
+    45→// Types & shared helpers
+    46→// ===========================================================================
+    47→
+    48→type RoleKey = "OWNER" | "ADMIN" | "MANAGER" | "AGENT" | "VIEWER"
+    49→type StatusKey = "active" | "pending" | "disabled"
+    50→
+    51→const roleMeta: Record<RoleKey, { label: string; icon: React.ElementType; className: string }> = {
+    52→  OWNER: { label: "Owner", icon: Crown, className: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" },
+    53→  ADMIN: { label: "Admin", icon: Shield, className: "bg-primary/10 text-primary" },
+    54→  MANAGER: { label: "Manager", icon: UserCog, className: "bg-accent/20 text-accent-foreground" },
+    55→  AGENT: { label: "Agent", icon: UserIcon, className: "bg-muted text-muted-foreground" },
+    56→  VIEWER: { label: "Viewer", icon: Eye, className: "bg-muted text-muted-foreground" },
+    57→}
+    58→
+    59→const statusMeta: Record<StatusKey, { label: string; className: string; dot: string }> = {
+    60→  active: { label: "Actif", className: "bg-primary/10 text-primary border-primary/20", dot: "bg-primary" },
+    61→  pending: { label: "En attente", className: "bg-accent/20 text-accent-foreground border-accent/30", dot: "bg-accent" },
+    62→  disabled: { label: "Désactivé", className: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground/50" },
+    63→}
+    64→
+    65→const TABS = [
+    66→  { key: "users", label: "Utilisateurs", icon: Users },
+    67→  { key: "subscriptions", label: "Abonnements", icon: CreditCard },
+    68→  { key: "logs", label: "Logs", icon: ScrollText },
+    69→  { key: "api", label: "API", icon: Code2 },
+    70→  { key: "quota", label: "Quota", icon: Gauge },
+    71→  { key: "payments", label: "Paiements", icon: Receipt },
+    72→  { key: "stats", label: "Statistiques", icon: BarChart3 },
+    73→  { key: "maintenance", label: "Maintenance", icon: Wrench },
+    74→  { key: "audit", label: "Audit", icon: FileSearch },
+    75→] as const
+    76→
+    77→type TabKey = (typeof TABS)[number]["key"]
+    78→
+    79→function formatFCFA(n: number): string {
+    80→  return new Intl.NumberFormat("fr-FR").format(n) + " FCFA"
+    81→}
+    82→
+    83→function compact(n: number): string {
+    84→  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
+    85→  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k"
+    86→  return String(n)
+    87→}
+    88→
+    89→// ===========================================================================
+    90→// Mock data
+    91→// ===========================================================================
+    92→
+    93→interface UserRow {
+    94→  id: string
+    95→  name: string
+    96→  email: string
+    97→  role: RoleKey
+    98→  status: StatusKey
+    99→  lastLogin: string
+   100→  org: string
+   101→}
+   102→
+   103→const usersData: UserRow[] = [
+   104→  { id: "u1", name: "Adama Koné", email: "adama@agribusiness.ci", role: "OWNER", status: "active", lastLogin: "En ligne", org: "AgriBusiness CI" },
+   105→  { id: "u2", name: "Mariam Traoré", email: "mariam@agribusiness.ci", role: "ADMIN", status: "active", lastLogin: "Il y a 5 min", org: "AgriBusiness CI" },
+   106→  { id: "u3", name: "Sekou Bamba", email: "sekou@agribusiness.ci", role: "MANAGER", status: "active", lastLogin: "Il y a 1 h", org: "AgriBusiness CI" },
+   107→  { id: "u4", name: "Yasmine Koné", email: "yasmine@agribusiness.ci", role: "AGENT", status: "pending", lastLogin: "Invitation envoyée", org: "AgriBusiness CI" },
+   108→  { id: "u5", name: "Ibrahim Cissé", email: "ibrahim@agribusiness.ci", role: "VIEWER", status: "disabled", lastLogin: "Il y a 3 j", org: "AgriBusiness CI" },
+   109→  { id: "u6", name: "Fatou Diarra", email: "fatou@agribusiness.ci", role: "AGENT", status: "active", lastLogin: "Il y a 12 min", org: "AgriBusiness CI" },
+   110→  { id: "u7", name: "Moussa Ouattara", email: "moussa@agribusiness.ci", role: "MANAGER", status: "active", lastLogin: "Il y a 2 h", org: "AgriBusiness CI" },
+   111→  { id: "u8", name: "Aïcha Bamba", email: "aicha@agribusiness.ci", role: "VIEWER", status: "pending", lastLogin: "Invitation envoyée", org: "AgriBusiness CI" },
+   112→]
+   113→
+   114→interface LogEntry {
+   115→  id: string
+   116→  ts: string
+   117→  level: "info" | "warn" | "error" | "critical"
+   118→  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"
+   119→  endpoint: string
+   120→  status: number
+   121→  ms: number
+   122→  ip: string
+   123→}
+   124→
+   125→const logsData: LogEntry[] = [
+   126→  { id: "l1", ts: "2027-01-15 14:32:18", level: "info", method: "GET", endpoint: "/api/v1/companies?limit=20", status: 200, ms: 42, ip: "154.123.45.10" },
+   127→  { id: "l2", ts: "2027-01-15 14:31:55", level: "warn", method: "POST", endpoint: "/api/v1/jobs", status: 429, ms: 12, ip: "154.123.45.10" },
+   128→  { id: "l3", ts: "2027-01-15 14:30:42", level: "error", method: "GET", endpoint: "/api/v1/companies/cmrog2", status: 500, ms: 1245, ip: "41.207.18.22" },
+   129→  { id: "l4", ts: "2027-01-15 14:29:10", level: "info", method: "GET", endpoint: "/api/v1/sources", status: 200, ms: 28, ip: "154.123.45.10" },
+   130→  { id: "l5", ts: "2027-01-15 14:28:33", level: "info", method: "PUT", endpoint: "/api/v1/companies/cmrog4", status: 200, ms: 56, ip: "154.123.45.10" },
+   131→  { id: "l6", ts: "2027-01-15 14:27:18", level: "critical", method: "DELETE", endpoint: "/api/v1/companies/cmrog7", status: 403, ms: 8, ip: "41.207.18.22" },
+   132→  { id: "l7", ts: "2027-01-15 14:26:55", level: "info", method: "GET", endpoint: "/api/v1/notifications/stats", status: 200, ms: 18, ip: "154.123.45.10" },
+   133→  { id: "l8", ts: "2027-01-15 14:25:42", level: "warn", method: "POST", endpoint: "/api/v1/exports", status: 429, ms: 14, ip: "197.234.10.5" },
+   134→  { id: "l9", ts: "2027-01-15 14:24:18", level: "info", method: "GET", endpoint: "/api/v1/alerts", status: 200, ms: 22, ip: "154.123.45.10" },
+   135→  { id: "l10", ts: "2027-01-15 14:23:55", level: "info", method: "GET", endpoint: "/api/v1/reports", status: 200, ms: 31, ip: "154.123.45.10" },
+   136→  { id: "l11", ts: "2027-01-15 14:22:30", level: "error", method: "POST", endpoint: "/api/v1/auth/login", status: 401, ms: 145, ip: "102.176.65.4" },
+   137→  { id: "l12", ts: "2027-01-15 14:21:18", level: "info", method: "PATCH", endpoint: "/api/v1/companies/cmrog9", status: 200, ms: 67, ip: "154.123.45.10" },
+   138→  { id: "l13", ts: "2027-01-15 14:20:05", level: "warn", method: "GET", endpoint: "/api/v1/companies?limit=100", status: 200, ms: 1240, ip: "154.123.45.10" },
+   139→  { id: "l14", ts: "2027-01-15 14:19:42", level: "info", method: "GET", endpoint: "/api/v1/me", status: 200, ms: 14, ip: "154.123.45.10" },
+   140→  { id: "l15", ts: "2027-01-15 14:18:30", level: "info", method: "GET", endpoint: "/api/v1/notifications?limit=50", status: 200, ms: 35, ip: "154.123.45.10" },
+   141→]
+   142→
+   143→interface ApiKeyRow {
+   144→  id: string
+   145→  name: string
+   146→  prefix: string
+   147→  scopes: string[]
+   148→  lastUsed: string
+   149→  status: "active" | "revoked"
+   150→  created: string
+   151→}
+   152→
+   153→const apiKeysData: ApiKeyRow[] = [
+   154→  { id: "k1", name: "Production Web App", prefix: "sk_live_4f2a", scopes: ["companies:read", "companies:write", "exports:read"], lastUsed: "Il y a 2 min", status: "active", created: "12 oct. 2026" },
+   155→  { id: "k2", name: "Mobile iOS App", prefix: "sk_live_9b3e", scopes: ["companies:read", "sources:read"], lastUsed: "Il y a 18 min", status: "active", created: "03 nov. 2026" },
+   156→  { id: "k3", name: "Webhook Ingester", prefix: "sk_live_1c8d", scopes: ["notifications:write"], lastUsed: "Il y a 1 h", status: "active", created: "21 nov. 2026" },
+   157→  { id: "k4", name: "Legacy Zapier", prefix: "sk_live_5e7f", scopes: ["companies:read"], lastUsed: "Il y a 14 j", status: "revoked", created: "08 sept. 2026" },
+   158→]
+   159→
+   160→const apiUsageData = [
+   161→  { day: "Lun", calls: 14200 },
+   162→  { day: "Mar", calls: 16800 },
+   163→  { day: "Mer", calls: 15400 },
+   164→  { day: "Jeu", calls: 18900 },
+   165→  { day: "Ven", calls: 21300 },
+   166→  { day: "Sam", calls: 8900 },
+   167→  { day: "Dim", calls: 6200 },
+   168→]
+   169→
+   170→interface QuotaItem {
+   171→  label: string
+   172→  used: number
+   173→  limit: number
+   174→  unit: string
+   175→}
+   176→
+   177→const quotaData: QuotaItem[] = [
+   178→  { label: "Appels API", used: 124_500, limit: 100_000, unit: "appels" },
+   179→  { label: "Entreprises stockées", used: 38_862, limit: 50_000, unit: "entreprises" },
+   180→  { label: "Exports", used: 68, limit: 100, unit: "exports" },
+   181→  { label: "Jobs de scraping", used: 156, limit: 200, unit: "jobs" },
+   182→]
+   183→
+   184→const quotaHistory7d = [
+   185→  { day: "Lun", v: 14200 },
+   186→  { day: "Mar", v: 16800 },
+   187→  { day: "Mer", v: 15400 },
+   188→  { day: "Jeu", v: 18900 },
+   189→  { day: "Ven", v: 21300 },
+   190→  { day: "Sam", v: 8900 },
+   191→  { day: "Dim", v: 6200 },
+   192→]
+   193→
+   194→const quotaBySource = [
+   195→  { source: "Google Maps", value: 48000, color: "var(--chart-1)" },
+   196→  { source: "Facebook", value: 31000, color: "var(--chart-2)" },
+   197→  { source: "LinkedIn", value: 22000, color: "var(--chart-3)" },
+   198→  { source: "Sites web", value: 15500, color: "var(--chart-4)" },
+   199→  { source: "Annuaires", value: 8000, color: "var(--chart-5)" },
+   200→]
+   201→
+   202→interface PaymentRow {
+   203→  id: string
+   204→  date: string
+   205→  invoice: string
+   206→  amount: number
+   207→  method: "Orange Money" | "MTN MoMo" | "Stripe" | "Wave"
+   208→  status: "paid" | "pending" | "failed"
+   209→  plan: string
+   210→}
+   211→
+   212→const paymentsData: PaymentRow[] = [
+   213→  { id: "p1", date: "15 jan. 2027", invoice: "INV-2027-001", amount: 85000, method: "Orange Money", status: "paid", plan: "Pro" },
+   214→  { id: "p2", date: "15 déc. 2026", invoice: "INV-2026-012", amount: 85000, method: "Orange Money", status: "paid", plan: "Pro" },
+   215→  { id: "p3", date: "15 nov. 2026", invoice: "INV-2026-011", amount: 85000, method: "MTN MoMo", status: "paid", plan: "Pro" },
+   216→  { id: "p4", date: "15 oct. 2026", invoice: "INV-2026-010", amount: 85000, method: "Orange Money", status: "paid", plan: "Pro" },
+   217→  { id: "p5", date: "15 sept. 2026", invoice: "INV-2026-009", amount: 25000, method: "Stripe", status: "paid", plan: "Starter" },
+   218→  { id: "p6", date: "15 août 2026", invoice: "INV-2026-008", amount: 25000, method: "Wave", status: "pending", plan: "Starter" },
+   219→  { id: "p7", date: "15 juil. 2026", invoice: "INV-2026-007", amount: 25000, method: "Stripe", status: "failed", plan: "Starter" },
+   220→  { id: "p8", date: "15 juin 2026", invoice: "INV-2026-006", amount: 25000, method: "Orange Money", status: "paid", plan: "Starter" },
+   221→]
+   222→
+   223→const revenue6m = [
+   224→  { month: "Aoû", v: 25000 },
+   225→  { month: "Sep", v: 25000 },
+   226→  { month: "Oct", v: 25000 },
+   227→  { month: "Nov", v: 85000 },
+   228→  { month: "Déc", v: 85000 },
+   229→  { month: "Jan", v: 85000 },
+   230→]
+   231→
+   232→const stats30d = Array.from({ length: 30 }, (_, i) => ({
+   233→  d: `J${i + 1}`,
+   234→  calls: 8000 + Math.round(Math.sin(i / 3) * 3000 + i * 250 + Math.random() * 1500),
+   235→}))
+   236→
+   237→const companiesGrowth = [
+   238→  { m: "Aoû", v: 31000 },
+   239→  { m: "Sep", v: 33000 },
+   240→  { m: "Oct", v: 34800 },
+   241→  { m: "Nov", v: 36200 },
+   242→  { m: "Déc", v: 37500 },
+   243→  { m: "Jan", v: 38862 },
+   244→]
+   245→
+   246→const scrapingBySource = [
+   247→  { name: "Google Maps", value: 48000, color: "var(--chart-1)" },
+   248→  { name: "Facebook", value: 31000, color: "var(--chart-2)" },
+   249→  { name: "LinkedIn", value: 22000, color: "var(--chart-3)" },
+   250→  { name: "Sites web", value: 15500, color: "var(--chart-4)" },
+   251→  { name: "Annuaires", value: 8000, color: "var(--chart-5)" },
+   252→]
+   253→
+   254→const topSectors = [
+   255→  { sector: "Agro-alimentaire", count: 8420 },
+   256→  { sector: "BTP & Construction", count: 6210 },
+   257→  { sector: "Commerce & Distribution", count: 5780 },
+   258→  { sector: "Services financiers", count: 4350 },
+   259→  { sector: "Transport & Logistique", count: 3890 },
+   260→  { sector: "Santé & Pharmacie", count: 2980 },
+   261→  { sector: "Éducation & Formation", count: 2120 },
+   262→]
+   263→
+   264→interface AuditRow {
+   265→  id: string
+   266→  ts: string
+   267→  user: string
+   268→  action: string
+   269→  category: "auth" | "security" | "oauth" | "api" | "data"
+   270→  severity: "info" | "warn" | "error" | "critical"
+   271→  ip: string
+   272→  details: string
+   273→}
+   274→
+   275→const auditData: AuditRow[] = [
+   276→  { id: "a1", ts: "2027-01-15 14:32:18", user: "adama@agribusiness.ci", action: "login.success", category: "auth", severity: "info", ip: "154.123.45.10", details: "Connexion réussie (password + 2FA TOTP)" },
+   277→  { id: "a2", ts: "2027-01-15 14:30:42", user: "—", action: "login.failed", category: "auth", severity: "warn", ip: "102.176.65.4", details: "Échec mot de passe (3e tentative)" },
+   278→  { id: "a3", ts: "2027-01-15 14:28:33", user: "mariam@agribusiness.ci", action: "company.update", category: "data", severity: "info", ip: "154.123.45.10", details: "Modification entreprise cmrog4 (téléphone)" },
+   279→  { id: "a4", ts: "2027-01-15 14:27:18", user: "—", action: "api.key.revoked", category: "api", severity: "warn", ip: "127.0.0.1", details: "Révocation clé sk_live_5e7f (Legacy Zapier)" },
+   280→  { id: "a5", ts: "2027-01-15 14:25:55", user: "sekou@agribusiness.ci", action: "member.invite", category: "security", severity: "info", ip: "154.123.45.10", details: "Invitation envoyée à aicha@agribusiness.ci (VIEWER)" },
+   281→  { id: "a6", ts: "2027-01-15 14:23:30", user: "—", action: "oauth.google.link", category: "oauth", severity: "info", ip: "154.123.45.10", details: "Liaison Google OAuth pour fatou@agribusiness.ci" },
+   282→  { id: "a7", ts: "2027-01-15 14:21:18", user: "—", action: "rate_limit.exceeded", category: "api", severity: "error", ip: "197.234.10.5", details: "Limite 100 req/min dépassée sur /api/v1/exports" },
+   283→  { id: "a8", ts: "2027-01-15 14:19:42", user: "adama@agribusiness.ci", action: "plan.change", category: "security", severity: "warn", ip: "154.123.45.10", details: "Changement plan Starter → Pro" },
+   284→  { id: "a9", ts: "2027-01-15 14:18:30", user: "—", action: "permission.denied", category: "security", severity: "error", ip: "41.207.18.22", details: "Tentative suppression entreprise sans droits (OWNER requis)" },
+   285→  { id: "a10", ts: "2027-01-15 14:15:18", user: "mariam@agribusiness.ci", action: "export.download", category: "data", severity: "info", ip: "154.123.45.10", details: "Téléchargement export entreprises_ci.xlsx (38 862 lignes)" },
+   286→  { id: "a11", ts: "2027-01-15 14:12:55", user: "—", action: "2fa.disabled", category: "security", severity: "critical", ip: "102.176.65.4", details: "Désactivation 2FA — Bloqué par politique de sécurité" },
+   287→  { id: "a12", ts: "2027-01-15 14:10:42", user: "fatou@agribusiness.ci", action: "api.key.created", category: "api", severity: "info", ip: "154.123.45.10", details: "Création clé « Mobile iOS App » (scopes: read)" },
+   288→  { id: "a13", ts: "2027-01-15 14:08:30", user: "—", action: "oauth.microsoft.unlink", category: "oauth", severity: "warn", ip: "154.123.45.10", details: "Déliaison Microsoft OAuth pour sekou@agribusiness.ci" },
+   289→  { id: "a14", ts: "2027-01-15 14:05:18", user: "adama@agribusiness.ci", action: "backup.completed", category: "data", severity: "info", ip: "127.0.0.1", details: "Sauvegarde automatique (1.2 GB)" },
+   290→  { id: "a15", ts: "2027-01-15 14:02:55", user: "—", action: "intrusion.blocked", category: "security", severity: "critical", ip: "45.227.10.88", details: "Blocage IP — pattern brute-force détecté" },
+   291→]
+   292→
+   293→// ===========================================================================
+   294→// Small UI primitives
+   295→// ===========================================================================
+   296→
+   297→function StatTile({
+   298→  label, value, icon: Icon, accent = "primary", hint,
+   299→}: {
+   300→  label: string
+   301→  value: React.ReactNode
+   302→  icon: React.ElementType
+   303→  accent?: "primary" | "accent" | "muted"
+   304→  hint?: string
+   305→}) {
+   306→  const colorMap = {
+   307→    primary: "bg-primary/10 text-primary",
+   308→    accent: "bg-accent/20 text-accent-foreground",
+   309→    muted: "bg-muted text-muted-foreground",
+   310→  }
+   311→  return (
+   312→    <Card>
+   313→      <CardContent className="p-4">
+   314→        <div className="flex items-center justify-between gap-2">
+   315→          <div className="min-w-0">
+   316→            <p className="text-[11px] uppercase tracking-wider text-muted-foreground truncate">{label}</p>
+   317→            <p className="text-xl font-bold mt-1 truncate">{value}</p>
+   318→            {hint && <p className="text-[11px] text-muted-foreground mt-0.5">{hint}</p>}
+   319→          </div>
+   320→          <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", colorMap[accent])}>
+   321→            <Icon className="h-4 w-4" />
+   322→          </div>
+   323→        </div>
+   324→      </CardContent>
+   325→    </Card>
+   326→  )
+   327→}
+   328→
+   329→function LevelBadge({ level }: { level: LogEntry["level"] }) {
+   330→  const map = {
+   331→    info: { label: "INFO", className: "bg-primary/10 text-primary border-primary/20" },
+   332→    warn: { label: "WARN", className: "bg-accent/20 text-accent-foreground border-accent/30" },
+   333→    error: { label: "ERROR", className: "bg-destructive/10 text-destructive border-destructive/30" },
+   334→    critical: { label: "CRIT", className: "bg-destructive text-destructive-foreground border-destructive" },
+   335→  }
+   336→  const m = map[level]
+   337→  return <Badge variant="outline" className={cn("text-[10px] font-mono px-1.5", m.className)}>{m.label}</Badge>
+   338→}
+   339→
+   340→function MethodBadge({ method }: { method: LogEntry["method"] }) {
+   341→  const map: Record<string, string> = {
+   342→    GET: "bg-primary/10 text-primary",
+   343→    POST: "bg-accent/20 text-accent-foreground",
+   344→    PUT: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
+   345→    DELETE: "bg-destructive/10 text-destructive",
+   346→    PATCH: "bg-muted text-muted-foreground",
+   347→  }
+   348→  return <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold", map[method])}>{method}</span>
+   349→}
+   350→
+   351→function StatusPill({ status }: { status: number }) {
+   352→  const ok = status >= 200 && status < 300
+   353→  const client = status >= 400 && status < 500
+   354→  const server = status >= 500
+   355→  const cls = ok
+   356→    ? "text-primary"
+   357→    : client
+   358→      ? "text-accent-foreground bg-accent/20 px-1.5 rounded"
+   359→      : server
+   360→        ? "text-destructive font-semibold"
+   361→        : "text-muted-foreground"
+   362→  return <span className={cn("text-[11px] font-mono", cls)}>{status}</span>
+   363→}
+   364→
+   365→// ===========================================================================
+   366→// Main component
+   367→// ===========================================================================
+   368→
+   369→export function BackOfficeView() {
+   370→  const [activeTab, setActiveTab] = useState<TabKey>("users")
+   371→
+   372→  return (
+   373→    <div className="space-y-4">
+   374→      {/* Header */}
+   375→      <div className="flex flex-wrap items-center justify-between gap-3">
+   376→        <div>
+   377→          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   378→            <Shield className="h-6 w-6 text-primary" />
+   379→            Back Office
+   380→          </h1>
+   381→          <p className="text-sm text-muted-foreground mt-0.5">
+   382→            Administration · Utilisateurs · Abonnements · API · Logs · Audit · Maintenance
+   383→          </p>
+   384→        </div>
+   385→        <div className="flex items-center gap-2">
+   386→          <Badge variant="outline" className="gap-1.5 border-primary/30 text-primary">
+   387→            <span className="relative flex h-2 w-2">
+   388→              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+   389→              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+   390→            </span>
+   391→            Système opérationnel
+   392→          </Badge>
+   393→          <Badge variant="outline" className="border-accent/30 text-accent-foreground">
+   394→            Uptime 99.97%
+   395→          </Badge>
+   396→        </div>
+   397→      </div>
+   398→
+   399→      {/* Tab bar */}
+   400→      <Card className="p-0 overflow-hidden">
+   401→        <div className="flex overflow-x-auto">
+   402→          {TABS.map((t) => {
+   403→            const Icon = t.icon
+   404→            const isActive = activeTab === t.key
+   405→            return (
+   406→              <button
+   407→                key={t.key}
+   408→                onClick={() => setActiveTab(t.key)}
+   409→                className={cn(
+   410→                  "relative flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors",
+   411→                  "hover:bg-muted/50",
+   412→                  isActive ? "text-primary" : "text-muted-foreground"
+   413→                )}
+   414→              >
+   415→                <Icon className="h-4 w-4 shrink-0" />
+   416→                <span>{t.label}</span>
+   417→                {isActive && (
+   418→                  <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-primary" />
+   419→                )}
+   420→              </button>
+   421→            )
+   422→          })}
+   423→        </div>
+   424→      </Card>
+   425→
+   426→      {/* Tab content */}
+   427→      {activeTab === "users" && <UsersTab />}
+   428→      {activeTab === "subscriptions" && <SubscriptionsTab />}
+   429→      {activeTab === "logs" && <LogsTab />}
+   430→      {activeTab === "api" && <ApiTab />}
+   431→      {activeTab === "quota" && <QuotaTab />}
+   432→      {activeTab === "payments" && <PaymentsTab />}
+   433→      {activeTab === "stats" && <StatsTab />}
+   434→      {activeTab === "maintenance" && <MaintenanceTab />}
+   435→      {activeTab === "audit" && <AuditTab />}
+   436→    </div>
+   437→  )
+   438→}
+   439→
+   440→// ===========================================================================
+   441→// Tab 1: Utilisateurs
+   442→// ===========================================================================
+   443→
+   444→function UsersTab() {
+   445→  const [query, setQuery] = useState("")
+   446→  const [roleFilter, setRoleFilter] = useState<string>("all")
+   447→
+   448→  const filtered = useMemo(() => {
+   449→    return usersData.filter((u) => {
+   450→      const matchesQuery = !query || u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase())
+   451→      const matchesRole = roleFilter === "all" || u.role === roleFilter
+   452→      return matchesQuery && matchesRole
+   453→    })
+   454→  }, [query, roleFilter])
+   455→
+   456→  const total = usersData.length
+   457→  const activeCount = usersData.filter((u) => u.status === "active").length
+   458→  const pendingCount = usersData.filter((u) => u.status === "pending").length
+   459→  const byRole = (r: RoleKey) => usersData.filter((u) => u.role === r).length
+   460→
+   461→  return (
+   462→    <div className="space-y-4">
+   463→      {/* Stats */}
+   464→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+   465→        <StatTile label="Total utilisateurs" value={total} icon={Users} accent="primary" />
+   466→        <StatTile label="Actifs" value={activeCount} icon={CheckCircle2} accent="primary" />
+   467→        <StatTile label="En attente" value={pendingCount} icon={Clock} accent="accent" />
+   468→        <StatTile label="Rôles attribués" value={`${byRole("OWNER")}/${byRole("ADMIN")}/${byRole("MANAGER")}/${byRole("AGENT")}/${byRole("VIEWER")}`} icon={Shield} accent="muted" hint="Owner/Admin/Mgr/Agent/View" />
+   469→      </div>
+   470→
+   471→      {/* Toolbar */}
+   472→      <Card>
+   473→        <CardHeader className="pb-3">
+   474→          <div className="flex flex-wrap items-center justify-between gap-3">
+   475→            <div>
+   476→              <CardTitle className="text-base">Membres de l'organisation</CardTitle>
+   477→              <CardDescription className="text-xs">{filtered.length} membre(s) affiché(s) sur {total}</CardDescription>
+   478→            </div>
+   479→            <div className="flex flex-wrap items-center gap-2">
+   480→              <div className="relative">
+   481→                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+   482→                <Input
+   483→                  placeholder="Rechercher nom ou email…"
+   484→                  value={query}
+   485→                  onChange={(e) => setQuery(e.target.value)}
+   486→                  className="pl-8 h-9 w-[220px]"
+   487→                />
+   488→              </div>
+   489→              <Select value={roleFilter} onValueChange={setRoleFilter}>
+   490→                <SelectTrigger className="h-9 w-[150px]">
+   491→                  <SelectValue placeholder="Rôle" />
+   492→                </SelectTrigger>
+   493→                <SelectContent>
+   494→                  <SelectItem value="all">Tous les rôles</SelectItem>
+   495→                  <SelectItem value="OWNER">Owner</SelectItem>
+   496→                  <SelectItem value="ADMIN">Admin</SelectItem>
+   497→                  <SelectItem value="MANAGER">Manager</SelectItem>
+   498→                  <SelectItem value="AGENT">Agent</SelectItem>
+   499→                  <SelectItem value="VIEWER">Viewer</SelectItem>
+   500→                </SelectContent>
+   501→              </Select>
+   502→              <Button className="gap-2 h-9" onClick={() => toast.success("Invitation envoyée", { description: "Un email d'invitation a été envoyé au nouveau membre." })}>
+   503→                <UserPlus className="h-4 w-4" />
+   504→                Inviter un membre
+   505→              </Button>
+   506→            </div>
+   507→          </div>
+   508→        </CardHeader>
+   509→        <CardContent className="p-0">
+   510→          {/* Desktop table */}
+   511→          <div className="hidden md:block overflow-x-auto">
+   512→            <Table>
+   513→              <TableHeader>
+   514→                <TableRow>
+   515→                  <TableHead className="pl-4">Membre</TableHead>
+   516→                  <TableHead>Rôle</TableHead>
+   517→                  <TableHead>Statut</TableHead>
+   518→                  <TableHead>Organisation</TableHead>
+   519→                  <TableHead>Dernière connexion</TableHead>
+   520→                  <TableHead className="pr-4 w-10"></TableHead>
+   521→                </TableRow>
+   522→              </TableHeader>
+   523→              <TableBody>
+   524→                {filtered.map((u) => {
+   525→                  const r = roleMeta[u.role]
+   526→                  const RIcon = r.icon
+   527→                  const s = statusMeta[u.status]
+   528→                  return (
+   529→                    <TableRow key={u.id} className="hover:bg-muted/40">
+   530→                      <TableCell className="pl-4">
+   531→                        <div className="flex items-center gap-3">
+   532→                          <Avatar className="h-9 w-9">
+   533→                            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+   534→                              {u.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+   535→                            </AvatarFallback>
+   536→                          </Avatar>
+   537→                          <div className="min-w-0">
+   538→                            <p className="text-sm font-medium truncate">{u.name}</p>
+   539→                            <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
+   540→                              <Mail className="h-3 w-3" />{u.email}
+   541→                            </p>
+   542→                          </div>
+   543→                        </div>
+   544→                      </TableCell>
+   545→                      <TableCell>
+   546→                        <Badge variant="outline" className={cn("gap-1 text-[10px]", r.className)}>
+   547→                          <RIcon className="h-2.5 w-2.5" />
+   548→                          {r.label}
+   549→                        </Badge>
+   550→                      </TableCell>
+   551→                      <TableCell>
+   552→                        <Badge variant="outline" className={cn("gap-1.5 text-[10px]", s.className)}>
+   553→                          <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
+   554→                          {s.label}
+   555→                        </Badge>
+   556→                      </TableCell>
+   557→                      <TableCell className="text-sm text-muted-foreground">{u.org}</TableCell>
+   558→                      <TableCell className="text-sm text-muted-foreground">{u.lastLogin}</TableCell>
+   559→                      <TableCell className="pr-4">
+   560→                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.info(`Actions pour ${u.name}`)}>
+   561→                          <MoreVertical className="h-3.5 w-3.5" />
+   562→                        </Button>
+   563→                      </TableCell>
+   564→                    </TableRow>
+   565→                  )
+   566→                })}
+   567→              </TableBody>
+   568→            </Table>
+   569→          </div>
+   570→
+   571→          {/* Mobile cards */}
+   572→          <div className="md:hidden divide-y">
+   573→            {filtered.map((u) => {
+   574→              const r = roleMeta[u.role]
+   575→              const RIcon = r.icon
+   576→              const s = statusMeta[u.status]
+   577→              return (
+   578→                <div key={u.id} className="flex items-center gap-3 p-4">
+   579→                  <Avatar className="h-10 w-10">
+   580→                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+   581→                      {u.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+   582→                    </AvatarFallback>
+   583→                  </Avatar>
+   584→                  <div className="flex-1 min-w-0">
+   585→                    <p className="text-sm font-medium truncate">{u.name}</p>
+   586→                    <p className="text-[11px] text-muted-foreground truncate">{u.email}</p>
+   587→                    <div className="flex items-center gap-2 mt-1">
+   588→                      <Badge variant="outline" className={cn("gap-1 text-[10px]", r.className)}>
+   589→                        <RIcon className="h-2.5 w-2.5" />{r.label}
+   590→                      </Badge>
+   591→                      <Badge variant="outline" className={cn("gap-1.5 text-[10px]", s.className)}>
+   592→                        <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />{s.label}
+   593→                      </Badge>
+   594→                    </div>
+   595→                  </div>
+   596→                </div>
+   597→              )
+   598→            })}
+   599→          </div>
+   600→        </CardContent>
+   601→      </Card>
+   602→    </div>
+   603→  )
+   604→}
+   605→
+   606→// ===========================================================================
+   607→// Tab 2: Abonnements
+   608→// ===========================================================================
+   609→
+   610→const plans = [
+   611→  {
+   612→    name: "Starter",
+   613→    price: 25000,
+   614→    features: ["10 000 entreprises", "5 000 appels API / mois", "10 exports / mois", "2 utilisateurs", "Support email"],
+   615→    current: false,
+   616→  },
+   617→  {
+   618→    name: "Pro",
+   619→    price: 85000,
+   620→    features: ["50 000 entreprises", "100 000 appels API / mois", "100 exports / mois", "20 utilisateurs", "Support prioritaire", "Webhooks", "Rapports planifiés"],
+   621→    current: true,
+   622→  },
+   623→  {
+   624→    name: "Enterprise",
+   625→    price: 350000,
+   626→    features: ["Entreprises illimitées", "1M appels API / mois", "Exports illimités", "Utilisateurs illimités", "Support dédié 24/7", "SLA 99.9%", "SSO / SAML", "On-premise option"],
+   627→    current: false,
+   628→  },
+   629→]
+   630→
+   631→function SubscriptionsTab() {
+   632→  const usages = [
+   633→    { label: "Entreprises stockées", used: 38862, limit: 50000, unit: "" },
+   634→    { label: "Appels API", used: 124500, limit: 100000, unit: "" },
+   635→    { label: "Exports", used: 68, limit: 100, unit: "" },
+   636→    { label: "Utilisateurs", used: 5, limit: 20, unit: "" },
+   637→  ]
+   638→  return (
+   639→    <div className="space-y-4">
+   640→      {/* Current plan + payment method */}
+   641→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   642→        <Card className="lg:col-span-2 border-primary/30">
+   643→          <CardHeader className="pb-3">
+   644→            <div className="flex items-start justify-between gap-3">
+   645→              <div>
+   646→                <CardDescription className="text-xs">Plan actuel</CardDescription>
+   647→                <CardTitle className="text-2xl flex items-center gap-2 mt-1">
+   648→                  Plan Pro
+   649→                  <Badge className="bg-primary text-primary-foreground">Actuel</Badge>
+   650→                </CardTitle>
+   651→                <p className="text-3xl font-bold mt-2">{formatFCFA(85000)}<span className="text-sm font-normal text-muted-foreground">/mois</span></p>
+   652→              </div>
+   653→              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shrink-0">
+   654→                <Crown className="h-6 w-6" />
+   655→              </div>
+   656→            </div>
+   657→          </CardHeader>
+   658→          <CardContent className="space-y-3">
+   659→            <div className="flex flex-wrap gap-2">
+   660→              {plans[1].features.map((f) => (
+   661→                <Badge key={f} variant="outline" className="gap-1 text-[11px] border-primary/20">
+   662→                  <CheckCircle2 className="h-3 w-3 text-primary" />
+   663→                  {f}
+   664→                </Badge>
+   665→              ))}
+   666→            </div>
+   667→            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t">
+   668→              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+   669→                <Calendar className="h-3.5 w-3.5" />
+   670→                Renouvellement le <span className="font-medium text-foreground">15 fév. 2027</span>
+   671→              </div>
+   672→              <Button className="gap-2" onClick={() => toast.info("Ouverture du sélecteur de plan")}>
+   673→                <RefreshCw className="h-4 w-4" />
+   674→                Changer de plan
+   675→              </Button>
+   676→            </div>
+   677→          </CardContent>
+   678→        </Card>
+   679→
+   680→        <Card>
+   681→          <CardHeader className="pb-3">
+   682→            <CardTitle className="text-base">Moyen de paiement</CardTitle>
+   683→            <CardDescription className="text-xs">Facturation mensuelle</CardDescription>
+   684→          </CardHeader>
+   685→          <CardContent className="space-y-3">
+   686→            <div className="flex items-center gap-3 p-3 rounded-lg border bg-accent/5">
+   687→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-accent-foreground font-bold text-xs">
+   688→                OM
+   689→              </div>
+   690→              <div className="flex-1 min-w-0">
+   691→                <p className="text-sm font-medium">Orange Money</p>
+   692→                <p className="text-[11px] text-muted-foreground">+225 07 ** ** ** 12</p>
+   693→              </div>
+   694→              <Badge className="bg-primary text-primary-foreground text-[10px]">Actif</Badge>
+   695→            </div>
+   696→            <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => toast.info("Mettre à jour le moyen de paiement")}>
+   697→              <CardIcon className="h-3.5 w-3.5" />
+   698→              Mettre à jour
+   699→            </Button>
+   700→            <div className="text-[11px] text-muted-foreground pt-2 border-t">
+   701→              Prochaine facturation : <span className="font-medium text-foreground">15 jan. 2027</span> · {formatFCFA(85000)}
+   702→            </div>
+   703→          </CardContent>
+   704→        </Card>
+   705→      </div>
+   706→
+   707→      {/* Usage bars */}
+   708→      <Card>
+   709→        <CardHeader className="pb-3">
+   710→          <CardTitle className="text-base">Consommation du mois</CardTitle>
+   711→          <CardDescription className="text-xs">Période : 15 déc. 2026 → 15 jan. 2027</CardDescription>
+   712→        </CardHeader>
+   713→        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   714→          {usages.map((u) => {
+   715→            const pct = Math.min(100, (u.used / u.limit) * 100)
+   716→            const over = u.used > u.limit
+   717→            const color = over ? "bg-destructive" : pct > 90 ? "bg-destructive" : pct > 70 ? "bg-accent" : "bg-primary"
+   718→            return (
+   719→              <div key={u.label} className="space-y-1.5">
+   720→                <div className="flex items-center justify-between text-sm">
+   721→                  <span className="font-medium">{u.label}</span>
+   722→                  {over && <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30">Dépassé</Badge>}
+   723→                </div>
+   724→                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+   725→                  <span>{compact(u.used)} / {compact(u.limit)}</span>
+   726→                  <span className={over ? "text-destructive font-semibold" : ""}>{over ? `+${Math.round(pct - 100)}%` : `${Math.round(pct)}%`}</span>
+   727→                </div>
+   728→                <div className="h-2 rounded-full bg-muted overflow-hidden">
+   729→                  <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${Math.min(100, pct)}%` }} />
+   730→                </div>
+   731→              </div>
+   732→            )
+   733→          })}
+   734→        </CardContent>
+   735→      </Card>
+   736→
+   737→      {/* Plan comparison */}
+   738→      <Card>
+   739→        <CardHeader className="pb-3">
+   740→          <CardTitle className="text-base">Comparer les offres</CardTitle>
+   741→          <CardDescription className="text-xs">Tarifs en FCFA · TVA incluse</CardDescription>
+   742→        </CardHeader>
+   743→        <CardContent className="p-0">
+   744→          <div className="overflow-x-auto">
+   745→            <Table>
+   746→              <TableHeader>
+   747→                <TableRow>
+   748→                  <TableHead className="pl-4">Fonctionnalité</TableHead>
+   749→                  {plans.map((p) => (
+   750→                    <TableHead key={p.name} className="text-center min-w-[140px]">
+   751→                      <div className="flex flex-col items-center gap-1">
+   752→                        <span className="font-semibold">{p.name}</span>
+   753→                        <span className="text-xs font-normal text-muted-foreground">{formatFCFA(p.price)}/mois</span>
+   754→                        {p.current && <Badge className="bg-primary text-primary-foreground text-[10px]">Actuel</Badge>}
+   755→                      </div>
+   756→                    </TableHead>
+   757→                  ))}
+   758→                </TableRow>
+   759→              </TableHeader>
+   760→              <TableBody>
+   761→                {[
+   762→                  { label: "Entreprises", cells: ["10 000", "50 000", "Illimité"] },
+   763→                  { label: "Appels API", cells: ["5 000", "100 000", "1M"] },
+   764→                  { label: "Exports", cells: ["10", "100", "Illimité"] },
+   765→                  { label: "Utilisateurs", cells: ["2", "20", "Illimité"] },
+   766→                  { label: "Support", cells: ["Email", "Prioritaire", "24/7 dédié"] },
+   767→                  { label: "Webhooks", cells: [false, true, true] },
+   768→                  { label: "Rapports planifiés", cells: [false, true, true] },
+   769→                  { label: "SSO / SAML", cells: [false, false, true] },
+   770→                  { label: "SLA", cells: ["—", "—", "99.9%"] },
+   771→                ].map((row) => (
+   772→                  <TableRow key={row.label}>
+   773→                    <TableCell className="pl-4 text-sm font-medium">{row.label}</TableCell>
+   774→                    {row.cells.map((c, i) => (
+   775→                      <TableCell key={i} className="text-center text-sm">
+   776→                        {typeof c === "boolean" ? (
+   777→                          c ? <CheckCircle2 className="h-4 w-4 text-primary inline" /> : <span className="text-muted-foreground/30">—</span>
+   778→                        ) : c}
+   779→                      </TableCell>
+   780→                    ))}
+   781→                  </TableRow>
+   782→                ))}
+   783→                <TableRow>
+   784→                  <TableCell className="pl-4"></TableCell>
+   785→                  {plans.map((p) => (
+   786→                    <TableCell key={p.name} className="text-center pb-4 pt-2">
+   787→                      <Button
+   788→                        size="sm"
+   789→                        variant={p.current ? "outline" : "default"}
+   790→                        disabled={p.current}
+   791→                        onClick={() => toast.info(`Sélection du plan ${p.name}`)}
+   792→                      >
+   793→                        {p.current ? "Plan actuel" : "Choisir"}
+   794→                      </Button>
+   795→                    </TableCell>
+   796→                  ))}
+   797→                </TableRow>
+   798→              </TableBody>
+   799→            </Table>
+   800→          </div>
+   801→        </CardContent>
+   802→      </Card>
+   803→    </div>
+   804→  )
+   805→}
+   806→
+   807→// ===========================================================================
+   808→// Tab 3: Logs
+   809→// ===========================================================================
+   810→
+   811→function LogsTab() {
+   812→  const [levelFilter, setLevelFilter] = useState<string>("all")
+   813→  const [methodFilter, setMethodFilter] = useState<string>("all")
+   814→  const [endpointFilter, setEndpointFilter] = useState<string>("")
+   815→  const [autoScroll, setAutoScroll] = useState(true)
+   816→
+   817→  const filtered = useMemo(() => {
+   818→    return logsData.filter((l) => {
+   819→      const matchLevel = levelFilter === "all" || l.level === levelFilter
+   820→      const matchMethod = methodFilter === "all" || l.method === methodFilter
+   821→      const matchEndpoint = !endpointFilter || l.endpoint.toLowerCase().includes(endpointFilter.toLowerCase())
+   822→      return matchLevel && matchMethod && matchEndpoint
+   823→    })
+   824→  }, [levelFilter, methodFilter, endpointFilter])
+   825→
+   826→  const errorCount = logsData.filter((l) => l.level === "error" || l.level === "critical").length
+   827→  const avgMs = Math.round(logsData.reduce((a, l) => a + l.ms, 0) / logsData.length)
+   828→
+   829→  return (
+   830→    <div className="space-y-4">
+   831→      {/* Stats */}
+   832→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+   833→        <StatTile label="Total logs (session)" value={logsData.length} icon={ScrollText} accent="primary" />
+   834→        <StatTile label="Erreurs" value={errorCount} icon={AlertCircle} accent="accent" hint="error + critical" />
+   835→        <StatTile label="Temps moyen" value={`${avgMs} ms`} icon={Zap} accent="muted" />
+   836→        <StatTile label="Taux de succès" value={`${Math.round(((logsData.length - errorCount) / logsData.length) * 100)}%`} icon={CheckCircle2} accent="primary" />
+   837→      </div>
+   838→
+   839→      <Card>
+   840→        <CardHeader className="pb-3">
+   841→          <div className="flex flex-wrap items-center justify-between gap-3">
+   842→            <div>
+   843→              <CardTitle className="text-base flex items-center gap-2">
+   844→                <Activity className="h-4 w-4 text-primary" />
+   845→                Logs en temps réel
+   846→              </CardTitle>
+   847→              <CardDescription className="text-xs">{filtered.length} entrée(s) · flux live</CardDescription>
+   848→            </div>
+   849→            <div className="flex flex-wrap items-center gap-2">
+   850→              <Select value={levelFilter} onValueChange={setLevelFilter}>
+   851→                <SelectTrigger className="h-9 w-[130px]">
+   852→                  <SelectValue placeholder="Niveau" />
+   853→                </SelectTrigger>
+   854→                <SelectContent>
+   855→                  <SelectItem value="all">Tous niveaux</SelectItem>
+   856→                  <SelectItem value="info">Info</SelectItem>
+   857→                  <SelectItem value="warn">Warn</SelectItem>
+   858→                  <SelectItem value="error">Error</SelectItem>
+   859→                  <SelectItem value="critical">Critical</SelectItem>
+   860→                </SelectContent>
+   861→              </Select>
+   862→              <Select value={methodFilter} onValueChange={setMethodFilter}>
+   863→                <SelectTrigger className="h-9 w-[110px]">
+   864→                  <SelectValue placeholder="Méthode" />
+   865→                </SelectTrigger>
+   866→                <SelectContent>
+   867→                  <SelectItem value="all">Toutes</SelectItem>
+   868→                  <SelectItem value="GET">GET</SelectItem>
+   869→                  <SelectItem value="POST">POST</SelectItem>
+   870→                  <SelectItem value="PUT">PUT</SelectItem>
+   871→                  <SelectItem value="PATCH">PATCH</SelectItem>
+   872→                  <SelectItem value="DELETE">DELETE</SelectItem>
+   873→                </SelectContent>
+   874→              </Select>
+   875→              <Input
+   876→                placeholder="Endpoint…"
+   877→                value={endpointFilter}
+   878→                onChange={(e) => setEndpointFilter(e.target.value)}
+   879→                className="h-9 w-[180px]"
+   880→              />
+   881→              <div className="flex items-center gap-2 px-3 h-9 rounded-md border bg-muted/30">
+   882→                <Switch checked={autoScroll} onCheckedChange={setAutoScroll} className="scale-90" />
+   883→                <span className="text-xs">Auto-scroll</span>
+   884→              </div>
+   885→              <Button variant="outline" size="sm" className="gap-2 h-9" onClick={() => toast.success("Logs exportés", { description: "Fichier logs_2027-01-15.csv généré." })}>
+   886→                <Download className="h-3.5 w-3.5" />
+   887→                Export logs
+   888→              </Button>
+   889→            </div>
+   890→          </div>
+   891→        </CardHeader>
+   892→        <CardContent className="p-0">
+   893→          <div className="max-h-[480px] overflow-y-auto font-mono text-xs">
+   894→            {filtered.length === 0 ? (
+   895→              <div className="p-8 text-center text-muted-foreground">Aucun log ne correspond aux filtres.</div>
+   896→            ) : (
+   897→              filtered.map((l) => (
+   898→                <div
+   899→                  key={l.id}
+   900→                  className={cn(
+   901→                    "flex flex-wrap items-center gap-2 px-4 py-2 border-b hover:bg-muted/30 transition-colors",
+   902→                    l.level === "critical" && "bg-destructive/5",
+   903→                    l.level === "error" && "bg-destructive/[0.03]"
+   904→                  )}
+   905→                >
+   906→                  <span className="text-muted-foreground whitespace-nowrap tabular-nums">{l.ts}</span>
+   907→                  <LevelBadge level={l.level} />
+   908→                  <MethodBadge method={l.method} />
+   909→                  <span className="flex-1 truncate text-foreground">{l.endpoint}</span>
+   910→                  <StatusPill status={l.status} />
+   911→                  <span className={cn("tabular-nums", l.ms > 500 ? "text-destructive" : "text-muted-foreground")}>{l.ms}ms</span>
+   912→                  <span className="text-muted-foreground hidden sm:inline">{l.ip}</span>
+   913→                </div>
+   914→              ))
+   915→            )}
+   916→          </div>
+   917→        </CardContent>
+   918→        <CardFooter className="py-2 border-t bg-muted/30">
+   919→          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+   920→            <span className="relative flex h-1.5 w-1.5">
+   921→              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+   922→              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+   923→            </span>
+   924→            Streaming live · {filtered.length} entrées affichées
+   925→          </p>
+   926→        </CardFooter>
+   927→      </Card>
+   928→    </div>
+   929→  )
+   930→}
+   931→
+   932→// ===========================================================================
+   933→// Tab 4: API
+   934→// ===========================================================================
+   935→
+   936→function ApiTab() {
+   937→  const usageConfig = {
+   938→    calls: { label: "Appels API", color: "var(--chart-1)" },
+   939→  } satisfies ChartConfig
+   940→
+   941→  return (
+   942→    <div className="space-y-4">
+   943→      {/* Base URL + docs */}
+   944→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+   945→        <Card className="lg:col-span-2">
+   946→          <CardContent className="p-4">
+   947→            <div className="flex items-center gap-3">
+   948→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+   949→                <Globe className="h-5 w-5" />
+   950→              </div>
+   951→              <div className="flex-1 min-w-0">
+   952→                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">URL de base</p>
+   953→                <p className="text-sm font-mono font-medium truncate">https://api.scraapiq.ci/api/v1</p>
+   954→              </div>
+   955→              <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info("Ouverture Swagger UI")}>
+   956→                <ExternalLink className="h-3.5 w-3.5" />
+   957→                Swagger
+   958→              </Button>
+   959→            </div>
+   960→          </CardContent>
+   961→        </Card>
+   962→        <Card>
+   963→          <CardContent className="p-4 flex items-center gap-3">
+   964→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/20 text-accent-foreground">
+   965→              <Code2 className="h-5 w-5" />
+   966→            </div>
+   967→            <div className="flex-1 min-w-0">
+   968→              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Version API</p>
+   969→              <p className="text-sm font-medium">v1.4.2 · stable</p>
+   970→            </div>
+   971→            <Badge variant="outline" className="border-primary/30 text-primary">OK</Badge>
+   972→          </CardContent>
+   973→        </Card>
+   974→      </div>
+   975→
+   976→      {/* API keys */}
+   977→      <Card>
+   978→        <CardHeader className="pb-3">
+   979→          <div className="flex flex-wrap items-center justify-between gap-3">
+   980→            <div>
+   981→              <CardTitle className="text-base flex items-center gap-2">
+   982→                <KeyRound className="h-4 w-4 text-primary" />
+   983→                Clés API
+   984→              </CardTitle>
+   985→              <CardDescription className="text-xs">{apiKeysData.length} clés · {apiKeysData.filter((k) => k.status === "active").length} actives</CardDescription>
+   986→            </div>
+   987→            <Button className="gap-2" onClick={() => {
+   988→              const fakeKey = `sk_live_${Math.random().toString(36).slice(2, 6)}_${Math.random().toString(36).slice(2, 24)}`
+   989→              toast.success("Nouvelle clé générée", {
+   990→                description: (
+   991→                  <span className="font-mono text-[11px] break-all">{fakeKey}</span>
+   992→                ),
+   993→              })
+   994→            }}>
+   995→              <Plus className="h-4 w-4" />
+   996→                Générer une clé
+   997→            </Button>
+   998→          </div>
+   999→        </CardHeader>
+  1000→        <CardContent className="p-0">
+  1001→          <div className="overflow-x-auto">
+  1002→            <Table>
+  1003→              <TableHeader>
+  1004→                <TableRow>
+  1005→                  <TableHead className="pl-4">Nom</TableHead>
+  1006→                  <TableHead>Clé</TableHead>
+  1007→                  <TableHead>Scopes</TableHead>
+  1008→                  <TableHead>Dernière utilisation</TableHead>
+  1009→                  <TableHead>Statut</TableHead>
+  1010→                  <TableHead>Créée</TableHead>
+  1011→                  <TableHead className="pr-4"></TableHead>
+  1012→                </TableRow>
+  1013→              </TableHeader>
+  1014→              <TableBody>
+  1015→                {apiKeysData.map((k) => (
+  1016→                  <TableRow key={k.id} className="hover:bg-muted/40">
+  1017→                    <TableCell className="pl-4 text-sm font-medium">{k.name}</TableCell>
+  1018→                    <TableCell>
+  1019→                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{k.prefix}****</code>
+  1020→                    </TableCell>
+  1021→                    <TableCell>
+  1022→                      <div className="flex flex-wrap gap-1 max-w-[260px]">
+  1023→                        {k.scopes.map((s) => (
+  1024→                          <Badge key={s} variant="outline" className="text-[10px] font-mono">{s}</Badge>
+  1025→                        ))}
+  1026→                      </div>
+  1027→                    </TableCell>
+  1028→                    <TableCell className="text-xs text-muted-foreground">{k.lastUsed}</TableCell>
+  1029→                    <TableCell>
+  1030→                      {k.status === "active" ? (
+  1031→                        <Badge className="bg-primary text-primary-foreground text-[10px]">Active</Badge>
+  1032→                      ) : (
+  1033→                        <Badge variant="outline" className="text-[10px] text-muted-foreground">Révoquée</Badge>
+  1034→                      )}
+  1035→                    </TableCell>
+  1036→                    <TableCell className="text-xs text-muted-foreground">{k.created}</TableCell>
+  1037→                    <TableCell className="pr-4">
+  1038→                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.info(`Actions pour ${k.name}`)}>
+  1039→                        <MoreVertical className="h-3.5 w-3.5" />
+  1040→                      </Button>
+  1041→                    </TableCell>
+  1042→                  </TableRow>
+  1043→                ))}
+  1044→              </TableBody>
+  1045→            </Table>
+  1046→          </div>
+  1047→        </CardContent>
+  1048→      </Card>
+  1049→
+  1050→      {/* Rate limiting + usage chart */}
+  1051→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  1052→        <Card>
+  1053→          <CardHeader className="pb-3">
+  1054→            <CardTitle className="text-base flex items-center gap-2">
+  1055→              <Gauge className="h-4 w-4 text-primary" />
+  1056→              Rate limiting
+  1057→            </CardTitle>
+  1058→            <CardDescription className="text-xs">Limites par clé API</CardDescription>
+  1059→          </CardHeader>
+  1060→          <CardContent className="space-y-3">
+  1061→            {[
+  1062→              { label: "Par minute", value: 100, current: 42 },
+  1063→              { label: "Par heure", value: 5000, current: 1240 },
+  1064→              { label: "Par jour", value: 100000, current: 18900 },
+  1065→            ].map((r) => {
+  1066→              const pct = (r.current / r.value) * 100
+  1067→              return (
+  1068→                <div key={r.label} className="space-y-1">
+  1069→                  <div className="flex items-center justify-between text-xs">
+  1070→                    <span className="font-medium">{r.label}</span>
+  1071→                    <span className="text-muted-foreground">{compact(r.current)} / {compact(r.value)}</span>
+  1072→                  </div>
+  1073→                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+  1074→                    <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
+  1075→                  </div>
+  1076→                </div>
+  1077→              )
+  1078→            })}
+  1079→            <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => toast.info("Modification des limites")}>
+  1080→              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+  1081→              Configurer
+  1082→            </Button>
+  1083→          </CardContent>
+  1084→        </Card>
+  1085→
+  1086→        <Card className="lg:col-span-2">
+  1087→          <CardHeader className="pb-3">
+  1088→            <CardTitle className="text-base flex items-center gap-2">
+  1089→              <BarChart3 className="h-4 w-4 text-primary" />
+  1090→              Appels API · 7 derniers jours
+  1091→            </CardTitle>
+  1092→            <CardDescription className="text-xs">Total : {compact(apiUsageData.reduce((a, d) => a + d.calls, 0))} appels cette semaine</CardDescription>
+  1093→          </CardHeader>
+  1094→          <CardContent>
+  1095→            <ChartContainer config={usageConfig} className="h-[220px] w-full">
+  1096→              <BarChart data={apiUsageData} margin={{ left: -10, right: 8, top: 8 }}>
+  1097→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+  1098→                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+  1099→                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => compact(Number(v))} />
+  1100→                <Tooltip content={<ChartTooltipContent />} />
+  1101→                <Bar dataKey="calls" fill="var(--color-calls)" radius={[4, 4, 0, 0]} />
+  1102→              </BarChart>
+  1103→            </ChartContainer>
+  1104→          </CardContent>
+  1105→        </Card>
+  1106→      </div>
+  1107→    </div>
+  1108→  )
+  1109→}
+  1110→
+  1111→// ===========================================================================
+  1112→// Tab 5: Quota
+  1113→// ===========================================================================
+  1114→
+  1115→function QuotaTab() {
+  1116→  const histConfig = { v: { label: "Appels", color: "var(--chart-1)" } } satisfies ChartConfig
+  1117→  const pieConfig = scrapingBySource.reduce((acc, s) => {
+  1118→    acc[s.name] = { label: s.name, color: s.color }
+  1119→    return acc
+  1120→  }, {} as ChartConfig)
+  1121→
+  1122→  return (
+  1123→    <div className="space-y-4">
+  1124→      {/* Reset banner */}
+  1125→      <Card className="border-accent/30 bg-accent/5">
+  1126→        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+  1127→          <div className="flex items-center gap-3">
+  1128→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+  1129→              <Calendar className="h-5 w-5" />
+  1130→            </div>
+  1131→            <div>
+  1132→              <p className="text-sm font-medium">Réinitialisation des quotas</p>
+  1133→              <p className="text-xs text-muted-foreground">Les compteurs seront remis à zéro le <span className="font-medium text-foreground">1er fév. 2027</span></p>
+  1134→            </div>
+  1135→          </div>
+  1136→          <Button className="gap-2" onClick={() => toast.info("Achat de quota supplémentaire")}>
+  1137→            <Wallet className="h-4 w-4" />
+  1138→            Acheter du quota
+  1139→          </Button>
+  1140→        </CardContent>
+  1141→      </Card>
+  1142→
+  1143→      {/* Quota bars */}
+  1144→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1145→        {quotaData.map((q) => {
+  1146→          const pct = (q.used / q.limit) * 100
+  1147→          const over = q.used > q.limit
+  1148→          const color = over || pct > 90 ? "destructive" : pct > 70 ? "accent" : "primary"
+  1149→          const colorClass = color === "destructive" ? "text-destructive" : color === "accent" ? "text-accent-foreground" : "text-primary"
+  1150→          const bgClass = color === "destructive" ? "bg-destructive" : color === "accent" ? "bg-accent" : "bg-primary"
+  1151→          return (
+  1152→            <Card key={q.label}>
+  1153→              <CardContent className="p-4 space-y-2">
+  1154→                <div className="flex items-center justify-between">
+  1155→                  <p className="text-sm font-medium">{q.label}</p>
+  1156→                  {over ? (
+  1157→                    <Badge className="bg-destructive text-destructive-foreground text-[10px] gap-1">
+  1158→                      <AlertTriangle className="h-3 w-3" />
+  1159→                      Limite dépassée
+  1160→                    </Badge>
+  1161→                  ) : pct > 90 ? (
+  1162→                    <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30">Critique</Badge>
+  1163→                  ) : pct > 70 ? (
+  1164→                    <Badge variant="outline" className="text-[10px] text-accent-foreground border-accent/30">Élevé</Badge>
+  1165→                  ) : (
+  1166→                    <Badge variant="outline" className="text-[10px] text-primary border-primary/30">OK</Badge>
+  1167→                  )}
+  1168→                </div>
+  1169→                <div className="flex items-end justify-between">
+  1170→                  <p className={cn("text-2xl font-bold", colorClass)}>{compact(q.used)}</p>
+  1171→                  <p className="text-xs text-muted-foreground">/ {compact(q.limit)} {q.unit}</p>
+  1172→                </div>
+  1173→                <div className="h-2 rounded-full bg-muted overflow-hidden">
+  1174→                  <div className={cn("h-full rounded-full transition-all", bgClass)} style={{ width: `${Math.min(100, pct)}%` }} />
+  1175→                </div>
+  1176→                <p className={cn("text-[11px]", colorClass)}>
+  1177→                  {over ? `Dépassement de ${compact(q.used - q.limit)} ${q.unit} (+${Math.round(pct - 100)}%)` : `${Math.round(pct)}% utilisé · ${compact(q.limit - q.used)} restants`}
+  1178→                </p>
+  1179→              </CardContent>
+  1180→            </Card>
+  1181→          )
+  1182→        })}
+  1183→      </div>
+  1184→
+  1185→      {/* History + breakdown */}
+  1186→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  1187→        <Card className="lg:col-span-2">
+  1188→          <CardHeader className="pb-3">
+  1189→            <CardTitle className="text-base flex items-center gap-2">
+  1190→              <TrendingUp className="h-4 w-4 text-primary" />
+  1191→              Historique quota · 7 jours
+  1192→            </CardTitle>
+  1193→            <CardDescription className="text-xs">Appels API quotidiens</CardDescription>
+  1194→          </CardHeader>
+  1195→          <CardContent>
+  1196→            <ChartContainer config={histConfig} className="h-[200px] w-full">
+  1197→              <AreaChart data={quotaHistory7d} margin={{ left: -10, right: 8, top: 8 }}>
+  1198→                <defs>
+  1199→                  <linearGradient id="qArea" x1="0" y1="0" x2="0" y2="1">
+  1200→                    <stop offset="5%" stopColor="var(--color-v)" stopOpacity={0.35} />
+  1201→                    <stop offset="95%" stopColor="var(--color-v)" stopOpacity={0} />
+  1202→                  </linearGradient>
+  1203→                </defs>
+  1204→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+  1205→                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+  1206→                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => compact(Number(v))} />
+  1207→                <Tooltip content={<ChartTooltipContent />} />
+  1208→                <Area dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={2} fill="url(#qArea)" />
+  1209→              </AreaChart>
+  1210→            </ChartContainer>
+  1211→          </CardContent>
+  1212→        </Card>
+  1213→
+  1214→        <Card>
+  1215→          <CardHeader className="pb-3">
+  1216→            <CardTitle className="text-base flex items-center gap-2">
+  1217→              <Gauge className="h-4 w-4 text-primary" />
+  1218→              Par source
+  1219→            </CardTitle>
+  1220→            <CardDescription className="text-xs">Répartition des appels</CardDescription>
+  1221→          </CardHeader>
+  1222→          <CardContent className="space-y-2">
+  1223→            {quotaBySource.map((s) => {
+  1224→              const total = quotaBySource.reduce((a, x) => a + x.value, 0)
+  1225→              const pct = (s.value / total) * 100
+  1226→              return (
+  1227→                <div key={s.source} className="space-y-1">
+  1228→                  <div className="flex items-center justify-between text-xs">
+  1229→                    <span className="flex items-center gap-1.5">
+  1230→                      <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
+  1231→                      {s.source}
+  1232→                    </span>
+  1233→                    <span className="text-muted-foreground">{compact(s.value)} · {Math.round(pct)}%</span>
+  1234→                  </div>
+  1235→                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+  1236→                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: s.color }} />
+  1237→                  </div>
+  1238→                </div>
+  1239→              )
+  1240→            })}
+  1241→          </CardContent>
+  1242→        </Card>
+  1243→      </div>
+  1244→    </div>
+  1245→  )
+  1246→}
+  1247→
+  1248→// ===========================================================================
+  1249→// Tab 6: Paiements
+  1250→// ===========================================================================
+  1251→
+  1252→function PaymentsTab() {
+  1253→  const revConfig = { v: { label: "Revenu", color: "var(--chart-1)" } } satisfies ChartConfig
+  1254→  const total12m = 1_020_000
+  1255→  const methodMeta = {
+  1256→    "Orange Money": { icon: Smartphone, className: "bg-accent/20 text-accent-foreground" },
+  1257→    "MTN MoMo": { icon: Smartphone, className: "bg-primary/10 text-primary" },
+  1258→    "Stripe": { icon: CardIcon, className: "bg-muted text-muted-foreground" },
+  1259→    "Wave": { icon: Smartphone, className: "bg-primary/10 text-primary" },
+  1260→  }
+  1261→  const statusMetaPay = {
+  1262→    paid: { label: "Payé", className: "bg-primary/10 text-primary border-primary/20" },
+  1263→    pending: { label: "En attente", className: "bg-accent/20 text-accent-foreground border-accent/30" },
+  1264→    failed: { label: "Échec", className: "bg-destructive/10 text-destructive border-destructive/30" },
+  1265→  }
+  1266→
+  1267→  return (
+  1268→    <div className="space-y-4">
+  1269→      {/* Revenue cards */}
+  1270→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+  1271→        <StatTile label="Revenu 12 mois" value={formatFCFA(total12m)} icon={DollarSign} accent="primary" hint="Jan 2026 → Jan 2027" />
+  1272→        <StatTile label="Impayés" value={formatFCFA(0)} icon={CheckCircle2} accent="primary" hint="Aucun en attente" />
+  1273→        <StatTile label="Prochaine facturation" value="15 Jan 2027" icon={Calendar} accent="accent" hint={formatFCFA(85000)} />
+  1274→      </div>
+  1275→
+  1276→      {/* Revenue chart */}
+  1277→      <Card>
+  1278→        <CardHeader className="pb-3">
+  1279→          <CardTitle className="text-base flex items-center gap-2">
+  1280→            <BarChart3 className="h-4 w-4 text-primary" />
+  1281→            Revenus mensuels · 6 mois
+  1282→          </CardTitle>
+  1283→          <CardDescription className="text-xs">Total période : {formatFCFA(revenue6m.reduce((a, d) => a + d.v, 0))}</CardDescription>
+  1284→        </CardHeader>
+  1285→        <CardContent>
+  1286→          <ChartContainer config={revConfig} className="h-[220px] w-full">
+  1287→            <BarChart data={revenue6m} margin={{ left: -10, right: 8, top: 8 }}>
+  1288→              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+  1289→              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+  1290→              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => compact(Number(v))} />
+  1291→              <Tooltip content={<ChartTooltipContent />} />
+  1292→              <Bar dataKey="v" fill="var(--color-v)" radius={[4, 4, 0, 0]} />
+  1293→            </BarChart>
+  1294→          </ChartContainer>
+  1295→        </CardContent>
+  1296→      </Card>
+  1297→
+  1298→      {/* Payment history */}
+  1299→      <Card>
+  1300→        <CardHeader className="pb-3">
+  1301→          <CardTitle className="text-base">Historique des paiements</CardTitle>
+  1302→          <CardDescription className="text-xs">{paymentsData.length} transactions</CardDescription>
+  1303→        </CardHeader>
+  1304→        <CardContent className="p-0">
+  1305→          <div className="overflow-x-auto">
+  1306→            <Table>
+  1307→              <TableHeader>
+  1308→                <TableRow>
+  1309→                  <TableHead className="pl-4">Date</TableHead>
+  1310→                  <TableHead>Facture</TableHead>
+  1311→                  <TableHead>Montant</TableHead>
+  1312→                  <TableHead>Méthode</TableHead>
+  1313→                  <TableHead>Plan</TableHead>
+  1314→                  <TableHead>Statut</TableHead>
+  1315→                  <TableHead className="pr-4 text-right">Facture PDF</TableHead>
+  1316→                </TableRow>
+  1317→              </TableHeader>
+  1318→              <TableBody>
+  1319→                {paymentsData.map((p) => {
+  1320→                  const m = methodMeta[p.method]
+  1321→                  const MIcon = m.icon
+  1322→                  const s = statusMetaPay[p.status]
+  1323→                  return (
+  1324→                    <TableRow key={p.id} className="hover:bg-muted/40">
+  1325→                      <TableCell className="pl-4 text-sm">{p.date}</TableCell>
+  1326→                      <TableCell>
+  1327→                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{p.invoice}</code>
+  1328→                      </TableCell>
+  1329→                      <TableCell className="text-sm font-semibold">{formatFCFA(p.amount)}</TableCell>
+  1330→                      <TableCell>
+  1331→                        <div className="flex items-center gap-2">
+  1332→                          <span className={cn("flex h-6 w-6 items-center justify-center rounded", m.className)}>
+  1333→                            <MIcon className="h-3 w-3" />
+  1334→                          </span>
+  1335→                          <span className="text-xs">{p.method}</span>
+  1336→                        </div>
+  1337→                      </TableCell>
+  1338→                      <TableCell>
+  1339→                        <Badge variant="outline" className="text-[10px]">{p.plan}</Badge>
+  1340→                      </TableCell>
+  1341→                      <TableCell>
+  1342→                        <Badge variant="outline" className={cn("text-[10px]", s.className)}>{s.label}</Badge>
+  1343→                      </TableCell>
+  1344→                      <TableCell className="pr-4 text-right">
+  1345→                        <Button
+  1346→                          variant="ghost"
+  1347→                          size="sm"
+  1348→                          className="gap-1.5 h-7"
+  1349→                          onClick={() => toast.success(`Facture ${p.invoice} téléchargée`, { description: `${formatFCFA(p.amount)} · ${p.method}` })}
+  1350→                          disabled={p.status !== "paid"}
+  1351→                        >
+  1352→                          <Download className="h-3.5 w-3.5" />
+  1353→                          PDF
+  1354→                        </Button>
+  1355→                      </TableCell>
+  1356→                    </TableRow>
+  1357→                  )
+  1358→                })}
+  1359→              </TableBody>
+  1360→            </Table>
+  1361→          </div>
+  1362→        </CardContent>
+  1363→      </Card>
+  1364→    </div>
+  1365→  )
+  1366→}
+  1367→
+  1368→// ===========================================================================
+  1369→// Tab 7: Statistiques
+  1370→// ===========================================================================
+  1371→
+  1372→function StatsTab() {
+  1373→  const callsConfig = { calls: { label: "Appels API", color: "var(--chart-1)" } } satisfies ChartConfig
+  1374→  const growthConfig = { v: { label: "Entreprises", color: "var(--chart-2)" } } satisfies ChartConfig
+  1375→  const sourceConfig = scrapingBySource.reduce((acc, s) => {
+  1376→    acc[s.name] = { label: s.name, color: s.color }
+  1377→    return acc
+  1378→  }, {} as ChartConfig)
+  1379→  const sectorsConfig = { count: { label: "Entreprises", color: "var(--chart-3)" } } satisfies ChartConfig
+  1380→
+  1381→  return (
+  1382→    <div className="space-y-4">
+  1383→      {/* KPI cards */}
+  1384→      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+  1385→        <StatTile label="Utilisateurs" value="5 / 20" icon={Users} accent="primary" hint="actifs / plan" />
+  1386→        <StatTile label="Entreprises" value="38 862" icon={Building2} accent="primary" hint="indexées" />
+  1387→        <StatTile label="Appels API (30j)" value="428k" icon={Code2} accent="accent" hint="totaux" />
+  1388→        <StatTile label="Exports (30j)" value="68" icon={Download} accent="accent" hint="fichiers générés" />
+  1389→        <StatTile label="Temps réponse moyen" value="42 ms" icon={Zap} accent="muted" hint="API REST" />
+  1390→        <StatTile label="Uptime" value="99.97%" icon={Activity} accent="primary" hint="30 derniers jours" />
+  1391→      </div>
+  1392→
+  1393→      {/* Charts */}
+  1394→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  1395→        <Card>
+  1396→          <CardHeader className="pb-3">
+  1397→            <CardTitle className="text-base flex items-center gap-2">
+  1398→              <TrendingUp className="h-4 w-4 text-primary" />
+  1399→              Appels API · 30 jours
+  1400→            </CardTitle>
+  1401→            <CardDescription className="text-xs">Évolution journalière</CardDescription>
+  1402→          </CardHeader>
+  1403→          <CardContent>
+  1404→            <ChartContainer config={callsConfig} className="h-[220px] w-full">
+  1405→              <AreaChart data={stats30d} margin={{ left: -10, right: 8, top: 8 }}>
+  1406→                <defs>
+  1407→                  <linearGradient id="statsArea" x1="0" y1="0" x2="0" y2="1">
+  1408→                    <stop offset="5%" stopColor="var(--color-calls)" stopOpacity={0.35} />
+  1409→                    <stop offset="95%" stopColor="var(--color-calls)" stopOpacity={0} />
+  1410→                  </linearGradient>
+  1411→                </defs>
+  1412→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+  1413→                <XAxis dataKey="d" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} interval={5} />
+  1414→                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => compact(Number(v))} />
+  1415→                <Tooltip content={<ChartTooltipContent />} />
+  1416→                <Area dataKey="calls" type="monotone" stroke="var(--color-calls)" strokeWidth={2} fill="url(#statsArea)" />
+  1417→              </AreaChart>
+  1418→            </ChartContainer>
+  1419→          </CardContent>
+  1420→        </Card>
+  1421→
+  1422→        <Card>
+  1423→          <CardHeader className="pb-3">
+  1424→            <CardTitle className="text-base flex items-center gap-2">
+  1425→              <Building2 className="h-4 w-4 text-primary" />
+  1426→              Croissance entreprises · 6 mois
+  1427→            </CardTitle>
+  1428→            <CardDescription className="text-xs">Total cumulé par mois</CardDescription>
+  1429→          </CardHeader>
+  1430→          <CardContent>
+  1431→            <ChartContainer config={growthConfig} className="h-[220px] w-full">
+  1432→              <LineChart data={companiesGrowth} margin={{ left: -10, right: 8, top: 8 }}>
+  1433→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+  1434→                <XAxis dataKey="m" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+  1435→                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => compact(Number(v))} domain={[30000, 40000]} />
+  1436→                <Tooltip content={<ChartTooltipContent />} />
+  1437→                <Line dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--color-v)" }} />
+  1438→              </LineChart>
+  1439→            </ChartContainer>
+  1440→          </CardContent>
+  1441→        </Card>
+  1442→
+  1443→        <Card>
+  1444→          <CardHeader className="pb-3">
+  1445→            <CardTitle className="text-base flex items-center gap-2">
+  1446→              <Database className="h-4 w-4 text-primary" />
+  1447→              Scraping par source
+  1448→            </CardTitle>
+  1449→            <CardDescription className="text-xs">Répartition des entreprises</CardDescription>
+  1450→          </CardHeader>
+  1451→          <CardContent>
+  1452→            <ChartContainer config={sourceConfig} className="h-[220px] w-full">
+  1453→              <PieChart>
+  1454→                <Pie
+  1455→                  data={scrapingBySource}
+  1456→                  dataKey="value"
+  1457→                  nameKey="name"
+  1458→                  innerRadius={45}
+  1459→                  outerRadius={75}
+  1460→                  paddingAngle={2}
+  1461→                >
+  1462→                  {scrapingBySource.map((s) => (
+  1463→                    <Cell key={s.name} fill={s.color} />
+  1464→                  ))}
+  1465→                </Pie>
+  1466→                <Tooltip content={<ChartTooltipContent nameKey="name" />} />
+  1467→              </PieChart>
+  1468→            </ChartContainer>
+  1469→            <div className="flex flex-wrap gap-2 mt-2 justify-center">
+  1470→              {scrapingBySource.map((s) => (
+  1471→                <Badge key={s.name} variant="outline" className="text-[10px] gap-1.5">
+  1472→                  <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
+  1473→                  {s.name}
+  1474→                </Badge>
+  1475→              ))}
+  1476→            </div>
+  1477→          </CardContent>
+  1478→        </Card>
+  1479→
+  1480→        <Card>
+  1481→          <CardHeader className="pb-3">
+  1482→            <CardTitle className="text-base flex items-center gap-2">
+  1483→              <BarChart3 className="h-4 w-4 text-primary" />
+  1484→              Top secteurs
+  1485→            </CardTitle>
+  1486→            <CardDescription className="text-xs">Par nombre d'entreprises</CardDescription>
+  1487→          </CardHeader>
+  1488→          <CardContent>
+  1489→            <ChartContainer config={sectorsConfig} className="h-[220px] w-full">
+  1490→              <BarChart data={topSectors} layout="vertical" margin={{ left: 60, right: 8, top: 8 }}>
+  1491→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+  1492→                <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => compact(Number(v))} />
+  1493→                <YAxis type="category" dataKey="sector" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} width={110} />
+  1494→                <Tooltip content={<ChartTooltipContent />} />
+  1495→                <Bar dataKey="count" fill="var(--color-count)" radius={[0, 4, 4, 0]} />
+  1496→              </BarChart>
+  1497→            </ChartContainer>
+  1498→          </CardContent>
+  1499→        </Card>
+  1500→      </div>
+  1501→
+  1502→      {/* System health */}
+  1503→      <Card>
+  1504→        <CardHeader className="pb-3">
+  1505→          <CardTitle className="text-base flex items-center gap-2">
+  1506→            <Server className="h-4 w-4 text-primary" />
+  1507→            Santé système
+  1508→          </CardTitle>
+  1509→          <CardDescription className="text-xs">Ressources serveur en temps réel</CardDescription>
+  1510→        </CardHeader>
+  1511→        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1512→          {[
+  1513→            { label: "CPU", value: 34, icon: Cpu },
+  1514→            { label: "Mémoire", value: 58, icon: Cpu },
+  1515→            { label: "Disque", value: 41, icon: HardDrive },
+  1516→          ].map((m) => {
+  1517→            const color = m.value > 90 ? "destructive" : m.value > 70 ? "accent" : "primary"
+  1518→            const colorClass = color === "destructive" ? "text-destructive" : color === "accent" ? "text-accent-foreground" : "text-primary"
+  1519→            return (
+  1520→              <div key={m.label} className="space-y-2 p-3 rounded-lg border bg-muted/20">
+  1521→                <div className="flex items-center justify-between">
+  1522→                  <span className="flex items-center gap-2 text-sm font-medium">
+  1523→                    <m.icon className="h-4 w-4 text-muted-foreground" />
+  1524→                    {m.label}
+  1525→                  </span>
+  1526→                  <span className={cn("text-sm font-bold", colorClass)}>{m.value}%</span>
+  1527→                </div>
+  1528→                <div className="h-2 rounded-full bg-muted overflow-hidden">
+  1529→                  <div
+  1530→                    className={cn("h-full rounded-full transition-all", color === "destructive" ? "bg-destructive" : color === "accent" ? "bg-accent" : "bg-primary")}
+  1531→                    style={{ width: `${m.value}%` }}
+  1532→                  />
+  1533→                </div>
+  1534→                <p className="text-[11px] text-muted-foreground">
+  1535→                  {m.value > 90 ? "Charge critique" : m.value > 70 ? "Charge élevée" : "Charge normale"}
+  1536→                </p>
+  1537→              </div>
+  1538→            )
+  1539→          })}
+  1540→        </CardContent>
+  1541→      </Card>
+  1542→    </div>
+  1543→  )
+  1544→}
+  1545→
+  1546→// ===========================================================================
+  1547→// Tab 8: Maintenance
+  1548→// ===========================================================================
+  1549→
+  1550→function MaintenanceTab() {
+  1551→  const [maintenanceMode, setMaintenanceMode] = useState(false)
+  1552→  const [services, setServices] = useState([
+  1553→    { key: "web", label: "Web Application", status: "operational" as const, icon: Globe },
+  1554→    { key: "api", label: "API REST", status: "operational" as const, icon: Code2 },
+  1555→    { key: "db", label: "Database", status: "operational" as const, icon: Database },
+  1556→    { key: "scrape", label: "Scraping Engine", status: "operational" as const, icon: Cpu },
+  1557→    { key: "ai", label: "AI Engine", status: "operational" as const, icon: Activity },
+  1558→    { key: "email", label: "Email Service", status: "degraded" as const, icon: Mail },
+  1559→  ])
+  1560→
+  1561→  const statusMetaSvc = {
+  1562→    operational: { label: "Opérationnel", className: "bg-primary/10 text-primary border-primary/20", dot: "bg-primary", icon: CheckCircle2 },
+  1563→    degraded: { label: "Dégradé", className: "bg-accent/20 text-accent-foreground border-accent/30", dot: "bg-accent", icon: AlertTriangle },
+  1564→    maintenance: { label: "Maintenance", className: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground", icon: Wrench },
+  1565→  }
+  1566→
+  1567→  return (
+  1568→    <div className="space-y-4">
+  1569→      {/* Maintenance mode + scheduled window */}
+  1570→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  1571→        <Card className={cn("lg:col-span-2", maintenanceMode && "border-accent/40 bg-accent/5")}>
+  1572→          <CardHeader className="pb-3">
+  1573→            <CardTitle className="text-base flex items-center gap-2">
+  1574→              <Power className="h-4 w-4 text-primary" />
+  1575→              Mode maintenance
+  1576→            </CardTitle>
+  1577→            <CardDescription className="text-xs">
+  1578→              {maintenanceMode
+  1579→                ? "L'application est actuellement en maintenance. Les utilisateurs voient une page d'attente."
+  1580→                : "Activez pour mettre l'application hors ligne temporairement."}
+  1581→            </CardDescription>
+  1582→          </CardHeader>
+  1583→          <CardContent>
+  1584→            <div className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-background">
+  1585→              <div className="flex items-center gap-3">
+  1586→                <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", maintenanceMode ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground")}>
+  1587→                  {maintenanceMode ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+  1588→                </div>
+  1589→                <div>
+  1590→                  <p className="text-sm font-medium">{maintenanceMode ? "Maintenance active" : "Service en ligne"}</p>
+  1591→                  <p className="text-[11px] text-muted-foreground">{maintenanceMode ? "Toggle pour reprendre" : "Aucune interruption"}</p>
+  1592→                </div>
+  1593→              </div>
+  1594→              <Switch checked={maintenanceMode} onCheckedChange={(c) => {
+  1595→                setMaintenanceMode(c)
+  1596→                toast.success(c ? "Mode maintenance activé" : "Service remis en ligne", {
+  1597→                  description: c ? "Les utilisateurs voient désormais une page d'attente." : "L'application est de nouveau accessible.",
+  1598→                })
+  1599→              }} />
+  1600→            </div>
+  1601→          </CardContent>
+  1602→        </Card>
+  1603→
+  1604→        <Card>
+  1605→          <CardHeader className="pb-3">
+  1606→            <CardTitle className="text-base flex items-center gap-2">
+  1607→              <Calendar className="h-4 w-4 text-primary" />
+  1608→              Fenêtre planifiée
+  1609→            </CardTitle>
+  1610→            <CardDescription className="text-xs">Prochaine maintenance</CardDescription>
+  1611→          </CardHeader>
+  1612→          <CardContent className="space-y-2">
+  1613→            <div className="flex items-center gap-2 text-sm">
+  1614→              <Calendar className="h-4 w-4 text-muted-foreground" />
+  1615→              <span className="font-medium">22 jan. 2027</span>
+  1616→            </div>
+  1617→            <div className="flex items-center gap-2 text-sm">
+  1618→              <Clock className="h-4 w-4 text-muted-foreground" />
+  1619→              <span>02:00 → 04:00 (UTC)</span>
+  1620→            </div>
+  1621→            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
+  1622→              <Wrench className="h-3.5 w-3.5" />
+  1623→              Mise à jour moteur scraping v2.1
+  1624→            </div>
+  1625→            <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => toast.info("Modification de la fenêtre planifiée")}>
+  1626→              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+  1627→              Modifier
+  1628→            </Button>
+  1629→          </CardContent>
+  1630→        </Card>
+  1631→      </div>
+  1632→
+  1633→      {/* Services status */}
+  1634→      <Card>
+  1635→        <CardHeader className="pb-3">
+  1636→          <div className="flex flex-wrap items-center justify-between gap-3">
+  1637→            <div>
+  1638→              <CardTitle className="text-base flex items-center gap-2">
+  1639→                <Server className="h-4 w-4 text-primary" />
+  1640→                État des services
+  1641→              </CardTitle>
+  1642→              <CardDescription className="text-xs">6 services monitorés · {services.filter((s) => s.status === "operational").length} opérationnels</CardDescription>
+  1643→            </div>
+  1644→            <Button variant="outline" size="sm" className="gap-2" onClick={() => {
+  1645→              toast.success("Cache système vidé", { description: "Redis + CDN + app cache purgés." })
+  1646→            }}>
+  1647→              <Trash2 className="h-3.5 w-3.5" />
+  1648→              Vider le cache
+  1649→            </Button>
+  1650→          </div>
+  1651→        </CardHeader>
+  1652→        <CardContent className="p-0">
+  1653→          <div className="divide-y">
+  1654→            {services.map((s) => {
+  1655→              const meta = statusMetaSvc[s.status]
+  1656→              const SIcon = s.icon
+  1657→              const MIcon = meta.icon
+  1658→              return (
+  1659→                <div key={s.key} className="flex items-center gap-3 p-4">
+  1660→                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground shrink-0">
+  1661→                    <SIcon className="h-5 w-5" />
+  1662→                  </div>
+  1663→                  <div className="flex-1 min-w-0">
+  1664→                    <p className="text-sm font-medium">{s.label}</p>
+  1665→                    <p className="text-[11px] text-muted-foreground">{s.key}.scraapiq.ci</p>
+  1666→                  </div>
+  1667→                  <Badge variant="outline" className={cn("gap-1.5 text-[10px]", meta.className)}>
+  1668→                    <MIcon className="h-3 w-3" />
+  1669→                    {meta.label}
+  1670→                  </Badge>
+  1671→                  <TooltipProvider>
+  1672→                    <UITooltip>
+  1673→                      <TooltipTrigger asChild>
+  1674→                        <Button
+  1675→                          variant="ghost"
+  1676→                          size="icon"
+  1677→                          className="h-8 w-8"
+  1678→                          onClick={() => {
+  1679→                            toast.info(`Redémarrage de ${s.label}…`, { description: "L'opération peut prendre 30 secondes." })
+  1680→                          }}
+  1681→                        >
+  1682→                          <RefreshCw className="h-3.5 w-3.5" />
+  1683→                        </Button>
+  1684→                      </TooltipTrigger>
+  1685→                      <TooltipContent>Redémarrer le service</TooltipContent>
+  1686→                    </UITooltip>
+  1687→                  </TooltipProvider>
+  1688→                </div>
+  1689→              )
+  1690→            })}
+  1691→          </div>
+  1692→        </CardContent>
+  1693→      </Card>
+  1694→
+  1695→      {/* Backup status */}
+  1696→      <Card>
+  1697→        <CardHeader className="pb-3">
+  1698→          <CardTitle className="text-base flex items-center gap-2">
+  1699→            <Database className="h-4 w-4 text-primary" />
+  1700→            Sauvegarde
+  1701→          </CardTitle>
+  1702→          <CardDescription className="text-xs">Statut des backups automatiques</CardDescription>
+  1703→        </CardHeader>
+  1704→        <CardContent>
+  1705→          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+  1706→            <div className="p-3 rounded-lg border bg-muted/20">
+  1707→              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Dernier backup</p>
+  1708→              <p className="text-sm font-semibold mt-1">15 jan. 2027 · 03:00</p>
+  1709→            </div>
+  1710→            <div className="p-3 rounded-lg border bg-muted/20">
+  1711→              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Taille</p>
+  1712→              <p className="text-sm font-semibold mt-1">1.2 GB</p>
+  1713→            </div>
+  1714→            <div className="p-3 rounded-lg border bg-muted/20">
+  1715→              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Statut</p>
+  1716→              <div className="mt-1">
+  1717→                <Badge className="bg-primary text-primary-foreground text-[10px] gap-1">
+  1718→                  <CheckCircle2 className="h-3 w-3" />
+  1719→                  Réussi
+  1720→                </Badge>
+  1721→              </div>
+  1722→            </div>
+  1723→            <div className="p-3 rounded-lg border bg-muted/20">
+  1724→              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Prochaine</p>
+  1725→              <p className="text-sm font-semibold mt-1">16 jan. 2027 · 03:00</p>
+  1726→            </div>
+  1727→          </div>
+  1728→          <div className="flex flex-wrap gap-2 mt-4">
+  1729→            <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.success("Backup manuel déclenché", { description: "Estimated time: 4 minutes." })}>
+  1730→              <Database className="h-3.5 w-3.5" />
+  1731→              Backup manuel
+  1732→            </Button>
+  1733→            <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info("Restauration depuis backup")}>
+  1734→              <RefreshCw className="h-3.5 w-3.5" />
+  1735→              Restaurer
+  1736→            </Button>
+  1737→          </div>
+  1738→        </CardContent>
+  1739→      </Card>
+  1740→    </div>
+  1741→  )
+  1742→}
+  1743→
+  1744→// ===========================================================================
+  1745→// Tab 9: Audit
+  1746→// ===========================================================================
+  1747→
+  1748→function AuditTab() {
+  1749→  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  1750→  const [severityFilter, setSeverityFilter] = useState<string>("all")
+  1751→  const [query, setQuery] = useState("")
+  1752→
+  1753→  const filtered = useMemo(() => {
+  1754→    return auditData.filter((a) => {
+  1755→      const matchCat = categoryFilter === "all" || a.category === categoryFilter
+  1756→      const matchSev = severityFilter === "all" || a.severity === severityFilter
+  1757→      const matchQuery = !query || a.action.toLowerCase().includes(query.toLowerCase()) || a.user.toLowerCase().includes(query.toLowerCase()) || a.details.toLowerCase().includes(query.toLowerCase())
+  1758→      return matchCat && matchSev && matchQuery
+  1759→    })
+  1760→  }, [categoryFilter, severityFilter, query])
+  1761→
+  1762→  const total = auditData.length
+  1763→  const criticalCount = auditData.filter((a) => a.severity === "critical").length
+  1764→  const securityEvents = auditData.filter((a) => a.category === "security").length
+  1765→
+  1766→  const categoryMeta: Record<AuditRow["category"], { label: string; className: string }> = {
+  1767→    auth: { label: "Auth", className: "bg-primary/10 text-primary border-primary/20" },
+  1768→    security: { label: "Security", className: "bg-destructive/10 text-destructive border-destructive/30" },
+  1769→    oauth: { label: "OAuth", className: "bg-accent/20 text-accent-foreground border-accent/30" },
+  1770→    api: { label: "API", className: "bg-muted text-muted-foreground border-border" },
+  1771→    data: { label: "Data", className: "bg-primary/10 text-primary border-primary/20" },
+  1772→  }
+  1773→
+  1774→  const severityMeta: Record<AuditRow["severity"], { label: string; className: string }> = {
+  1775→    info: { label: "INFO", className: "bg-primary/10 text-primary border-primary/20" },
+  1776→    warn: { label: "WARN", className: "bg-accent/20 text-accent-foreground border-accent/30" },
+  1777→    error: { label: "ERROR", className: "bg-destructive/10 text-destructive border-destructive/30" },
+  1778→    critical: { label: "CRIT", className: "bg-destructive text-destructive-foreground border-destructive" },
+  1779→  }
+  1780→
+  1781→  return (
+  1782→    <div className="space-y-4">
+  1783→      {/* Stats */}
+  1784→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  1785→        <StatTile label="Total événements" value={total} icon={FileSearch} accent="primary" />
+  1786→        <StatTile label="Événements critiques" value={criticalCount} icon={ShieldAlert} accent="accent" />
+  1787→        <StatTile label="Événements sécurité" value={securityEvents} icon={Lock} accent="muted" />
+  1788→        <StatTile label="Période" value="24 h" icon={Clock} accent="muted" hint="dernières heures" />
+  1789→      </div>
+  1790→
+  1791→      <Card>
+  1792→        <CardHeader className="pb-3">
+  1793→          <div className="flex flex-wrap items-center justify-between gap-3">
+  1794→            <div>
+  1795→              <CardTitle className="text-base flex items-center gap-2">
+  1796→                <FileSearch className="h-4 w-4 text-primary" />
+  1797→                Journal d'audit
+  1798→              </CardTitle>
+  1799→              <CardDescription className="text-xs">{filtered.length} entrée(s) sur {total}</CardDescription>
+  1800→            </div>
+  1801→            <div className="flex flex-wrap items-center gap-2">
+  1802→              <div className="relative">
+  1803→                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+  1804→                <Input
+  1805→                  placeholder="Rechercher action, user, détails…"
+  1806→                  value={query}
+  1807→                  onChange={(e) => setQuery(e.target.value)}
+  1808→                  className="pl-8 h-9 w-[220px]"
+  1809→                />
+  1810→              </div>
+  1811→              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+  1812→                <SelectTrigger className="h-9 w-[140px]">
+  1813→                  <SelectValue placeholder="Catégorie" />
+  1814→                </SelectTrigger>
+  1815→                <SelectContent>
+  1816→                  <SelectItem value="all">Toutes catégories</SelectItem>
+  1817→                  <SelectItem value="auth">Auth</SelectItem>
+  1818→                  <SelectItem value="security">Security</SelectItem>
+  1819→                  <SelectItem value="oauth">OAuth</SelectItem>
+  1820→                  <SelectItem value="api">API</SelectItem>
+  1821→                  <SelectItem value="data">Data</SelectItem>
+  1822→                </SelectContent>
+  1823→              </Select>
+  1824→              <Select value={severityFilter} onValueChange={setSeverityFilter}>
+  1825→                <SelectTrigger className="h-9 w-[130px]">
+  1826→                  <SelectValue placeholder="Sévérité" />
+  1827→                </SelectTrigger>
+  1828→                <SelectContent>
+  1829→                  <SelectItem value="all">Toutes sévérités</SelectItem>
+  1830→                  <SelectItem value="info">Info</SelectItem>
+  1831→                  <SelectItem value="warn">Warn</SelectItem>
+  1832→                  <SelectItem value="error">Error</SelectItem>
+  1833→                  <SelectItem value="critical">Critical</SelectItem>
+  1834→                </SelectContent>
+  1835→              </Select>
+  1836→              <Button variant="outline" size="sm" className="gap-2 h-9" onClick={() => toast.success("Audit exporté", { description: "Fichier audit_2027-01-15.csv généré." })}>
+  1837→                <Download className="h-3.5 w-3.5" />
+  1838→                Export CSV
+  1839→              </Button>
+  1840→            </div>
+  1841→          </div>
+  1842→        </CardHeader>
+  1843→        <CardContent className="p-0">
+  1844→          {/* Desktop table */}
+  1845→          <div className="hidden md:block overflow-x-auto">
+  1846→            <Table>
+  1847→              <TableHeader>
+  1848→                <TableRow>
+  1849→                  <TableHead className="pl-4">Timestamp</TableHead>
+  1850→                  <TableHead>Utilisateur</TableHead>
+  1851→                  <TableHead>Action</TableHead>
+  1852→                  <TableHead>Catégorie</TableHead>
+  1853→                  <TableHead>Sévérité</TableHead>
+  1854→                  <TableHead>IP</TableHead>
+  1855→                  <TableHead className="pr-4">Détails</TableHead>
+  1856→                </TableRow>
+  1857→              </TableHeader>
+  1858→              <TableBody>
+  1859→                {filtered.map((a) => {
+  1860→                  const c = categoryMeta[a.category]
+  1861→                  const s = severityMeta[a.severity]
+  1862→                  return (
+  1863→                    <TableRow key={a.id} className={cn("hover:bg-muted/40", a.severity === "critical" && "bg-destructive/5")}>
+  1864→                      <TableCell className="pl-4 text-[11px] font-mono text-muted-foreground whitespace-nowrap">{a.ts}</TableCell>
+  1865→                      <TableCell className="text-xs">{a.user}</TableCell>
+  1866→                      <TableCell>
+  1867→                        <code className="text-[11px] bg-muted px-1.5 py-0.5 rounded">{a.action}</code>
+  1868→                      </TableCell>
+  1869→                      <TableCell>
+  1870→                        <Badge variant="outline" className={cn("text-[10px]", c.className)}>{c.label}</Badge>
+  1871→                      </TableCell>
+  1872→                      <TableCell>
+  1873→                        <Badge variant="outline" className={cn("text-[10px] font-mono", s.className)}>{s.label}</Badge>
+  1874→                      </TableCell>
+  1875→                      <TableCell className="text-[11px] font-mono text-muted-foreground">{a.ip}</TableCell>
+  1876→                      <TableCell className="pr-4 text-xs text-muted-foreground max-w-[320px] truncate" title={a.details}>{a.details}</TableCell>
+  1877→                    </TableRow>
+  1878→                  )
+  1879→                })}
+  1880→              </TableBody>
+  1881→            </Table>
+  1882→          </div>
+  1883→
+  1884→          {/* Mobile cards */}
+  1885→          <div className="md:hidden divide-y">
+  1886→            {filtered.map((a) => {
+  1887→              const c = categoryMeta[a.category]
+  1888→              const s = severityMeta[a.severity]
+  1889→              return (
+  1890→                <div key={a.id} className={cn("p-4 space-y-1.5", a.severity === "critical" && "bg-destructive/5")}>
+  1891→                  <div className="flex items-center justify-between gap-2">
+  1892→                    <code className="text-[11px] font-mono bg-muted px-1.5 py-0.5 rounded">{a.action}</code>
+  1893→                    <div className="flex items-center gap-1">
+  1894→                      <Badge variant="outline" className={cn("text-[10px]", c.className)}>{c.label}</Badge>
+  1895→                      <Badge variant="outline" className={cn("text-[10px] font-mono", s.className)}>{s.label}</Badge>
+  1896→                    </div>
+  1897→                  </div>
+  1898→                  <p className="text-[11px] font-mono text-muted-foreground">{a.ts}</p>
+  1899→                  <p className="text-xs">{a.user}</p>
+  1900→                  <p className="text-xs text-muted-foreground">{a.details}</p>
+  1901→                  <p className="text-[11px] font-mono text-muted-foreground">IP: {a.ip}</p>
+  1902→                </div>
+  1903→              )
+  1904→            })}
+  1905→          </div>
+  1906→
+  1907→          {filtered.length === 0 && (
+  1908→            <div className="p-8 text-center text-muted-foreground text-sm">Aucun événement ne correspond aux filtres.</div>
+  1909→          )}
+  1910→        </CardContent>
+  1911→      </Card>
+  1912→    </div>
+  1913→  )
+  1914→}
+  1915→
