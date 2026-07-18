@@ -2393,3 +2393,118 @@ Stage Summary:
 - Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification confirms the user now sees "Organisation de Admin Prod" everywhere (header tenant selector, analytics hero, team view org card) instead of the 3 fake orgs. Back Office Users tab + Team view Membres card show clean empty states.
 - 3 screenshots saved: task37-header-real-org.png, task37-backoffice-empty.png, task37-team-empty.png.
 - Out-of-scope mock @agribusiness.ci emails in settings-view, security-view, and back-office auditData left intact (not in the task's 6-file scope; Task 35 already noted them as out of scope).
+
+---
+Task ID: 38
+Agent: Profile + DB Editor Builder
+Task: Make profile management and DB editing functional for OWNER
+
+Work Log:
+- Read worklog.md (Tasks 33-a, 35, 36, 37) to understand project state: DB truncated, 1 OWNER user (admin@scraapiq.ci), /api/admin/db exists (read-only, OWNER-only, 23-table summary), settings-view.tsx has hardcoded mock profile (Adama Koné / adama@agribusiness.ci), db-viewer.tsx is read-only.
+
+- Phase 1a — PUT /api/me (extend existing src/app/api/me/route.ts):
+  * Added PUT handler alongside existing GET (kept GET shape unchanged).
+  * Auth: any authenticated user (users edit their own profile).
+  * Accepts JSON body: { name?, email?, locale?, timezone?, avatarUrl? }.
+  * Validates: email format (regex), locale whitelist (fr, en), timezone whitelist (9 entries), name length 1–100, avatarUrl length ≤ 500.
+  * Email uniqueness check (409 if taken by another user).
+  * Sanitizes inputs: trim whitespace, lowercase email.
+  * Logs to AuditLog: action "user_profile_update", category "auth", metadata { fields: [...] }.
+  * Returns updated user (id, email, name, avatarUrl, locale, timezone, twoFactorEnabled) + updatedFields list.
+
+- Phase 1b — GET/PUT /api/organization (new file src/app/api/organization/route.ts):
+  * GET: returns the user's active-membership organization + workspace + role (from db.member.findFirst).
+  * PUT: OWNER/ADMIN only (403 otherwise). Accepts { name? }.
+  * Validates name (1–100 chars), regenerates slug via slugify (lowercase, strip accents, hyphenate, max 60 chars) with uniqueness check (suffix -2, -3, ... if needed).
+  * Logs to AuditLog: action "org_update", category "admin", metadata { organizationId, fields }.
+
+- Phase 1c — Generic CRUD endpoints (new file src/lib/db-admin.ts + 2 route files):
+  * Created src/lib/db-admin.ts with shared helpers:
+    - ALLOWED_TABLES whitelist (23 tables, same as /api/admin/db MODELS list).
+    - BLOCKED_FIELDS set: passwordHash, twoFactorSecret, twoFactorBackupCodes, refreshTokenHash, tokenHash, secret, hashedKey, keyHash, accessToken, refreshToken.
+    - AUTO_FIELDS set: id, createdAt, updatedAt, lastSeenAt, usedAt, revokedAt, expiresAt.
+    - SENSITIVE_FIELDS set (for read-side masking).
+    - getModel(table) — typed dynamic Prisma model accessor.
+    - sanitizeRow(row) — masks sensitive fields, serializes Dates to ISO.
+    - stripBlocked(input) — returns { data, stripped } with blocked/auto fields removed.
+    - coerceValue(key, value) — parses booleans (twoFactorEnabled, isActive, etc.), ints (maxUsers, amountXOF, etc.), floats (lat, lng, rating, threshold).
+    - getColumns(table) — uses Prisma DMMF (Prisma.dmmf.datamodel.models) to return column names even when the table is empty (handles empty-table create-dialog case).
+    - TABLE_TO_MODEL map (lowercase table → PascalCase model name).
+  * Created src/app/api/admin/db/[table]/route.ts:
+    - GET: paginated list (page/limit query params, default 20, max 100). Returns { table, columns, rows (sanitized), pagination { page, limit, total, totalPages } }. Uses Promise.all for count + findMany with skip/take. Try/catch fallback for orderBy createdAt (some tables like member don't have it).
+    - POST: create. Strips BLOCKED_FIELDS + AUTO_FIELDS, coerces types, drops undefined values. Returns sanitized created row. Logs db_record_create (severity warn). 201 on success.
+    - Both: OWNER only (401 unauth, 403 non-OWNER), table name validated against whitelist (400 if not allowed).
+  * Created src/app/api/admin/db/[table]/[id]/route.ts:
+    - GET: fetch single record by id (sanitized). 404 if not found.
+    - PUT: partial update. Existence check first (404 if missing), then update with stripped/coerced data. Logs db_record_update (severity warn).
+    - DELETE: existence check, snapshot saved to AuditLog, then delete. Self-deletion blocked (400 if table=user AND id=user.id). Logs db_record_delete (severity error — flag worthy).
+    - All: OWNER only, table validated against whitelist.
+
+- Phase 1d — Extended AuditLog types (src/lib/auth/audit.ts):
+  * Added 5 new AuditAction values: user_profile_update, org_update, db_record_create, db_record_update, db_record_delete.
+  * Added "admin" to AuditCategory type.
+
+- Phase 2 — settings-view.tsx functional profile form:
+  * Added useState for: profile, name, email, avatarUrl, locale, timezone, loadingProfile, savingProfile, organization, orgName, loadingOrg, savingOrg.
+  * Added useEffect on mount that fetches /api/me (populates profile + form fields) and /api/organization (populates org card).
+  * Profile card: replaced defaultValue="Adama Koné" with value={name} (controlled), defaultValue="adama@agribusiness.ci" with value={email}, static locale/timezone Selects with controlled values from profile state. Added avatarUrl field. Loading spinner (Loader2) shown while fetching.
+  * "Enregistrer" button: onClick={handleSaveProfile} → PUT /api/me with all 5 fields. Button shows spinner + "Enregistrement…" while saving, disabled. Toast success "Profil mis à jour" / error "Erreur : {msg}". Updates local state from server response after save.
+  * Added Organisation card (visible only if profile.role === OWNER || ADMIN): shows org name (editable), slug + plan (read-only badges), "Enregistrer l'organisation" button calls PUT /api/organization. Button disabled if name unchanged.
+  * All other cards (Apparence, Notifications, Facturation, Sécurité, Conformité) preserved unchanged.
+
+- Phase 3 — db-viewer.tsx editable:
+  * Added "Mode édition" Switch at top.
+  * When edit mode ON: shows paginated rows from /api/admin/db/[table]?page=X&limit=20 (replaces the 5-sample-rows view). Pagination controls (← page X/Y →) shown when totalPages > 1.
+  * Each row has action buttons: Modifier (pencil) + Supprimer (trash). Row click also opens edit dialog.
+  * "Nouveau" button + "Créer le premier enregistrement" link open the create dialog.
+  * Create dialog: builds empty form from pageData.columns (or fetches columns from API for empty tables via Prisma DMMF). All fields shown as Inputs, sensitive + id + date fields disabled with Lock icon. Boolean fields use Select (true/false).
+  * Edit dialog: same shape but pre-populated with row values. Dates shown as disabled read-only text. Sensitive fields show "••••••••" disabled.
+  * Save: PUT or POST to /api/admin/db/[table]{/[id]} with body containing only editable, non-empty fields (empty strings skipped to let Prisma apply defaults). After success: closes dialog, re-fetches rows + summary, toast success.
+  * Delete: AlertDialog confirmation with record id + table name. After confirm: DELETE to /api/admin/db/[table]/[id], toast success, refresh data.
+  * Added editTable state to capture the table at dialog-open time (avoids stale-closure race when fetchData() refreshes selectedTable after a save).
+  * fetchData() updated to NOT reset selectedTable on refreshes (only auto-selects on first load).
+
+- Phase 4 — Verification:
+  * bun run lint → 0 errors, 0 warnings.
+  * curl tests (with auth cookie from /api/auth/login):
+    - GET /api/me → 200 (returns admin@scraapiq.ci, Admin Prod, OWNER role, 21 permissions, 1 membership).
+    - PUT /api/me {"name":"Admin Prod Modifié"} → 200, name updated, updatedFields=["name"].
+    - GET /api/organization → 200 (returns "Organisation de Admin Prod", plan starter).
+    - PUT /api/organization {"name":"ScrapIQ CI Officiel"} → 200, name + slug regenerated ("scrapiq-ci-officiel").
+    - GET /api/admin/db/user?page=1&limit=5 → 200, paginated, 19 columns, 1 row, passwordHash="***hidden***".
+    - POST /api/admin/db/company {name, sector, commune, city, phone, email, status} → 201, created.
+    - PUT /api/admin/db/company/{id} {name, rating, reviewCount} → 200, updated.
+    - DELETE /api/admin/db/company/{id} → 200, deleted; verify list now empty.
+    - PUT /api/admin/db/user/{self} {passwordHash:"hacked", name:"Try Hack"} → 200, passwordHash stripped (only name changed) — server logs "PUT stripped blocked fields: [ 'passwordHash' ]".
+    - DELETE /api/admin/db/user/{self} → 400 "Vous ne pouvez pas supprimer votre propre compte via le DB editor".
+    - GET /api/admin/db/nonexistent → 400 "Table non autorisée".
+    - AuditLog confirms all 5 new action types logged with full metadata (db_record_create, db_record_update, db_record_delete with snapshot, user_profile_update, org_update).
+  * Agent Browser end-to-end verification (login as admin@scraapiq.ci / AdminProd2026!):
+    - Login → redirected to / (dashboard).
+    - Navigate to Paramètres → Profile card shows "Admin Prod" + "admin@scraapiq.ci" (NOT Adama Koné). Organisation card visible (OWNER role). Loading spinners flash briefly on mount.
+    - Edit name to "Admin Prod Modifié" → click "Enregistrer" → spinner shows "Enregistrement…" → toast "Profil mis à jour" → name updated in input.
+    - Reload page → name still "Admin Prod Modifié" (persisted in DB). ✓
+    - Navigate to Base de données → enable "Mode édition" → click "company" table → "Créer le premier enregistrement" → dialog opens with all 20 company columns (id, name, sector, commune, city, address, phone, email, website, rccm, lat, lng, rating, reviewCount, status, description, employees, sources, createdAt, updatedAt).
+    - Fill name="Société Test CI", sector="BTP", commune="Plateau", city="Abidjan" → click Enregistrer → toast "Enregistrement créé" → dialog closes, table badge updates from "0" to "1", new row appears in paginated list.
+    - Click row → edit dialog opens with all fields pre-populated (id disabled, createdAt/updatedAt disabled, sensitive fields locked). Edit name to "Société Test CI Renamed" + rating="4.7" → click Enregistrer → toast "Enregistrement mis à jour" → row updated.
+    - Click Supprimer → AlertDialog "Supprimer cet enregistrement ?" with id + table name → click "Supprimer" → toast "Enregistrement supprimé" → row removed, table badge back to "0".
+    - `agent-browser errors` → empty (no page errors, no console errors).
+  * Screenshots:
+    - /home/z/my-project/profile-edit.png (122 KB) — profile form with real data.
+    - /home/z/my-project/db-edit-dialog.png (107 KB) — edit dialog with all company fields populated.
+
+- Phase 5 — Cleanup:
+  * Restored admin name to "Admin Prod" via PUT /api/me (left test data clean).
+  * Restored org name to "Organisation de Admin Prod" via PUT /api/organization.
+  * All test companies deleted during verification.
+
+Stage Summary:
+- 5 new API endpoints (PUT /api/me, GET/PUT /api/organization, GET/POST /api/admin/db/[table], GET/PUT/DELETE /api/admin/db/[table]/[id]).
+- 1 new shared lib (src/lib/db-admin.ts) with whitelist + blocked-fields + DMMF column lookup + type coercion.
+- 5 new AuditAction types + 1 new AuditCategory.
+- 2 components fully rewritten: settings-view.tsx (profile + org forms fetch + save), db-viewer.tsx (edit-mode + paginated CRUD UI).
+- All mutations logged to AuditLog with full context (table, recordId, fields, snapshot for deletes).
+- Security: OWNER-only on /api/admin/db/*, table whitelist (no SQL injection), BLOCKED_FIELDS strip passwordHash/twoFactorSecret/etc., self-deletion blocked.
+- Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification passes (profile edit + persist, DB create + edit + delete).
+- 2 screenshots saved (profile-edit.png, db-edit-dialog.png).
+- Work record written to /home/z/my-project/agent-ctx/38-profile-db-editor-builder.md.

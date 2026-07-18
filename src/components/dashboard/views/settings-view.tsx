@@ -1,7 +1,28 @@
 "use client"
 
-import { Settings, User, Bell, Palette, CreditCard, Shield, FileText, Globe, Moon, Sun } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { useEffect, useState, useCallback } from "react"
+import {
+  Settings,
+  User,
+  Bell,
+  Palette,
+  CreditCard,
+  Shield,
+  FileText,
+  Globe,
+  Moon,
+  Sun,
+  Loader2,
+  Building2,
+  Save,
+} from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,8 +38,189 @@ import {
 import { useTheme } from "next-themes"
 import { toast } from "sonner"
 
+interface MembershipOrg {
+  id: string
+  name: string
+  slug: string
+  plan: string
+}
+interface Profile {
+  id: string
+  email: string
+  name: string | null
+  avatarUrl: string | null
+  locale: string | null
+  timezone: string | null
+  role: string | null
+  orgId: string | null
+  memberships?: Array<{
+    id: string
+    role: string
+    organization: MembershipOrg
+  }>
+}
+
+interface Organization {
+  id: string
+  name: string
+  slug: string
+  plan: string
+  ownerId: string
+}
+
+const TIMEZONES = [
+  { value: "Africa/Abidjan", label: "Africa/Abidjan (GMT+0)" },
+  { value: "Africa/Casablanca", label: "Africa/Casablanca (GMT+1)" },
+  { value: "Africa/Dakar", label: "Africa/Dakar (GMT+0)" },
+  { value: "Africa/Lagos", label: "Africa/Lagos (GMT+1)" },
+  { value: "Africa/Johannesburg", label: "Africa/Johannesburg (GMT+2)" },
+  { value: "Europe/Paris", label: "Europe/Paris (GMT+1)" },
+  { value: "Europe/London", label: "Europe/London (GMT+0)" },
+  { value: "America/New_York", label: "America/New_York (GMT-5)" },
+  { value: "UTC", label: "UTC" },
+]
+
 export function SettingsView() {
   const { theme, setTheme } = useTheme()
+
+  // Profile state
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [avatarUrl, setAvatarUrl] = useState("")
+  const [locale, setLocale] = useState("fr")
+  const [timezone, setTimezone] = useState("Africa/Abidjan")
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  // Organization state
+  const [organization, setOrganization] = useState<Organization | null>(null)
+  const [orgName, setOrgName] = useState("")
+  const [loadingOrg, setLoadingOrg] = useState(true)
+  const [savingOrg, setSavingOrg] = useState(false)
+
+  const canEditOrg =
+    profile?.role === "OWNER" || profile?.role === "ADMIN"
+
+  const fetchProfile = useCallback(async () => {
+    setLoadingProfile(true)
+    try {
+      const res = await fetch("/api/me", { credentials: "include" })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      const u: Profile = json.user
+      setProfile(u)
+      setName(u.name || "")
+      setEmail(u.email || "")
+      setAvatarUrl(u.avatarUrl || "")
+      setLocale(u.locale || "fr")
+      setTimezone(u.timezone || "Africa/Abidjan")
+    } catch (e) {
+      console.error("[settings] fetch /api/me error:", e)
+      toast.error("Impossible de charger votre profil")
+    } finally {
+      setLoadingProfile(false)
+    }
+  }, [])
+
+  const fetchOrganization = useCallback(async () => {
+    setLoadingOrg(true)
+    try {
+      const res = await fetch("/api/organization", { credentials: "include" })
+      if (!res.ok) {
+        // 404 is fine — user has no org yet
+        if (res.status !== 404) throw new Error(`HTTP ${res.status}`)
+        return
+      }
+      const json = await res.json()
+      const org: Organization = json.organization
+      setOrganization(org)
+      setOrgName(org.name)
+    } catch (e) {
+      console.error("[settings] fetch /api/organization error:", e)
+    } finally {
+      setLoadingOrg(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchProfile()
+    fetchOrganization()
+  }, [fetchProfile, fetchOrganization])
+
+  const handleSaveProfile = async () => {
+    setSavingProfile(true)
+    try {
+      const res = await fetch("/api/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          avatarUrl: avatarUrl.trim() || null,
+          locale,
+          timezone,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        const msg =
+          (json && (json.error || json.message)) ||
+          `Erreur ${res.status}`
+        toast.error(`Erreur : ${msg}`)
+        return
+      }
+      // Update local state from server response
+      const u: Profile = json.user
+      if (u) {
+        setProfile((prev) =>
+          prev ? { ...prev, ...u } : prev
+        )
+        setName(u.name || name)
+        setEmail(u.email || email)
+        setAvatarUrl(u.avatarUrl || "")
+        setLocale(u.locale || locale)
+        setTimezone(u.timezone || timezone)
+      }
+      toast.success("Profil mis à jour")
+    } catch (e) {
+      console.error("[settings] save profile error:", e)
+      toast.error("Erreur réseau, réessayez")
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const handleSaveOrg = async () => {
+    if (!organization) return
+    setSavingOrg(true)
+    try {
+      const res = await fetch("/api/organization", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: orgName.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        const msg =
+          (json && (json.error || json.message)) ||
+          `Erreur ${res.status}`
+        toast.error(`Erreur : ${msg}`)
+        return
+      }
+      const org: Organization = json.organization
+      setOrganization(org)
+      setOrgName(org.name)
+      toast.success("Organisation mise à jour")
+    } catch (e) {
+      console.error("[settings] save org error:", e)
+      toast.error("Erreur réseau, réessayez")
+    } finally {
+      setSavingOrg(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -40,45 +242,176 @@ export function SettingsView() {
               <User className="h-4 w-4 text-primary" />
               Profil
             </CardTitle>
+            {profile?.role && (
+              <CardDescription className="text-xs">
+                Rôle : <Badge variant="outline" className="text-[10px]">{profile.role}</Badge>
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Nom complet</Label>
-                <Input defaultValue="Adama Koné" className="h-9" />
+            {loadingProfile ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Email</Label>
-                <Input defaultValue="adama@agribusiness.ci" className="h-9" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1"><Globe className="h-3 w-3" /> Langue</Label>
-                <Select defaultValue="fr">
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fr">Français</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Fuseau horaire</Label>
-                <Select defaultValue="abidjan">
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="abidjan">Africa/Abidjan (GMT+0)</SelectItem>
-                    <SelectItem value="paris">Europe/Paris (GMT+1)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <Button className="w-full" onClick={() => toast.success("Profil mis à jour")}>
-              Enregistrer
-            </Button>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Nom complet</Label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="h-9"
+                      placeholder="Votre nom"
+                      disabled={savingProfile}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Email</Label>
+                    <Input
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-9"
+                      placeholder="vous@exemple.ci"
+                      disabled={savingProfile}
+                      type="email"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">URL de l&apos;avatar</Label>
+                  <Input
+                    value={avatarUrl}
+                    onChange={(e) => setAvatarUrl(e.target.value)}
+                    className="h-9"
+                    placeholder="https://..."
+                    disabled={savingProfile}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs flex items-center gap-1">
+                      <Globe className="h-3 w-3" /> Langue
+                    </Label>
+                    <Select
+                      value={locale}
+                      onValueChange={setLocale}
+                      disabled={savingProfile}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fr">Français</SelectItem>
+                        <SelectItem value="en">English</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Fuseau horaire</Label>
+                    <Select
+                      value={timezone}
+                      onValueChange={setTimezone}
+                      disabled={savingProfile}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMEZONES.map((tz) => (
+                          <SelectItem key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={handleSaveProfile}
+                  disabled={savingProfile || loadingProfile}
+                >
+                  {savingProfile ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Enregistrement…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Enregistrer
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
+
+        {/* Organisation (OWNER / ADMIN only) */}
+        {canEditOrg && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-primary" />
+                Organisation
+              </CardTitle>
+              {organization && (
+                <CardDescription className="text-xs">
+                  Slug : <code className="bg-muted px-1 rounded">{organization.slug}</code>
+                  {" · "}
+                  Plan : <Badge variant="outline" className="text-[10px]">{organization.plan}</Badge>
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loadingOrg ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : organization ? (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Nom de l&apos;organisation</Label>
+                    <Input
+                      value={orgName}
+                      onChange={(e) => setOrgName(e.target.value)}
+                      className="h-9"
+                      placeholder="Mon organisation"
+                      disabled={savingOrg}
+                      maxLength={100}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Le slug sera régénéré automatiquement à partir du nom.
+                    </p>
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={handleSaveOrg}
+                    disabled={savingOrg || orgName.trim() === organization.name}
+                  >
+                    {savingOrg ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Enregistrement…
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Enregistrer l&apos;organisation
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  Aucune organisation associée.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Apparence */}
         <Card>
@@ -138,7 +471,12 @@ export function SettingsView() {
                   <p className="text-sm font-medium">{n.label}</p>
                   <p className="text-[11px] text-muted-foreground">{n.desc}</p>
                 </div>
-                <Switch defaultChecked={n.on} onCheckedChange={() => toast.info(`${n.label} : ${n.on ? "désactivé" : "activé"}`)} />
+                <Switch
+                  defaultChecked={n.on}
+                  onCheckedChange={() =>
+                    toast.info(`${n.label} : ${n.on ? "désactivé" : "activé"}`)
+                  }
+                />
               </div>
             ))}
           </CardContent>
@@ -222,7 +560,7 @@ export function SettingsView() {
               <FileText className="h-4 w-4 text-primary" />
               Conformité & Données
             </CardTitle>
-            <CardDescription className="text-xs">Conforme APIPD · Loi n°2013-450 Côte d'Ivoire</CardDescription>
+            <CardDescription className="text-xs">Conforme APIPD · Loi n°2013-450 Côte d&apos;Ivoire</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => toast.info("Téléchargement de vos données")}>
@@ -231,7 +569,7 @@ export function SettingsView() {
             </Button>
             <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => toast.info("Demande d'effacement")}>
               <FileText className="h-3.5 w-3.5 mr-2" />
-              Demander l'effacement de mon compte
+              Demander l&apos;effacement de mon compte
             </Button>
             <Button variant="outline" size="sm" className="w-full justify-start text-destructive" onClick={() => toast.warning("Action irréversible")}>
               <FileText className="h-3.5 w-3.5 mr-2" />

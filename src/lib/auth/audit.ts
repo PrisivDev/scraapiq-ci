@@ -28,8 +28,14 @@ export type AuditAction =
   | "rate_limit_hit"
   | "account_locked"
   | "replay_detected"
+  // Task 38 — profile + DB editor mutations
+  | "user_profile_update"
+  | "org_update"
+  | "db_record_create"
+  | "db_record_update"
+  | "db_record_delete"
 
-export type AuditCategory = "auth" | "security" | "oauth" | "twofactor" | "session" | "api"
+export type AuditCategory = "auth" | "security" | "oauth" | "twofactor" | "session" | "api" | "admin"
 export type AuditSeverity = "debug" | "info" | "warn" | "error" | "critical"
 
 export async function logAudit(params: {
