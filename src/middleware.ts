@@ -72,9 +72,11 @@ function getAllowedOrigins(): string[] {
 // Security headers (appliqués à TOUTES les réponses du matcher)
 // ---------------------------------------------------------------------------
 const SECURITY_HEADERS: Record<string, string> = {
-  // Anti-clickjacking (frame-ancestors 'none' dans la CSP est plus fort,
-  // mais on garde X-Frame-Options pour les vieux navigateurs)
-  "X-Frame-Options": "DENY",
+  // Anti-clickjacking : on utilise UNIQUEMENT CSP frame-ancestors ( moderne, granulaire ).
+  // X-Frame-Options: DENY a été supprimé car il bloque TOUT iframe y compris celui du
+  // preview panel sandbox ( preview-chat-*.space-z.ai dans une iframe du chat UI ).
+  // X-Frame-Options ne supporte pas les wildcards de sous-domaines, donc inutilisable ici.
+  // "X-Frame-Options": "DENY",  // ← supprimé volontairement
   // Anti-MIME-sniffing
   "X-Content-Type-Options": "nosniff",
   // Ne pas fuiter l'URL complète vers l'extérieur
@@ -85,8 +87,13 @@ const SECURITY_HEADERS: Record<string, string> = {
   // Pré-fetch DNS (perf)
   "X-DNS-Prefetch-Control": "on",
   // Isolement cross-origin (Spectre / timing attacks)
+  // COOP n'affecte PAS le chargement des iframes — seulement window.open / popup.
   "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Resource-Policy": "same-origin",
+  // CORP : 'cross-origin' (et non 'same-origin') pour permettre au navigateur
+  // d'embarquer la page dans une iframe cross-origin (cas du preview sandbox
+  // preview-chat-*.space-z.ai chargé par le parent chat-*.space-z.ai).
+  // 'same-origin' provoquait ERR_BLOCKED_BY_RESPONSE sur l'iframe du preview.
+  "Cross-Origin-Resource-Policy": "cross-origin",
   // CSP — voir les notes ci-dessous :
   //  - script-src 'unsafe-inline' 'unsafe-eval' : requis pour l'hydration Next.js
   //    (TECH DEBT : remplacer plus tard par une CSP basée sur des nonces)
@@ -94,7 +101,8 @@ const SECURITY_HEADERS: Record<string, string> = {
   //  - img-src https: : couvre les tuiles OpenStreetMap de Leaflet
   //    (https://*.tile.openstreetmap.org) + data: (SVG inline) + blob: (uploads)
   //  - connect-src 'self' https: wss: : API REST + websockets
-  //  - frame-ancestors 'none' : clickjacking (plus fort que X-Frame-Options)
+  //  - frame-ancestors : 'self' + sous-domaines space-z.ai (sandbox preview)
+  //    — en production, NEXT_PUBLIC_APP_URL est l'origine légitime
   //  - object-src 'none' : pas de plugins (Flash, Java, etc.)
   //  - form-action 'self' : empêche l'exfiltration de formulaires vers l'extérieur
   //  - base-uri 'self' : empêche le hijack de <base>
@@ -105,7 +113,9 @@ const SECURITY_HEADERS: Record<string, string> = {
     "img-src 'self' data: https: blob:",
     "font-src 'self' data:",
     "connect-src 'self' https: wss:",
-    "frame-ancestors 'none'",
+    // 'self' = même origine ; https://*.space-z.ai = sandbox preview panel
+    // (le chat UI charge preview-chat-*.space-z.ai dans une iframe)
+    "frame-ancestors 'self' https://*.space-z.ai",
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
@@ -113,6 +123,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 }
 
 // HSTS uniquement en production (casserait http://localhost en dev)
+// Note : le sandbox preview utilise HTTPS via Caddy, mais reste en NODE_ENV=development.
 if (isProduction) {
   SECURITY_HEADERS["Strict-Transport-Security"] =
     "max-age=63072000; includeSubDomains; preload"

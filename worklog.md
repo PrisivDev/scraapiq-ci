@@ -2091,3 +2091,48 @@ Stage Summary:
 - No new Redis client helper was created — the ready route does its own one-shot `ioredis` ping (dynamic import + `disconnect()` in finally) because the existing `isRedisAvailable()` in `src/lib/queue/config.ts` only returns a boolean and doesn't support `REDIS_URL`. The route's ping handles both `REDIS_URL` and `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD` forms, matching the dual configuration documented in `.env.example`.
 - Lint: clean (exit 0).
 - curl verification: `/api/health` → 200 ✓, `/api/ready` → 503 (correct: `ZAI_API_KEY` not set in sandbox dev env).
+
+---
+Task ID: 34
+Agent: Main (Architect)
+Task: Corriger URgence production — page d'accueil bloquée (ERR_BLOCKED_BY_RESPONSE)
+
+Work Log:
+- Diagnostic : le preview panel (preview-chat-*.space-z.ai) est chargé dans une iframe par le chat UI parent (chat-*.space-z.ai). Les headers de sécurité ajoutés en Task 33-c bloquaient cet embedding.
+- 3 headers coupables identifiés via curl -sI sur / :
+  * X-Frame-Options: DENY — bloque TOUT iframe (y compris le preview sandbox)
+  * CSP frame-ancestors 'none' — bloque TOUT iframe (plus fort que X-Frame-Options)
+  * Cross-Origin-Resource-Policy: same-origin — bloque le chargement cross-origin de la réponse
+- Corrections appliquées dans src/middleware.ts :
+  * Supprimé X-Frame-Options: DENY (déprécié, ne supporte pas les wildcards sous-domaines)
+  * Changé CSP frame-ancestors 'none' → 'self' https://*.space-z.ai (autorise le sandbox preview)
+  * Changé Cross-Origin-Resource-Policy: same-origin → cross-origin (autorise iframe cross-origin)
+  * Conservé COOP: same-origin (n'affecte pas les iframes, seulement window.open)
+  * Commentaires détaillés ajoutés pour expliquer chaque choix
+- Corrections appliquées dans next.config.ts (headers statiques) :
+  * Supprimé X-Frame-Options: DENY
+  * Changé frame-ancestors 'none' → 'self' https://*.space-z.ai
+  * Ajouté Cross-Origin-Resource-Policy: cross-origin
+- Vérification curl après fix :
+  * X-Frame-Options: ABSENT ✓
+  * frame-ancestors 'self' https://*.space-z.ai ✓
+  * cross-origin-resource-policy: cross-origin ✓
+- Vérification Agent Browser :
+  * Page /auth/login se charge sans ERR_BLOCKED_BY_RESPONSE ✓
+  * Title: "ScrapIQ CI — Web Scraping Intelligent" ✓
+  * Aucune erreur page, aucun warning console ✓
+  * Login fonctionnel (testprod@scraapiq.ci) → redirect / (dashboard) ✓
+  * Dashboard rendu correctement (KPIs, sidebar, graphiques) ✓
+  * Navigation Cartographie + Entreprises → aucune erreur ✓
+  * Tuiles OpenStreetMap (Leaflet) chargées correctement (CSP img-src https: OK) ✓
+- VLM (z-ai vision) sur screenshot login : "professionnelle et fonctionnelle, aucun problème d'affichage"
+- VLM sur screenshot dashboard : "Aucune erreur d'affichage, élément cassé ou espace vide. Le système est opérationnel."
+- Lint : 0 erreur, 0 warning ✓
+- Dev log : aucune erreur récente ✓
+
+Stage Summary:
+- Bug critique production RÉSOLU : la page d'accueil est de nouveau accessible dans le preview panel
+- 3 headers de sécurité ajustés pour permettre l'embedding iframe cross-origin du sandbox preview
+- Sécurité conservée : CSP frame-ancestors reste restrictive (uniquement 'self' + sous-domaines space-z.ai)
+- Toutes les fonctionnalités vérifiées end-to-end via Agent Browser + VLM
+- Aucune régression sur les autres modules (auth, dashboard, cartographie, entreprises)

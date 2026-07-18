@@ -24,8 +24,9 @@ const nextConfig: NextConfig = {
         headers: [
           // Empêche le MIME-sniffing
           { key: "X-Content-Type-Options", value: "nosniff" },
-          // Empêche le clickjacking
-          { key: "X-Frame-Options", value: "DENY" },
+          // X-Frame-Options: DENY supprimé — bloque l'iframe du preview sandbox.
+          // On utilise CSP frame-ancestors (moderne, granulaire) à la place.
+          // (voir middleware.ts pour la CSP complète)
           // Politique de référence (ne pas fuiter l'URL complète vers l'extérieur)
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           // Désactive les fonctionnalités navigateur sensibles
@@ -39,8 +40,8 @@ const nextConfig: NextConfig = {
                 { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
               ]
             : []),
-          // CSP — voir middleware.ts pour la version dynamique avec nonce
-          // Ici on met une CSP de base statique (le middleware peut l'enrichir)
+          // CSP statique (le middleware applique une version plus complète sur les routes dynamiques)
+          // Important : frame-ancestors doit autoriser le preview sandbox space-z.ai
           {
             key: "Content-Security-Policy",
             value: [
@@ -50,13 +51,16 @@ const nextConfig: NextConfig = {
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: blob: https: http:",
               "connect-src 'self' https:",
-              "frame-ancestors 'none'",
+              "frame-ancestors 'self' https://*.space-z.ai",
               "base-uri 'self'",
               "form-action 'self' https:",
               "object-src 'none'",
               "upgrade-insecure-requests",
             ].join("; "),
           },
+          // CORP : 'cross-origin' pour permettre l'embarquement en iframe cross-origin
+          // (preview-chat-*.space-z.ai chargé par le chat UI parent)
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
         ],
       },
     ]
