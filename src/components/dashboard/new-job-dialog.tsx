@@ -94,13 +94,13 @@ export function NewJobDialog({ open, onOpenChange }: NewJobDialogProps) {
         else if (!v && phase === "done") handleReset()
       }}
     >
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-start gap-3">
+      <DialogContent className="p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-2xl flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+        <DialogHeader className="px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10">
+          <div className="flex items-start gap-3 pr-8">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <Rocket className="h-6 w-6" />
             </div>
-            <div>
+            <div className="min-w-0">
               <DialogTitle className="text-xl">
                 {phase === "form" && "Nouveau job de scraping"}
                 {phase === "launching" && "Lancement en cours…"}
@@ -118,8 +118,9 @@ export function NewJobDialog({ open, onOpenChange }: NewJobDialogProps) {
           </div>
         </DialogHeader>
 
-        {phase === "form" && (
-          <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          {phase === "form" && (
+            <div className="space-y-4">
             {/* Keyword */}
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
@@ -303,9 +304,10 @@ export function NewJobDialog({ open, onOpenChange }: NewJobDialogProps) {
             </div>
           </div>
         )}
+        </div>
 
         {phase === "form" && (
-          <DialogFooter>
+          <DialogFooter className="border-t bg-background px-4 md:px-6 py-3 sticky bottom-0">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
@@ -317,7 +319,7 @@ export function NewJobDialog({ open, onOpenChange }: NewJobDialogProps) {
         )}
 
         {phase === "done" && (
-          <DialogFooter>
+          <DialogFooter className="border-t bg-background px-4 md:px-6 py-3 sticky bottom-0">
             <Button variant="outline" onClick={handleReset}>
               Fermer
             </Button>

@@ -81,7 +81,10 @@ export async function POST(req: NextRequest) {
           userId: newUser.id,
           organizationId: org.id,
           workspaceId: workspace.id,
-          role: "OWNER",
+          // Rôle : ADMIN (gestion de l'org). OWNER réservé au super-admin global (admin@prisiv.biz).
+          // Les ADMIN peuvent inviter des users selon leur plan, gérer leur org, mais n'ont pas
+          // accès aux fonctions globales de la plateforme (SaaS, DB admin, etc.).
+          role: "ADMIN",
           status: "active",
           acceptedAt: new Date(),
         },
@@ -94,7 +97,10 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       email: user.email,
       name: user.name,
-      role: "OWNER",
+      // Rôle : ADMIN (gestion de l'org). OWNER réservé au super-admin global (admin@prisiv.biz).
+      // Les ADMIN peuvent inviter des users selon leur plan, gérer leur org, mais n'ont pas
+      // accès aux fonctions globales de la plateforme (SaaS, DB admin, etc.).
+      role: "ADMIN",
       orgId: user.orgId,
       workspaceId: user.workspaceId,
       userAgent,
@@ -108,7 +114,10 @@ export async function POST(req: NextRequest) {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: "OWNER",
+        // Rôle : ADMIN (gestion de l'org). OWNER réservé au super-admin global (admin@prisiv.biz).
+        // Les ADMIN peuvent inviter des users selon leur plan, gérer leur org, mais n'ont pas
+        // accès aux fonctions globales de la plateforme (SaaS, DB admin, etc.).
+        role: "ADMIN",
         orgId: user.orgId,
       },
     })

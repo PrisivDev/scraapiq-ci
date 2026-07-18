@@ -2598,3 +2598,261 @@ Stage Summary:
 - Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification passes (modal opens from all 3 entry points, all tabs render, real data shown for members/audit/identity, empty states shown for subscription/license/quota/invoices/apiKeys).
 - 3 screenshots saved: org-details-modal-identity.png, org-details-modal-members.png, org-details-modal-quota.png.
 - No DB modifications, no .env or schema.prisma changes.
+
+---
+Task ID: 40
+Agent: Roles + Modal Improver
+Task: Fix role model (OWNER=super-admin, ADMIN=org admin) + improve modal layout/sizing
+
+Work Log:
+
+Phase 0 — Pré-requis :
+- Lu worklog.md (surtout Tasks 8, 30, 37, 38, 39) pour comprendre le contexte : DB contient admin@prisiv.biz (Thierry FANHONA) avec rôle OWNER, org "PRISIV LAB". La route /register créait à tort des OWNER. RBAC: OWNER = super-admin global, ADMIN = admin d'org.
+- Lu la route register (3 occurrences de `role: "OWNER"` lignes 84, 97, 111), rbac-nav.ts (déjà correct), organization-details-dialog.tsx (1218 lignes, modale 9 tabs), db-viewer.tsx (edit dialog), company-detail-dialog.tsx, new-job-dialog.tsx, dialog.tsx (base shadcn).
+
+Phase 1 — Fix du modèle de rôles :
+
+1a. Route register (`src/app/api/auth/register/route.ts`) :
+- 3 occurrences `role: "OWNER"` changées en `role: "ADMIN"` :
+  • Ligne 87 (Member.create dans la transaction)
+  • Ligne 103 (completeLogin après création)
+  • Ligne 120 (réponse JSON retournée au client)
+- Commentaire explicatif ajouté au-dessus de chaque changement :
+  ```ts
+  // Rôle : ADMIN (gestion de l'org). OWNER réservé au super-admin global (admin@prisiv.biz).
+  // Les ADMIN peuvent inviter des users selon leur plan, gérer leur org, mais n'ont pas
+  // accès aux fonctions globales de la plateforme (SaaS, DB admin, etc.).
+  role: "ADMIN",
+  ```
+- Logique inchangée : création User + Organization + Workspace + Member (rôle ADMIN au lieu de OWNER), completeLogin, audit "register".
+
+1b. RBAC nav (`src/lib/rbac-nav.ts`) :
+- Vérifié : `db: "OWNER"`, `saas: "OWNER"`, `backoffice: "ADMIN"`, `security: "ADMIN"` — déjà corrects, inchangés.
+- Matrice canPerform inchangée : `member:invite: "MANAGER"`, `member:remove: "ADMIN"`, `member:update_role: "ADMIN"`, `saas:manage/billing/license: "OWNER"`, `org:billing: "OWNER"`.
+- Confirmé : OWNER = super-admin global (admin@prisiv.biz), ADMIN = admin d'org (inscriptions), MANAGER/AGENT/VIEWER = rôles hiérarchiques invités.
+
+1c. Nouveaux endpoints d'invitation :
+
+**`src/app/api/organization/invite/route.ts`** (POST + GET, ~210 lignes) :
+- `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"`.
+- POST /api/organization/invite :
+  • Body : `{ email, role?: "AGENT" | "VIEWER" | "MANAGER" | "ADMIN", workspaceId? }`
+  • Auth : ADMIN ou OWNER uniquement (sinon 403).
+  • Validation email (regex), rôle required.
+  • ADMIN ne peut inviter que `MANAGER/AGENT/VIEWER` (set `ADMIN_INVITABLE_ROLES`).
+  • OWNER peut inviter `ADMIN/MANAGER/AGENT/VIEWER` mais PAS un autre OWNER (set `OWNER_INVITABLE_ROLES`).
+  • Plan limit check : si licence active, `count(active+pending members) >= license.maxUsers` → 403 avec `{ limit, current }`.
+  • Vérifie pas déjà membre/invité (status active ou pending) → 409.
+  • Vérifie workspaceId appartient bien à l'org (si fourni).
+  • Si user existe déjà : crée juste un Member pending (status: "pending", invitedBy: user.id).
+  • Si user n'existe pas : crée un User (status: "pending", sans passwordHash — doit compléter son inscription) + Member pending.
+  • Audit log `member_invited` (action existante dans le type AuditAction) — placé HORS transaction pour éviter le timeout Prisma 5s (corrigé après 1er test curl qui a échoué avec P2028).
+  • Réponse : `{ success: true, invited: true, memberId, email, role, newUserCreated }`.
+- GET /api/organization/invite :
+  • Auth ADMIN/OWNER, retourne les invitations pending de l'org avec : id, email, name, avatarUrl, role, status, invitedAt, invitedBy (id+name+email).
+
+**`src/app/api/organization/members/[id]/route.ts`** (PUT + DELETE, ~210 lignes) :
+- `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"`.
+- PUT /api/organization/members/[id] (changer le rôle) :
+  • Body : `{ role: "ADMIN" | "MANAGER" | "AGENT" | "VIEWER" }`
+  • Auth ADMIN/OWNER.
+  • ADMIN peut assigner uniquement `MANAGER/AGENT/VIEWER` (set `ADMIN_ASSIGNABLE_ROLES`).
+  • OWNER peut assigner `ADMIN/MANAGER/AGENT/VIEWER` (set `OWNER_ASSIGNABLE_ROLES`) — pas de OWNER (pas d'escalade).
+  • Ne peut pas modifier son propre rôle (400).
+  • ADMIN ne peut pas modifier un OWNER ou un autre ADMIN (403).
+  • Vérifie le membre appartient bien à l'org de l'appelant.
+  • Audit `member_role_changed` avec `{ previousRole, newRole, targetUserId }`.
+  • Réponse : `{ success: true, memberId, previousRole, newRole }`.
+- DELETE /api/organization/members/[id] (retirer un membre) :
+  • Auth ADMIN/OWNER.
+  • Ne peut pas se retirer soi-même (400).
+  • Ne peut pas retirer l'owner de l'org (organization.ownerId) — 403.
+  • ADMIN ne peut pas retirer un OWNER ou un autre ADMIN (403).
+  • Soft-delete : passe le statut à "revoked" (préserve l'historique pour audit).
+  • Audit `member_removed` (severity: warn) avec `{ previousRole, previousStatus, targetUserId }`.
+  • Réponse : `{ success: true, memberId, revoked: true }`.
+
+1d. UI "Inviter un membre" dans organization-details-dialog.tsx (Membres tab) :
+- Bouton "Inviter un membre" (visible uniquement si `canEdit` = OWNER ou ADMIN) placé dans l'en-tête `SectionCard` du tab Membres (action prop). Responsive : texte complet sur sm+, juste "Inviter" sur mobile.
+- Sous-dialog dédiée (SubDialog alias de Dialog) avec :
+  • Header sticky : titre "Inviter un membre" + description.
+  • Champ email (Input type=email, validation navigateur + JS).
+  • Select de rôle (propriété `invitableRoles` : OWNER voit 4 options, ADMIN voit 3).
+  • Hint texte qui explique ce que OWNER/ADMIN peut inviter.
+  • Plan limit hint : si licence active, affiche `X / Y membres` actuels.
+  • Bouton "Inviter" disabled si email vide ou inviting=true.
+  • Footer sticky avec boutons Annuler / Inviter.
+  • Validation Enter key pour soumettre.
+- Après succès : toast "Invitation envoyée", fermeture du sous-dialog, refresh de la liste.
+- Section "Invitations en attente" affichée séparément au-dessus du tableau des membres actifs (uniquement si >0 pending) : pour chaque invitation, avatar + nom + email + badge rôle coloré + badge "En attente" ambre + bouton suppression (corbeille).
+- Pour les membres actifs (non-pending) : ajout d'une colonne "Actions" (visible si canEdit) avec :
+  • Bouton "Rôle" qui ouvre un `<Select>` inline pour changer le rôle (AGENT/MANAGER/VIEWER, ou ADMIN pour OWNER).
+  • Bouton corbeille qui ouvre une AlertDialog de confirmation.
+- AlertDialog de confirmation de suppression avec nom du membre + warning que l'action est tracée dans l'audit log.
+- `canManageThisMember` : un ADMIN ne voit pas les boutons d'action sur les autres ADMIN ou OWNER ; un OWNER voit les boutons sur tous sauf l'owner de l'org.
+
+Phase 2 — Amélioration des modales (layout + sizing) :
+
+2a. organization-details-dialog.tsx (Dialog principale) :
+- DialogContent className :
+  - Avant : `sm:max-w-4xl p-0 gap-0 max-h-[90vh] flex flex-col overflow-hidden`
+  - Après : `p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-5xl flex flex-col overflow-hidden rounded-none sm:rounded-lg`
+  → full-screen sur mobile (h-full, max-h-[100vh], rounded-none), max-w-5xl sur desktop (vs 4xl avant — +160px plus large pour plus de contenu).
+- DialogHeader className :
+  - Avant : `px-6 pt-6 pb-4 border-b`
+  - Après : `px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10`
+  → sticky en haut, padding responsive (4 sur mobile, 6 sur desktop), background opaque pour masquer le scroll.
+- KPI grid className :
+  - Avant : `grid grid-cols-2 sm:grid-cols-3 gap-2`
+  - Après : `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2`
+  → 6 colonnes sur desktop (vs 3 avant) pour afficher toutes les KPIs sur une seule ligne.
+- Tabs container :
+  - Avant : `overflow-x-auto -mx-1 px-1` + `TabsList className="h-auto flex-wrap"`
+  - Après : `flex overflow-x-auto border-b -mx-4 md:-mx-6 px-4 md:px-6` + `TabsList className="h-auto flex-nowrap sm:flex-wrap bg-transparent p-0 rounded-none"`
+  → horizontal scrollable sur mobile, wrap sur desktop, border-b pour séparer visuellement du contenu, TabsList transparent pour mieux s'intégrer.
+- Tab content : `mt-3` → `mt-4` (tous les 9 TabsContent) pour plus d'espacement.
+- Tab content wrapper :
+  - Avant : `flex-1 overflow-y-auto px-6 py-4 space-y-4`
+  - Après : `flex-1 overflow-y-auto p-4 md:p-6 space-y-4`
+  → padding responsive.
+- Footer sticky ajouté en bas (avant il n'y en avait pas) :
+  ```tsx
+  <div className="border-t bg-background px-4 md:px-6 py-3 flex items-center justify-end gap-2 sticky bottom-0 z-10">
+    <Button variant="outline" onClick={() => onOpenChange(false)}>Fermer</Button>
+  </div>
+  ```
+
+2b. db-viewer edit/create dialog :
+- DialogContent :
+  - Avant : `sm:max-w-2xl max-h-[85vh] overflow-y-auto`
+  - Après : `p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-2xl flex flex-col overflow-hidden rounded-none sm:rounded-lg`
+  → full-screen mobile, max-w-2xl desktop, flex-col avec sticky header/footer.
+- DialogHeader : ajout `px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10`.
+- Title et description passés à `text-base` et `text-xs` pour compacité.
+- Layout des champs : avant `grid grid-cols-3 gap-3` (label 1/3, input 2/3, toujours), maintenant :
+  - Champs locked (id, date, sensitive) → `grid-cols-1` (pleine largeur, read-only).
+  - Champs éditables → `grid-cols-1 sm:grid-cols-[140px_1fr]` (label 140px, input prend le reste).
+  → meilleure densité sur desktop, empilage sur mobile.
+- Body wrapper : `space-y-3 py-2` → `flex-1 overflow-y-auto p-4 md:p-6 space-y-3` (scroll interne).
+- DialogFooter : ajout `border-t bg-background px-4 md:px-6 py-3 sticky bottom-0`.
+- Ajout import `cn` pour le className conditionnel.
+
+2c. company-detail-dialog.tsx :
+- DialogContent :
+  - Avant : `max-w-2xl max-h-[90vh] overflow-y-auto`
+  - Après : `p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-3xl flex flex-col overflow-hidden rounded-none sm:rounded-lg`
+  → élargi de 2xl à 3xl, full-screen mobile, sticky header/footer.
+- DialogHeader : ajout `px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10` + `pr-8` sur le contenu pour ne pas chevaucher le bouton close.
+- Body : `space-y-5` → `flex-1 overflow-y-auto p-4 md:p-6 space-y-4` (scroll interne, padding responsive).
+- Sections réorganisées en Cards (Card + CardHeader + CardTitle + CardContent) au lieu de simples `<div>` avec `<h4>` :
+  • Card "Coordonnées publiques" (Phone icon).
+  • Card "Informations légales" (FileText icon).
+  • Card "Sources & traçabilité" (Database icon).
+  • Card "Pipeline de traitement IA" (Sparkles icon).
+  → meilleure séparation visuelle, cohérence avec le design system.
+- Statut & confiance badges placés AVANT les Cards (en haut du body).
+- Pipeline IA : `flex items-center gap-1` → `flex flex-wrap items-center gap-1` (wrap sur mobile).
+- DialogFooter : ajout `border-t bg-background px-4 md:px-6 py-3 sticky bottom-0 flex-row justify-end gap-2` + boutons Fermer / Voir la fiche complète.
+- Import Separator retiré (n'est plus utilisé), import Card/CardHeader/CardTitle/CardContent ajouté.
+
+2d. new-job-dialog.tsx :
+- DialogContent :
+  - Avant : `max-w-xl max-h-[90vh] overflow-y-auto`
+  - Après : `p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-2xl flex flex-col overflow-hidden rounded-none sm:rounded-lg`
+  → élargi de xl à 2xl, full-screen mobile, sticky header/footer.
+- DialogHeader : ajout `px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10` + `pr-8` sur le contenu.
+- Body wrapper ajouté : `<div className="flex-1 overflow-y-auto p-4 md:p-6">` qui englobe les 3 phases (form/launching/done) pour le scroll interne.
+- DialogFooter (form et done) : `border-t bg-background px-4 md:px-6 py-3 sticky bottom-0` ajouté.
+
+2e. dialog.tsx (base shadcn) :
+- DialogContent className de base :
+  - Avant : `... w-full max-w-[calc(100%-2rem)] ... gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg`
+  - Après : `... w-full max-w-[calc(100vw-1rem)] ... gap-4 rounded-lg border p-4 sm:p-6 shadow-lg duration-200 sm:max-w-[calc(100vw-2rem)]`
+  → padding responsive (p-4 mobile, sm:p-6 desktop), max-w-[calc(100vw-1rem)] pour éviter débordement mobile, sm:max-w-[calc(100vw-2rem)] sur desktop. Retiré sm:max-w-lg par défaut (chaque consommateur peut spécifier son propre max-w-*).
+- L'API `className` des consommateurs prime sur la valeur par défaut via `cn()`.
+
+Phase 3 — Verification :
+
+3.1. `bun run lint` → exit 0, 0 errors, 0 warnings (vérifié après chaque phase).
+
+3.2. Dev server : redémarré avec `setsid -f bun run dev` pour résister au nettoyage de session bash. Healthy (GET /api/health 200 en <500ms).
+
+3.3. curl tests (avec auth cookies) :
+- POST /api/auth/register `{"email":"testadmin@test.ci","password":"TestAdmin2026!","name":"Test Admin","orgName":"Test Org CI"}` → 200, response: `{"success":true,"user":{"id":"cmrqfn57j0006t5qxuhbhbspo","email":"testadmin@test.ci","name":"Test Admin","role":"ADMIN","orgId":"cmrqfn57q0008t5qx3atoe6vj"}}` ✓ (ADMIN, pas OWNER)
+- GET /api/me (avec cookie testadmin@test.ci) → 200, `role: "ADMIN"`, 21 permissions (sans SaaS/DB admin). ✓
+- POST /api/auth/login `{"email":"admin@prisiv.biz","password":"AdminProd2026!"}` → 200, `role: "OWNER"` (préservé). ✓
+- GET /api/me (admin@prisiv.biz) → 200, `role: "OWNER"`, 22 permissions (toutes). ✓
+- POST /api/organization/invite `{"email":"agent1@test.ci","role":"AGENT"}` (as testadmin ADMIN) → 200, `{"success":true,"invited":true,"memberId":"...","newUserCreated":true}` ✓
+- POST /api/organization/invite `{"email":"admin2@test.ci","role":"ADMIN"}` (as testadmin ADMIN) → 400 `Rôle invalide. ADMIN peut inviter uniquement des MANAGER/AGENT/VIEWER.` ✓
+- POST /api/organization/invite `{"email":"viewer1@test.ci","role":"VIEWER"}` (as testadmin ADMIN) → 200 ✓
+- POST /api/organization/invite `{"email":"deputyadmin@test.ci","role":"ADMIN"}` (as admin@prisiv.biz OWNER) → 200 ✓
+- POST /api/organization/invite `{"email":"owner2@test.ci","role":"OWNER"}` (as admin@prisiv.biz OWNER) → 400 `Rôle invalide. OWNER peut inviter des ADMIN/MANAGER/AGENT/VIEWER.` ✓
+- GET /api/organization/invite (as testadmin) → 200, 2 invitations pending (agent1 + viewer1). ✓
+- PUT /api/organization/members/{id} `{"role":"MANAGER"}` (AGENT→MANAGER) → 200, `{"previousRole":"AGENT","newRole":"MANAGER"}` ✓
+- DELETE /api/organization/members/{id} (pending viewer) → 200, `{"success":true,"revoked":true}` ✓
+- GET /api/organization/invite après delete → 1 invitation (la MANAGER). ✓
+- AuditLog vérifié : actions `member_invited`, `member_role_changed`, `member_removed` bien loggées avec metadata complète.
+
+3.4. Agent Browser end-to-end verification :
+- Login as admin@prisiv.biz / AdminProd2026! → redirected to / (dashboard) ✓
+- Click user menu (top-right avatar) → "Organisation" menu item present ✓
+- Click "Organisation" → modal opened with full-screen layout (verified: width=1024px, height=810px on 1440x900 viewport) ✓
+- All 9 tabs visible (Identité, Membres, Workspaces, Abonnement, Licence, Quota, Factures, API Keys, Audit) ✓
+- Identité tab: "PRISIV LAB" + slug + plan badge + owner info + "Modifier" button ✓
+- Click "Membres" tab → table with 1 row (Thierry FANHONA / OWNER / active) + "Inviter un membre" button visible in section header ✓
+- Click "Inviter un membre" → sub-dialog opens with email input + role select (default "Agent") ✓
+- Type "deputy@test.ci" + open role select → shows 4 options for OWNER (Admin, Manager, Agent, Viewer) ✓
+- Select "Manager" → combobox shows "Manager" ✓
+- Click "Inviter" → toast "Invitation envoyée — deputy@test.ci a été invité(e) en tant que MANAGER" + sub-dialog closes + members list refreshes ✓
+- Members list now shows: 1 actif + "1 en attente" in description, "Invitations en attente (1)" section with deputy@test.ci + MANAGER badge + "En attente" amber badge ✓
+- Responsive test: viewport 390x844 (iPhone 14) → modal becomes FULL-SCREEN (width=374px = 390 - 8*2, height=844px = full viewport, top=0, left=8) ✓
+- viewport 1440x900 → modal max-w-5xl (width=1024px, centered, with rounded corners) ✓
+- `agent-browser errors` → empty (no JS errors, no parsing errors after console clear). ✓
+- Tested new-job-dialog : opens correctly, sticky header/footer, form fields render, sources checkboxes work ✓
+
+3.5. Cleanup : tous les utilisateurs/membres de test supprimés (testadmin@test.ci, agent1@test.ci, viewer1@test.ci, deputyadmin@test.ci, deputy@test.ci et leur org "Test Org CI"). DB revenue à son état initial : 1 user (admin@prisiv.biz, OWNER) + 1 membre (admin@prisiv.biz, OWNER, active) + 1 org (PRISIV LAB).
+
+3.6. Screenshots saved :
+- `/home/z/my-project/modal-identity-improved.png` (159 KB) — Identité tab on desktop, max-w-5xl, sticky header.
+- `/home/z/my-project/modal-members-with-invite.png` (172 KB) — Membres tab with "Inviter un membre" button.
+- `/home/z/my-project/modal-invite-subdialog.png` (164 KB) — Invite sub-dialog open with email + role select.
+- `/home/z/my-project/modal-invite-subdialog-manager.png` (164 KB) — Manager role selected.
+- `/home/z/my-project/modal-members-after-invite.png` (179 KB) — After invite: pending section visible with deputy@test.ci.
+- `/home/z/my-project/modal-mobile-fullscreen.png` (57 KB) — Full-screen modal on iPhone 14 viewport (390x844).
+- `/home/z/my-project/modal-desktop-layout.png` (159 KB) — Desktop layout (1440x900).
+- `/home/z/my-project/modal-new-job.png` (189 KB) — New Job dialog with sticky header/footer and form.
+- `/home/z/my-project/modal-members-fullpage.png` (172 KB) — Full page screenshot of members tab.
+
+Phase 4 — Work record written to `/home/z/my-project/agent-ctx/40-roles-modal-improver.md`.
+
+Stage Summary:
+- 1 register route fixe : 3 occurrences `role: "OWNER"` → `role: "ADMIN"` (lignes 87, 103, 120) + commentaires explicatifs. Nouveaux signups = ADMIN de leur org, OWNER réservé à admin@prisiv.biz (super-admin global déjà en DB).
+- 0 changement RBAC : `db` et `saas` restent `OWNER`, `backoffice` et `security` restent `ADMIN` — déjà corrects.
+- 2 nouveaux endpoints API :
+  • POST/GET /api/organization/invite (invitation de membres + listing pending)
+  • PUT/DELETE /api/organization/members/[id] (changement de rôle + retrait)
+- Sécurité :
+  • ADMIN peut inviter uniquement AGENT/VIEWER/MANAGER (pas d'ADMIN/OWNER).
+  • OWNER peut inviter ADMIN/MANAGER/AGENT/VIEWER (pas d'autre OWNER).
+  • ADMIN ne peut pas modifier/retirer un OWNER ou un autre ADMIN.
+  • Personne ne peut retirer l'owner de l'org (organization.ownerId).
+  • Personne ne peut modifier son propre rôle ou se retirer soi-même.
+  • Plan limit check : si licence active et `members.count >= license.maxUsers` → 403.
+  • Soft-delete (status → "revoked") pour préserver l'historique d'audit.
+  • Toutes les mutations audit-loggées (`member_invited`, `member_role_changed`, `member_removed`).
+- 5 modales améliorées (layout + sizing responsive) :
+  • organization-details-dialog.tsx : max-w-4xl → max-w-5xl, full-screen mobile, sticky header/footer, KPI grid 6 cols sur lg, tabs horizontal scrollable sur mobile.
+  • db-viewer edit dialog : full-screen mobile, sticky header/footer, 2-col layout pour champs éditables, full-width pour champs locked.
+  • company-detail-dialog.tsx : max-w-2xl → max-w-3xl, sections en Cards (au lieu de divs), sticky header/footer.
+  • new-job-dialog.tsx : max-w-xl → max-w-2xl, full-screen mobile, sticky header/footer, body scrollable.
+  • dialog.tsx (base shadcn) : padding responsive p-4 sm:p-6, max-w-[calc(100vw-1rem)] mobile pour éviter débordement.
+- UI Inviter un membre dans Organization Details (Membres tab) :
+  • Bouton dans l'en-tête de section (visible si canEdit = OWNER/ADMIN).
+  • Sous-dialog dédié avec email input + role select (4 options pour OWNER, 3 pour ADMIN).
+  • Section "Invitations en attente" séparée au-dessus du tableau des membres actifs.
+  • Colonne Actions dans le tableau : bouton "Rôle" (inline Select) + bouton corbeille (AlertDialog confirmation).
+- Lint : 0 errors, 0 warnings. Dev server healthy.
+- curl verification : nouveaux signups = ADMIN, admin@prisiv.biz = OWNER (préservé).
+- Agent Browser : modal layout amélioré (desktop + mobile full-screen), invite button fonctionne, sub-dialog s'ouvre avec email + role select, toast de confirmation, refresh de la liste, errors empty.
+- 9 screenshots sauvegardés.
+- Pas de modification de .env ou prisma/schema.prisma.

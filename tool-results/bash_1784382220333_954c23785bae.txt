@@ -1,0 +1,300 @@
+Task ID: 37
+Agent: Mock Org Cleaner
+Task: Remove all mock organization names from UI, replace with real /api/me data
+
+Work Log:
+- Read worklog (Tasks 33-a, 35, 36) to understand the project state: DB was just truncated for production, only 1 real org exists ("Organisation de Admin Prod" owned by admin@scraapiq.ci). Task 35 already emptied the 3 main mock-data files (mock-data.ts, dashboard-data.ts, geo-data.ts) and confirmed Back Office component-local mock logs were OUT OF SCOPE. Task 36 added a DB Viewer. The UI still showed 3 fake org names ("AgriBusiness CI", "Pharma Distribution", "BTP Express") plus "Bonjour Adama" in 6 files listed in the task brief.
+
+- Inspected all 6 target files BEFORE editing:
+  • src/components/dashboard/analytics/dashboard-header.tsx (ACTIVE header, 177 lines) — line 83 hardcoded `AgriBusiness CI`, line 90 array `["AgriBusiness CI", "Pharma Distribution", "BTP Express"]` for the tenant dropdown.
+  • src/components/dashboard/analytics/analytics-dashboard.tsx (105 lines) — line 25 hardcoded `Bonjour Adama`, line 28 hardcoded `Voici l'activité de <span>AgriBusiness CI</span>`.
+  • src/components/dashboard/views/back-office-view.tsx (1915 lines) — lines 103-112 `usersData` array of 8 fake users all with `@agribusiness.ci` emails and `org: "AgriBusiness CI"`. (auditData lines 268-281 with @agribusiness.ci emails left intact — out of scope per Task 35.)
+  • src/components/dashboard/views/team-view.tsx (184 lines) — lines 19-25 `team` array of 5 fake members with @agribusiness.ci emails; line 68 hardcoded `<p>AgriBusiness CI</p>`.
+  • src/components/dashboard/header.tsx (145 lines, OLD header) — verified NOT imported anywhere via `rg "from.*dashboard/header"` (0 matches) and `rg "dashboard/header"` (only 1 match: page.tsx imports the analytics/dashboard-header, not this one). Dead code — left untouched per task spec.
+  • src/app/auth/register/page.tsx — line 149 `placeholder="AgriBusiness CI"` on the org name input.
+
+- Confirmed /api/me response shape (route.ts): returns `user.memberships[].organization.{id,name,slug,plan}`. The DB has exactly 1 active membership per user (admin@scraapiq.ci → Organisation de Admin Prod, plan Starter). No list-members API exists yet, so empty-state approach (option a) was used for users arrays.
+
+- Step 1 — Fixed the ACTIVE dashboard-header.tsx (the one the user sees):
+  • Added `useEffect` import.
+  • Added `useState<string>("...")` for `organizationName` (loading state) and `useState<string[]>([])` for `allOrgs`.
+  • Added a `useEffect` on mount that fetches `/api/me` with `credentials: "include"`, maps `data.user.memberships` to extract `organization.name` (filtering falsy), sets `allOrgs` and `organizationName = orgs[0] || "Mon organisation"`. Wrapped with `mounted` flag to avoid setState after unmount. `.catch()` falls back to "Mon organisation".
+  • Replaced `<span className="truncate">AgriBusiness CI</span>` with `<span className="truncate">{organizationName}</span>`.
+  • Replaced `{["AgriBusiness CI", "Pharma Distribution", "BTP Express"].map((t) => ...)}` with `{allOrgs.map((t) => ...)}`.
+  • Kept the exact same DropdownMenu UI (trigger button + content + "Créer une organisation" item).
+  • Added French comment: `// Récupère le nom réel de l'organisation depuis /api/me` + `// (mock "AgriBusiness CI" / "Pharma Distribution" / "BTP Express" supprimé)`.
+  • 3 mock lines removed (1 trigger span + 1 array literal + 1 implicit count), replaced by dynamic data.
+
+- Step 2 — Fixed analytics-dashboard.tsx welcome message:
+  • Added `useState, useEffect` imports.
+  • Added state `firstName` (defaults to "") and `organizationName` (defaults to "votre organisation" — generic fallback).
+  • Added `useEffect` fetching `/api/me` — sets `firstName` from `user.name.split(" ")[0]` and `organizationName` from `user.memberships?.[0]?.organization?.name`. Wrapped with `mounted` flag + try/catch (silent fail → keep generic fallback).
+  • Replaced `Bonjour Adama 👋` with `{firstName ? \`Bonjour ${firstName}\` : "Bonjour"} 👋`.
+  • Replaced `<span className="font-medium text-foreground">AgriBusiness CI</span>` with `<span className="font-medium text-foreground">{organizationName}</span>`.
+  • 2 mock strings removed (1 user name + 1 org name), replaced by dynamic data.
+  • Did NOT touch the "38 862 entreprises" string in the export banner (out of scope — that's a company count, not an org name; Task 35 already documented it as cosmetic and out of scope).
+
+- Step 3 — Cleaned back-office-view.tsx mock users:
+  • Replaced the 8-element `usersData: UserRow[] = [...]` array (lines 103-112) with `usersData: UserRow[] = []`.
+  • Added comment: `// Production: données mock supprimées. Brancher /api/admin/users quand disponible.`
+  • Added an empty-state block in `UsersTab()` BEFORE the desktop table: when `filtered.length === 0`, renders a centered card with `<Users>` icon, heading "Aucun utilisateur", and message "Les membres de votre organisation apparaîtront ici. Invitez vos collaborateurs pour les ajouter." Matches the spec's suggested copy.
+  • Kept the table + mobile cards markup intact (they simply render nothing on empty arrays via `.map()`).
+  • 8 mock user rows removed, replaced by 1 empty-state block.
+  • Left `auditData` array (lines 268-281) intact — those @agribusiness.ci emails are part of the component-local audit logs that Task 35 explicitly noted as out of scope, and Task 37 Step 3 only mentions "the mock users array (lines ~104-111)".
+
+- Step 4 — Cleaned team-view.tsx:
+  • Added `useState, useEffect` imports.
+  • Replaced the 5-element `team: TeamMember[] = [...]` array (lines 19-25) with `team: TeamMember[] = []` + comment `// Production: données mock supprimées. Brancher /api/admin/users quand disponible.`
+  • Added `useState<string>("Mon organisation")` for `organizationName` + `useEffect` fetching `/api/me` to set it from `memberships[0].organization.name`.
+  • Replaced `<p className="font-semibold">AgriBusiness CI</p>` with `<p className="font-semibold">{organizationName}</p>`.
+  • Added empty-state block in the Membres card when `team.length === 0`: same style as back-office (icon + heading "Aucun membre" + message).
+  • 5 mock team rows removed + 1 org name string removed, replaced by 1 empty-state block + dynamic org name.
+  • Kept the roleMeta/statusMeta maps and RBAC matrix (legitimate configuration, not mock org data).
+
+- Step 5 — Verified old `src/components/dashboard/header.tsx` is dead code:
+  • `rg "from\s+[\"']@/components/dashboard/header[\"']"` → 0 matches.
+  • `rg "dashboard/header"` → only 1 match in `src/app/page.tsx:5` which imports `@/components/dashboard/analytics/dashboard-header` (the ACTIVE one).
+  • Per task spec ("If it's NOT imported anywhere, leave it (dead code)"), left header.tsx untouched.
+
+- Step 6 — Register page placeholder:
+  • Replaced `placeholder="AgriBusiness CI"` with `placeholder="Mon entreprise"` on the org name input (line 149).
+
+- Step 7 — Verification:
+  • `bun run lint` → exit 0, 0 errors, 0 warnings.
+  • Dev server already running (PID 1129, port 3000, uptime 7714s).
+  • `curl -s http://localhost:3000/api/health` → HTTP 200, `{"status":"healthy","env":"development","version":"0.2.0"}`.
+  • Agent Browser end-to-end verification (login as admin@scraapiq.ci / AdminProd2026!):
+    - Login → redirected to `/` (dashboard) ✓
+    - Header tenant button reads "Organisation de Admin Prod" (real org name from /api/me) instead of "AgriBusiness CI" ✓
+    - Clicked tenant dropdown → shows exactly 1 organization item "Organisation de Admin Prod" + the "Créer une organisation" action item (was previously 3 fake orgs) ✓
+    - Dashboard hero reads "Bonjour Admin 👋" (real user first name) + "Voici l'activité de Organisation de Admin Prod — Abidjan & Côte d'Ivoire" ✓
+    - Navigated to Back Office → "Aucun utilisateur" empty state with the message "Les membres de votre organisation apparaîtront ici. Invitez vos collaborateurs pour les ajouter." (was previously 8 fake @agribusiness.ci users) ✓
+    - Navigated to Équipe & tenants → "0 membres · 0 actifs" + organisation card reads "Organisation de Admin Prod" + "Aucun membre" empty state (was previously 5 fake members + "AgriBusiness CI" org card) ✓
+    - Navigated to /auth/register (after cookies clear) → org name input placeholder is now "Mon entreprise" (was "AgriBusiness CI") ✓
+    - Took 3 screenshots: task37-header-real-org.png, task37-backoffice-empty.png, task37-team-empty.png
+    - `agent-browser errors` → empty (no page errors)
+    - `agent-browser console` → only React DevTools info + HMR Fast Refresh messages (no warnings, no errors)
+
+- Files where mock data was NOT replaced (and why):
+  • `src/components/dashboard/header.tsx` — verified dead code (not imported anywhere). Per task spec, left untouched.
+  • `src/components/dashboard/views/back-office-view.tsx` auditData (lines 268-281) — Task 35 explicitly noted the Back Office component-local mock logs as OUT OF SCOPE ("uses its own embedded mock logs which are component-local, NOT from the mock-data files — out of scope"). Task 37 Step 3 specifically mentions only "the mock users array (lines ~104-111)".
+  • `src/components/dashboard/views/settings-view.tsx:52` `defaultValue="adama@agribusiness.ci"` — this is a user profile email mock, not in the task's list of 6 files; not an organization name.
+  • `src/components/dashboard/views/security-view.tsx:390` `{ type: "Email", original: "adama@agribusiness.ci", masked: "ad****@agribusiness.ci" }` — this is a PII/masking demonstration, not in the task's list of 6 files; not an organization name.
+
+Stage Summary:
+- All 6 files in the task scope processed:
+  • dashboard-header.tsx (ACTIVE): 3 mock org-name strings → /api/me fetch + dynamic org name + dynamic dropdown list. Loading state "..." + fallback "Mon organisation".
+  • analytics-dashboard.tsx: "Bonjour Adama" + "AgriBusiness CI" → "Bonjour {firstName}" + "{organizationName}" from /api/me. Generic fallback "votre organisation".
+  • back-office-view.tsx: 8 mock users emptied to `[]` + empty state "Aucun utilisateur".
+  • team-view.tsx: 5 mock members emptied to `[]` + empty state "Aucun membre" + dynamic org name from /api/me.
+  • header.tsx (OLD): left untouched (verified dead code).
+  • register/page.tsx: placeholder "AgriBusiness CI" → "Mon entreprise".
+- All 3 ACTIVE components (header, analytics, team) fetch /api/me client-side in a useEffect, with `mounted` flag and try/catch fallbacks. The /api/me endpoint is unchanged (Task 36 verified it returns `user.memberships[].organization.{name,slug,plan}`).
+- Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification confirms the user now sees "Organisation de Admin Prod" everywhere (header tenant selector, analytics hero, team view org card) instead of the 3 fake orgs. Back Office Users tab + Team view Membres card show clean empty states.
+- 3 screenshots saved: task37-header-real-org.png, task37-backoffice-empty.png, task37-team-empty.png.
+- Out-of-scope mock @agribusiness.ci emails in settings-view, security-view, and back-office auditData left intact (not in the task's 6-file scope; Task 35 already noted them as out of scope).
+
+---
+Task ID: 38
+Agent: Profile + DB Editor Builder
+Task: Make profile management and DB editing functional for OWNER
+
+Work Log:
+- Read worklog.md (Tasks 33-a, 35, 36, 37) to understand project state: DB truncated, 1 OWNER user (admin@scraapiq.ci), /api/admin/db exists (read-only, OWNER-only, 23-table summary), settings-view.tsx has hardcoded mock profile (Adama Koné / adama@agribusiness.ci), db-viewer.tsx is read-only.
+
+- Phase 1a — PUT /api/me (extend existing src/app/api/me/route.ts):
+  * Added PUT handler alongside existing GET (kept GET shape unchanged).
+  * Auth: any authenticated user (users edit their own profile).
+  * Accepts JSON body: { name?, email?, locale?, timezone?, avatarUrl? }.
+  * Validates: email format (regex), locale whitelist (fr, en), timezone whitelist (9 entries), name length 1–100, avatarUrl length ≤ 500.
+  * Email uniqueness check (409 if taken by another user).
+  * Sanitizes inputs: trim whitespace, lowercase email.
+  * Logs to AuditLog: action "user_profile_update", category "auth", metadata { fields: [...] }.
+  * Returns updated user (id, email, name, avatarUrl, locale, timezone, twoFactorEnabled) + updatedFields list.
+
+- Phase 1b — GET/PUT /api/organization (new file src/app/api/organization/route.ts):
+  * GET: returns the user's active-membership organization + workspace + role (from db.member.findFirst).
+  * PUT: OWNER/ADMIN only (403 otherwise). Accepts { name? }.
+  * Validates name (1–100 chars), regenerates slug via slugify (lowercase, strip accents, hyphenate, max 60 chars) with uniqueness check (suffix -2, -3, ... if needed).
+  * Logs to AuditLog: action "org_update", category "admin", metadata { organizationId, fields }.
+
+- Phase 1c — Generic CRUD endpoints (new file src/lib/db-admin.ts + 2 route files):
+  * Created src/lib/db-admin.ts with shared helpers:
+    - ALLOWED_TABLES whitelist (23 tables, same as /api/admin/db MODELS list).
+    - BLOCKED_FIELDS set: passwordHash, twoFactorSecret, twoFactorBackupCodes, refreshTokenHash, tokenHash, secret, hashedKey, keyHash, accessToken, refreshToken.
+    - AUTO_FIELDS set: id, createdAt, updatedAt, lastSeenAt, usedAt, revokedAt, expiresAt.
+    - SENSITIVE_FIELDS set (for read-side masking).
+    - getModel(table) — typed dynamic Prisma model accessor.
+    - sanitizeRow(row) — masks sensitive fields, serializes Dates to ISO.
+    - stripBlocked(input) — returns { data, stripped } with blocked/auto fields removed.
+    - coerceValue(key, value) — parses booleans (twoFactorEnabled, isActive, etc.), ints (maxUsers, amountXOF, etc.), floats (lat, lng, rating, threshold).
+    - getColumns(table) — uses Prisma DMMF (Prisma.dmmf.datamodel.models) to return column names even when the table is empty (handles empty-table create-dialog case).
+    - TABLE_TO_MODEL map (lowercase table → PascalCase model name).
+  * Created src/app/api/admin/db/[table]/route.ts:
+    - GET: paginated list (page/limit query params, default 20, max 100). Returns { table, columns, rows (sanitized), pagination { page, limit, total, totalPages } }. Uses Promise.all for count + findMany with skip/take. Try/catch fallback for orderBy createdAt (some tables like member don't have it).
+    - POST: create. Strips BLOCKED_FIELDS + AUTO_FIELDS, coerces types, drops undefined values. Returns sanitized created row. Logs db_record_create (severity warn). 201 on success.
+    - Both: OWNER only (401 unauth, 403 non-OWNER), table name validated against whitelist (400 if not allowed).
+  * Created src/app/api/admin/db/[table]/[id]/route.ts:
+    - GET: fetch single record by id (sanitized). 404 if not found.
+    - PUT: partial update. Existence check first (404 if missing), then update with stripped/coerced data. Logs db_record_update (severity warn).
+    - DELETE: existence check, snapshot saved to AuditLog, then delete. Self-deletion blocked (400 if table=user AND id=user.id). Logs db_record_delete (severity error — flag worthy).
+    - All: OWNER only, table validated against whitelist.
+
+- Phase 1d — Extended AuditLog types (src/lib/auth/audit.ts):
+  * Added 5 new AuditAction values: user_profile_update, org_update, db_record_create, db_record_update, db_record_delete.
+  * Added "admin" to AuditCategory type.
+
+- Phase 2 — settings-view.tsx functional profile form:
+  * Added useState for: profile, name, email, avatarUrl, locale, timezone, loadingProfile, savingProfile, organization, orgName, loadingOrg, savingOrg.
+  * Added useEffect on mount that fetches /api/me (populates profile + form fields) and /api/organization (populates org card).
+  * Profile card: replaced defaultValue="Adama Koné" with value={name} (controlled), defaultValue="adama@agribusiness.ci" with value={email}, static locale/timezone Selects with controlled values from profile state. Added avatarUrl field. Loading spinner (Loader2) shown while fetching.
+  * "Enregistrer" button: onClick={handleSaveProfile} → PUT /api/me with all 5 fields. Button shows spinner + "Enregistrement…" while saving, disabled. Toast success "Profil mis à jour" / error "Erreur : {msg}". Updates local state from server response after save.
+  * Added Organisation card (visible only if profile.role === OWNER || ADMIN): shows org name (editable), slug + plan (read-only badges), "Enregistrer l'organisation" button calls PUT /api/organization. Button disabled if name unchanged.
+  * All other cards (Apparence, Notifications, Facturation, Sécurité, Conformité) preserved unchanged.
+
+- Phase 3 — db-viewer.tsx editable:
+  * Added "Mode édition" Switch at top.
+  * When edit mode ON: shows paginated rows from /api/admin/db/[table]?page=X&limit=20 (replaces the 5-sample-rows view). Pagination controls (← page X/Y →) shown when totalPages > 1.
+  * Each row has action buttons: Modifier (pencil) + Supprimer (trash). Row click also opens edit dialog.
+  * "Nouveau" button + "Créer le premier enregistrement" link open the create dialog.
+  * Create dialog: builds empty form from pageData.columns (or fetches columns from API for empty tables via Prisma DMMF). All fields shown as Inputs, sensitive + id + date fields disabled with Lock icon. Boolean fields use Select (true/false).
+  * Edit dialog: same shape but pre-populated with row values. Dates shown as disabled read-only text. Sensitive fields show "••••••••" disabled.
+  * Save: PUT or POST to /api/admin/db/[table]{/[id]} with body containing only editable, non-empty fields (empty strings skipped to let Prisma apply defaults). After success: closes dialog, re-fetches rows + summary, toast success.
+  * Delete: AlertDialog confirmation with record id + table name. After confirm: DELETE to /api/admin/db/[table]/[id], toast success, refresh data.
+  * Added editTable state to capture the table at dialog-open time (avoids stale-closure race when fetchData() refreshes selectedTable after a save).
+  * fetchData() updated to NOT reset selectedTable on refreshes (only auto-selects on first load).
+
+- Phase 4 — Verification:
+  * bun run lint → 0 errors, 0 warnings.
+  * curl tests (with auth cookie from /api/auth/login):
+    - GET /api/me → 200 (returns admin@scraapiq.ci, Admin Prod, OWNER role, 21 permissions, 1 membership).
+    - PUT /api/me {"name":"Admin Prod Modifié"} → 200, name updated, updatedFields=["name"].
+    - GET /api/organization → 200 (returns "Organisation de Admin Prod", plan starter).
+    - PUT /api/organization {"name":"ScrapIQ CI Officiel"} → 200, name + slug regenerated ("scrapiq-ci-officiel").
+    - GET /api/admin/db/user?page=1&limit=5 → 200, paginated, 19 columns, 1 row, passwordHash="***hidden***".
+    - POST /api/admin/db/company {name, sector, commune, city, phone, email, status} → 201, created.
+    - PUT /api/admin/db/company/{id} {name, rating, reviewCount} → 200, updated.
+    - DELETE /api/admin/db/company/{id} → 200, deleted; verify list now empty.
+    - PUT /api/admin/db/user/{self} {passwordHash:"hacked", name:"Try Hack"} → 200, passwordHash stripped (only name changed) — server logs "PUT stripped blocked fields: [ 'passwordHash' ]".
+    - DELETE /api/admin/db/user/{self} → 400 "Vous ne pouvez pas supprimer votre propre compte via le DB editor".
+    - GET /api/admin/db/nonexistent → 400 "Table non autorisée".
+    - AuditLog confirms all 5 new action types logged with full metadata (db_record_create, db_record_update, db_record_delete with snapshot, user_profile_update, org_update).
+  * Agent Browser end-to-end verification (login as admin@scraapiq.ci / AdminProd2026!):
+    - Login → redirected to / (dashboard).
+    - Navigate to Paramètres → Profile card shows "Admin Prod" + "admin@scraapiq.ci" (NOT Adama Koné). Organisation card visible (OWNER role). Loading spinners flash briefly on mount.
+    - Edit name to "Admin Prod Modifié" → click "Enregistrer" → spinner shows "Enregistrement…" → toast "Profil mis à jour" → name updated in input.
+    - Reload page → name still "Admin Prod Modifié" (persisted in DB). ✓
+    - Navigate to Base de données → enable "Mode édition" → click "company" table → "Créer le premier enregistrement" → dialog opens with all 20 company columns (id, name, sector, commune, city, address, phone, email, website, rccm, lat, lng, rating, reviewCount, status, description, employees, sources, createdAt, updatedAt).
+    - Fill name="Société Test CI", sector="BTP", commune="Plateau", city="Abidjan" → click Enregistrer → toast "Enregistrement créé" → dialog closes, table badge updates from "0" to "1", new row appears in paginated list.
+    - Click row → edit dialog opens with all fields pre-populated (id disabled, createdAt/updatedAt disabled, sensitive fields locked). Edit name to "Société Test CI Renamed" + rating="4.7" → click Enregistrer → toast "Enregistrement mis à jour" → row updated.
+    - Click Supprimer → AlertDialog "Supprimer cet enregistrement ?" with id + table name → click "Supprimer" → toast "Enregistrement supprimé" → row removed, table badge back to "0".
+    - `agent-browser errors` → empty (no page errors, no console errors).
+  * Screenshots:
+    - /home/z/my-project/profile-edit.png (122 KB) — profile form with real data.
+    - /home/z/my-project/db-edit-dialog.png (107 KB) — edit dialog with all company fields populated.
+
+- Phase 5 — Cleanup:
+  * Restored admin name to "Admin Prod" via PUT /api/me (left test data clean).
+  * Restored org name to "Organisation de Admin Prod" via PUT /api/organization.
+  * All test companies deleted during verification.
+
+Stage Summary:
+- 5 new API endpoints (PUT /api/me, GET/PUT /api/organization, GET/POST /api/admin/db/[table], GET/PUT/DELETE /api/admin/db/[table]/[id]).
+- 1 new shared lib (src/lib/db-admin.ts) with whitelist + blocked-fields + DMMF column lookup + type coercion.
+- 5 new AuditAction types + 1 new AuditCategory.
+- 2 components fully rewritten: settings-view.tsx (profile + org forms fetch + save), db-viewer.tsx (edit-mode + paginated CRUD UI).
+- All mutations logged to AuditLog with full context (table, recordId, fields, snapshot for deletes).
+- Security: OWNER-only on /api/admin/db/*, table whitelist (no SQL injection), BLOCKED_FIELDS strip passwordHash/twoFactorSecret/etc., self-deletion blocked.
+- Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification passes (profile edit + persist, DB create + edit + delete).
+- 2 screenshots saved (profile-edit.png, db-edit-dialog.png).
+- Work record written to /home/z/my-project/agent-ctx/38-profile-db-editor-builder.md.
+
+---
+Task ID: 39
+Agent: Org Details Modal Builder
+Task: Create rich Organization Details modal with all pertinent info (members, workspaces, subscription, license, quota, invoices, API keys, audit log)
+
+Work Log:
+- Read worklog.md (Tasks 33-a, 36, 37, 38) to understand project state. The task brief expected admin@scraapiq.ci / AdminProd2026! / "Organisation de Admin Prod", but the actual DB now contains a different OWNER: Thierry FANHONA / admin@prisiv.biz (still OWNER role) owning the "PRISIV LAB" org (plan Starter, slug prisiv-lab). The endpoint is fully dynamic (reads from DB), so it works with whatever user/org is currently configured. Login verified with admin@prisiv.biz / AdminProd2026! (same password).
+
+Phase 1 — Created `/api/organization/details/route.ts` (new file, ~290 lines):
+  * `export const dynamic = "force-dynamic"` + `export const runtime = "nodejs"` per task spec.
+  * Auth: any authenticated user (`getAuthUser()` — 401 if not). Determines the org via `db.member.findFirst({ where: { userId, status: "active" } })` (404 if no membership).
+  * Response shape (matches the task spec exactly):
+    - `organization`: full Organization record (with `settings` parsed from JSON string to object).
+    - `owner`: User row joined from `organization.ownerId` (select: id, name, email, avatarUrl, lastLoginAt, createdAt) + `role` derived from the corresponding Member row.
+    - `workspaces`: all `db.workspace.findMany({ where: { organizationId } })`.
+    - `members`: `db.member.findMany({ where: { organizationId } })` mapped with their `db.user` info (id, name, email, avatarUrl, status, lastLoginAt, createdAt) + role + permissions (JSON-parsed) + invitedBy + invitedAt + acceptedAt.
+    - `subscription`: `db.subscription.findUnique({ where: { organizationId } })` (null if none).
+    - `license`: `db.license.findFirst({ where: { organizationId, status: "active" } })` (null if none) — exposes `keyMasked` only (full key never sent to client; masked as `XXXXXXXX-****-****-XXXX`).
+    - `quota`: `db.quotaUsage.findUnique({ where: { organizationId_periodYear_periodMonth: { organizationId, periodYear: currentYear, periodMonth: currentMonth } } })` — null if no row for the current month.
+    - `invoices`: all `db.invoice.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } })` (items JSON-parsed).
+    - `apiKeys`: `db.apiKey.findMany({ where: { userId: { in: memberUserIds } }, orderBy: { createdAt: "desc" } })` — only `keyPrefix` exposed (never `keyHash`), with ownerName/ownerEmail joined from the userMap.
+    - `stats`: computed aggregates — totalMembers (status="active"), totalMembersPending (status="pending"), totalWorkspaces, totalInvoices, totalApiKeys (not revoked), totalCompanies (`db.company.count()` — global since Company has no orgId), memberSince (org.createdAt), daysActive (now - createdAt in days).
+    - `auditLogs`: `db.auditLog.findMany({ where: { userId: { in: memberUserIds } }, orderBy: { createdAt: "desc" }, take: 20 })` — JOINED with userEmail/userName from userMap. Returned as `null` for non-OWNER/ADMIN users (canSeeAudit=false).
+    - `currentRole` + `canSeeAudit` (true if role ∈ {OWNER, ADMIN}).
+  * `parseJson<T>(value, fallback)` helper handles JSON parsing safely (returns fallback on null/invalid).
+  * `maskKey(key)` helper masks license keys: shows first 8 + last 4 chars with `****` in between (defensive — keys are cuid so this is cosmetic).
+
+Phase 2 — Created `/src/components/dashboard/organization-details-dialog.tsx` (new file, ~900 lines):
+  * Rich shadcn Dialog (`max-w-4xl`, `max-h-[90vh]`, scrollable body, header with org logo + name + plan/slug/member-since badges).
+  * KPI grid (2 cols mobile, 3 cols desktop): Membres actifs, Workspaces, Plan, Quota API, Entreprises, Jours actifs — each card has icon + label + value + sub-text.
+  * Tabs (9): Identité · Membres · Workspaces · Abonnement · Licence · Quota · Factures · API Keys · Audit. The Audit tab is only rendered for OWNER/ADMIN (`data.canSeeAudit`).
+  * Identité tab: Nom (inline editable for OWNER/ADMIN via Input + Save/X buttons calling `PUT /api/organization` with toast + refresh), Slug (code badge), Plan (colored badge), Owner (avatar + name + email + role badge), Créé le / Modifié le (formatted with date-fns fr locale), Settings JSON (pretty-printed in a `<pre>` block).
+  * Membres tab: shadcn Table with columns Membre (avatar+name+email), Rôle (icon badge with color per role: OWNER=amber, ADMIN=emerald, MANAGER=sky, AGENT=violet, VIEWER=slate), Statut (color-coded badge: active=green, pending=amber, revoked=red), Invité le / Accepté le / Dernier login (hidden on smaller screens for responsive). Empty state if 0 members.
+  * Workspaces tab: grid of cards (icon + name + slug badge + created date). Empty state if 0.
+  * Abonnement tab: Statut badge, Plan, Cycle, Montant (FCFA), Période start/end, Méthode de paiement, Annulation fin de période, Fin d'essai. Empty state if no subscription.
+  * Licence tab: Clé (masked code badge), Plan + Nom + Statut badges, 6 LimitTile cards (Utilisateurs/Entreprises/Appels API/Exports/Sources/Workspaces), Features chips (Badge components), Activée le / Expire le. Empty state if no license.
+  * Quota tab: 5 progress bars — Appels API, Entreprises stockées, Exports, Scrape jobs (no max shown), Utilisateurs. Each bar uses the QuotaBar sub-component which computes pct = current/max and colors: <60% green, 60-90% amber, ≥90% red. Empty state if no quota row for the current month.
+  * Factures tab: shadcn Table — Numéro (mono), Montant HT, TVA (hidden md), Total TTC, Statut (badge), Échéance (hidden lg), Payée le (hidden lg). Empty state if 0 invoices.
+  * API Keys tab: shadcn Table — Nom (with owner email), Préfixe (mono `sk_live_xxxx…`), Scopes (chips, +N overflow), Dernier usage (hidden lg), Expire le (hidden lg), Statut (computed from revokedAt/expiresAt → revoked/expired/active). Empty state if 0 keys.
+  * Audit tab (OWNER/ADMIN only): timeline of 20 last events. Each item: severity badge (color-coded), action badge, category badge, timestamp (formatted with date-fns fr), user email + IP. Collapsible metadata JSON viewer (`<Collapsible>` from shadcn — "Voir les détails" / "Masquer les détails"). Empty state if 0 logs.
+  * Loading state: 6 skeleton KPI cards + skeleton tabs + 4 skeleton rows (CSS `animate-pulse`).
+  * Error state: red icon + "Impossible de charger les détails" + error message + "Réessayer" button calling `fetchData()`.
+  * Empty states for every section (icon + title + descriptive message).
+  * Helper functions: `formatDate` (date-fns `format` with `fr` locale, default pattern `d MMM yyyy`), `formatDateTime` (`d MMM yyyy 'à' HH:mm`), `formatCurrency` (`new Intl.NumberFormat("fr-FR").format(n) + " FCFA"`), `formatNumber`, `getInitials`, `progressColorClass` (green/amber/red), `statusBadgeClass` (active/paid=green, pending/trialing=amber, revoked/cancelled/expired/failed=red), `severityBadgeClass`, `PLAN_BADGE`/`ROLE_BADGE` color maps.
+  * Fully responsive: dialog `max-w-4xl`, body scrolls vertically (`overflow-y-auto`), tabs wrap on small screens (`overflow-x-auto`), tables hide non-essential columns on mobile (`hidden md:table-cell` / `hidden lg:table-cell`).
+  * Fetches `/api/organization/details` with `credentials: "include"` on dialog open (useEffect on `open` prop).
+  * Inline org name edit (Identité tab, OWNER/ADMIN only): Input + Save/X buttons. Save calls `PUT /api/organization` with `{ name }`, toast "Organisation renommée" on success / error toast on failure, then re-fetches the details. Escape key cancels edit, Enter saves.
+  * All lucide-react icons used: Building2, Users, Calendar, CreditCard, KeyRound, FileText, ScrollText, Activity, Boxes, ShieldCheck, Loader2, Save, X, ChevronDown, ChevronRight, Crown, Shield, UserCog, User, Eye, Mail, AlertCircle, Hash, Layers, Gauge, Receipt, MapPin.
+
+Phase 3 — Wired the modal into 3 entry points:
+  1. **UserMenu** (`src/components/auth/user-menu.tsx`): added `Building2` icon import, `OrganizationDetailsDialog` import, `orgDetailsOpen` state, a new `DropdownMenuItem` labelled "Organisation" (placed between the user info header and the "Sécurité" link, separated by `DropdownMenuSeparator`s). The item uses `onSelect={(e) => { e.preventDefault(); setOrgDetailsOpen(true) }}` so the dropdown closes but the modal opens. Wrapped the existing `<DropdownMenu>` in a React fragment `<>...</>` to also render the dialog.
+  2. **Dashboard header** (`src/components/dashboard/analytics/dashboard-header.tsx`): added `Info` icon import, `OrganizationDetailsDialog` import, `orgDetailsOpen` state, and a new `DropdownMenuItem` labelled "Voir les détails" inside the existing tenant selector dropdown (placed after the orgs list, before "Créer une organisation"). Renders the dialog at the end of the component.
+  3. **Team view** (`src/components/dashboard/views/team-view.tsx`): added `Info` icon import, `OrganizationDetailsDialog` import, `orgDetailsOpen` state, and a new "Voir les détails" Button (with Info icon, `variant="outline" size="sm"`) next to the existing "Paramètres" button on the organisation card. Renders the dialog at the end of the view.
+
+Phase 4 — Verification:
+  * `bun run lint` → exit 0, 0 errors, 0 warnings (after each phase, run multiple times).
+  * Dev server log: GET /api/organization/details → 200 in ~25-45ms (multiple successful calls during browser testing). No errors, no warnings.
+  * curl test:
+    - `POST /api/auth/login` with `{"email":"admin@prisiv.biz","password":"AdminProd2026!"}` → 200, success=true, role=OWNER, orgId set.
+    - `GET /api/organization/details` (with auth cookie) → 200, full JSON returned: organization (PRISIV LAB, starter, slug prisiv-lab), owner (Thierry FANHONA / admin@prisiv.biz / avatarUrl / OWNER role), workspaces (1: "Workspace principal"), members (1: Thierry FANHONA / OWNER / active / invitedAt+acceptedAt 18 juil. 2026), subscription=null, license=null, quota=null, invoices=[], apiKeys=[], stats ({totalMembers:1, totalMembersPending:0, totalWorkspaces:1, totalInvoices:0, totalApiKeys:0, totalCompanies:0, memberSince, daysActive:0}), auditLogs (20 entries), currentRole=OWNER, canSeeAudit=true.
+  * Agent Browser end-to-end verification (login as admin@prisiv.biz / AdminProd2026!):
+    - Login → redirected to / (dashboard) ✓
+    - Opened UserMenu (top-right avatar) → "Organisation" menu item present (with Building2 icon) ✓
+    - Clicked "Organisation" → modal opened, KPI grid rendered with "1 membre actif, 0 en attente", "1 workspace", "Plan: starter", "Quota API: 0", "Entreprises: 0", "Jours actifs: 0" ✓
+    - All 9 tabs visible: Identité, Membres, Workspaces, Abonnement, Licence, Quota, Factures, API Keys, Audit ✓ (Audit visible because canSeeAudit=true for OWNER)
+    - Identité tab: shows "PRISIV LAB" + slug "prisiv-lab" + Plan "Starter" + Owner (Thierry FANHONA <admin@prisiv.biz> OWNER badge) + Créé le 18 juil. 2026 + Modifié le 18 juil. 2026 + Settings JSON `{}` + "Modifier" button (visible because OWNER can edit) ✓
+    - Clicked "Modifier" → inline Input appears with current name "PRISIV LAB" prefilled + Save (check) + Cancel (X) buttons ✓
+    - Membres tab: table with 1 row — Thierry FANHONA / admin@prisiv.biz / OWNER badge / active badge / 18 juil. 2026 invited/accepted/last-login ✓
+    - Quota tab: empty state "Aucun quota enregistré" with descriptive message ✓
+    - API Keys tab: empty state "Aucune clé API" with descriptive message ✓
+    - Audit tab: 20 timeline items, each with severity badge (info/warn/error), action badge (login, org_update, user_profile_update, db_record_create, db_record_delete), category badge (auth/admin), timestamp (formatted in French "18 juil. 2026 à 12:07"), user email + IP, collapsible "Voir les détails" button → expands to show metadata JSON (`sessionId`, `jti`, `role`, `organizationId`, `fields`, etc.) ✓
+    - Tested second entry point: opened tenant dropdown (top-left "PRISIV LAB" button) → "Voir les détails" item present → clicked → modal re-opened correctly ✓
+    - Tested third entry point: navigated to "Équipe & tenants" view → "Voir les détails" button visible next to "Paramètres" on the organisation card → clicked → modal re-opened correctly ✓
+    - `agent-browser errors` → empty (no page errors, no console errors). Console only shows React DevTools info + HMR Fast Refresh messages.
+  * Screenshots saved:
+    - `/home/z/my-project/org-details-modal-identity.png` (111 KB) — Identité tab with org info + owner + settings JSON.
+    - `/home/z/my-project/org-details-modal-members.png` (114 KB) — Membres tab with Thierry FANHONA row.
+    - `/home/z/my-project/org-details-modal-quota.png` (108 KB) — Quota tab with empty state.
+
+Phase 5 — Cleanup: no test data created or deleted (all data came from existing DB state). No DB modifications, no .env or schema.prisma changes.
+
+Stage Summary:
+- 1 new API endpoint: `GET /api/organization/details` — returns 11 sections (organization, owner, workspaces, members, subscription, license, quota, invoices, apiKeys, stats, auditLogs). OWNER/ADMIN see auditLogs; others get null. License keys masked. API keys show only keyPrefix. Auth required.
+- 1 new modal component: `OrganizationDetailsDialog` (~900 lines) — 9 tabs (Identité, Membres, Workspaces, Abonnement, Licence, Quota, Factures, API Keys, Audit), 6 KPI cards, inline org name edit (OWNER/ADMIN), loading skeletons, error state with retry, empty states per section, French dates (date-fns fr locale), FCFA currency (Intl.NumberFormat fr-FR), color-coded badges per role/status/severity/plan, color-coded progress bars (green/amber/red) for quota usage, collapsible audit metadata.
+- 3 integration points wired: UserMenu dropdown (new "Organisation" item with Building2 icon), dashboard header tenant dropdown (new "Voir les détails" item), team view organisation card (new "Voir les détails" button). All three share the same component with controlled `open`/`onOpenChange` props.
+- Responsive: max-w-4xl desktop, full-screen on mobile, scrollable body, tabs wrap with horizontal scroll on small screens, table columns hidden progressively (md/lg breakpoints).
+- Lint: 0 errors, 0 warnings. Dev server healthy. End-to-end Agent Browser verification passes (modal opens from all 3 entry points, all tabs render, real data shown for members/audit/identity, empty states shown for subscription/license/quota/invoices/apiKeys).
+- 3 screenshots saved: org-details-modal-identity.png, org-details-modal-members.png, org-details-modal-quota.png.
+- No DB modifications, no .env or schema.prisma changes.

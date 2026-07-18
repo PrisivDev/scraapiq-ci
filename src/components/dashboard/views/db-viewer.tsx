@@ -55,6 +55,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 interface TableInfo {
   name: string
@@ -823,13 +824,13 @@ export function DbViewerView() {
         open={editOpen}
         onOpenChange={(o) => !savingRow && setEditOpen(o)}
       >
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+        <DialogContent className="p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-2xl flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+          <DialogHeader className="px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10">
+            <DialogTitle className="flex items-center gap-2 text-base">
               <Pencil className="h-4 w-4" />
               {editRowId ? "Modifier l'enregistrement" : "Nouvel enregistrement"}
             </DialogTitle>
-            <DialogDescription className="font-mono">
+            <DialogDescription className="font-mono text-xs">
               {selectedTable}
               {editRowId && (
                 <>
@@ -840,20 +841,31 @@ export function DbViewerView() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3">
             {Object.entries(editValues).map(([k, v]) => {
               const isSensitive = SENSITIVE_FIELDS.has(k)
               const isId = k === "id"
               const isDate = isDateField(k, v)
               const isBool = BOOL_FIELDS.has(k)
               const locked = isSensitive || isId || isDate
+              // Sensitive + id + date fields take full width (read-only),
+              // other fields share 2 columns on sm+ for better density
+              const isFullWidth = locked
               return (
-                <div key={k} className="grid grid-cols-3 gap-3 items-center">
-                  <Label className="text-xs font-mono flex items-center gap-1 col-span-1">
+                <div
+                  key={k}
+                  className={cn(
+                    "grid gap-1.5 sm:gap-3 sm:items-center",
+                    isFullWidth
+                      ? "grid-cols-1"
+                      : "grid-cols-1 sm:grid-cols-[140px_1fr]"
+                  )}
+                >
+                  <Label className="text-xs font-mono flex items-center gap-1">
                     {locked && <Lock className="h-3 w-3 text-muted-foreground" />}
                     {k}
                   </Label>
-                  <div className="col-span-2">
+                  <div>
                     {isBool && !locked ? (
                       <Select
                         value={v === "true" ? "true" : "false"}
@@ -905,7 +917,7 @@ export function DbViewerView() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t bg-background px-4 md:px-6 py-3 sticky bottom-0">
             <Button
               variant="outline"
               onClick={() => setEditOpen(false)}

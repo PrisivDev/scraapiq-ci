@@ -31,6 +31,8 @@ import {
   Gauge,
   Receipt,
   MapPin,
+  UserPlus,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -73,6 +75,31 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Dialog as SubDialog,
+  DialogContent as SubDialogContent,
+  DialogHeader as SubDialogHeader,
+  DialogTitle as SubDialogTitle,
+  DialogDescription as SubDialogDescription,
+  DialogFooter as SubDialogFooter,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 
 // ============================================================================
@@ -443,6 +470,18 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
   const [nameValue, setNameValue] = React.useState("")
   const [savingName, setSavingName] = React.useState(false)
 
+  // Invite member sub-dialog state
+  const [inviteOpen, setInviteOpen] = React.useState(false)
+  const [inviteEmail, setInviteEmail] = React.useState("")
+  const [inviteRole, setInviteRole] = React.useState<string>("AGENT")
+  const [inviting, setInviting] = React.useState(false)
+
+  // Member action state (role change / removal)
+  const [memberMenuId, setMemberMenuId] = React.useState<string | null>(null)
+  const [removingMember, setRemovingMember] = React.useState<{ id: string; name: string } | null>(null)
+  const [removing, setRemoving] = React.useState(false)
+  const [roleChangingId, setRoleChangingId] = React.useState<string | null>(null)
+
   const fetchData = React.useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -501,12 +540,121 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
     }
   }
 
+  const handleInvite = async () => {
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Email invalide")
+      return
+    }
+    setInviting(true)
+    try {
+      const res = await fetch("/api/organization/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, role: inviteRole }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error || `HTTP ${res.status}`)
+      }
+      toast.success("Invitation envoyée", {
+        description: `${email} a été invité(e) en tant que ${inviteRole}`,
+      })
+      setInviteOpen(false)
+      setInviteEmail("")
+      setInviteRole("AGENT")
+      await fetchData()
+    } catch (e) {
+      toast.error("Erreur", { description: e instanceof Error ? e.message : "Inconnue" })
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleChangeRole = async (memberId: string, newRole: string) => {
+    setRoleChangingId(memberId)
+    try {
+      const res = await fetch(`/api/organization/members/${memberId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role: newRole }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error || `HTTP ${res.status}`)
+      }
+      toast.success("Rôle mis à jour", { description: `Nouveau rôle : ${newRole}` })
+      setMemberMenuId(null)
+      await fetchData()
+    } catch (e) {
+      toast.error("Erreur", { description: e instanceof Error ? e.message : "Inconnue" })
+    } finally {
+      setRoleChangingId(null)
+    }
+  }
+
+  const handleRemoveMember = async () => {
+    if (!removingMember) return
+    setRemoving(true)
+    try {
+      const res = await fetch(`/api/organization/members/${removingMember.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error || `HTTP ${res.status}`)
+      }
+      toast.success("Membre retiré", { description: removingMember.name })
+      setRemovingMember(null)
+      await fetchData()
+    } catch (e) {
+      toast.error("Erreur", { description: e instanceof Error ? e.message : "Inconnue" })
+    } finally {
+      setRemoving(false)
+    }
+  }
+
   const canEdit = data?.currentRole === "OWNER" || data?.currentRole === "ADMIN"
+
+  // Rôles invitable selon le currentRole
+  const invitableRoles =
+    data?.currentRole === "OWNER"
+      ? [
+          { value: "ADMIN", label: "Admin" },
+          { value: "MANAGER", label: "Manager" },
+          { value: "AGENT", label: "Agent" },
+          { value: "VIEWER", label: "Viewer" },
+        ]
+      : [
+          { value: "MANAGER", label: "Manager" },
+          { value: "AGENT", label: "Agent" },
+          { value: "VIEWER", label: "Viewer" },
+        ]
+
+  // Rôles assignable via le menu (selon currentRole) — pour ne pas afficher des options invalides
+  const assignableRoles = React.useMemo(() => {
+    if (!data) return []
+    return data.currentRole === "OWNER"
+      ? [
+          { value: "ADMIN", label: "Admin" },
+          { value: "MANAGER", label: "Manager" },
+          { value: "AGENT", label: "Agent" },
+          { value: "VIEWER", label: "Viewer" },
+        ]
+      : [
+          { value: "MANAGER", label: "Manager" },
+          { value: "AGENT", label: "Agent" },
+          { value: "VIEWER", label: "Viewer" },
+        ]
+  }, [data])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl p-0 gap-0 max-h-[90vh] flex flex-col overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+      <DialogContent className="p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto w-full sm:max-w-5xl flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+        <DialogHeader className="px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10">
           <div className="flex items-start justify-between gap-3 pr-8">
             <div className="flex items-start gap-3 min-w-0">
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
@@ -538,7 +686,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
           {loading && <LoadingState />}
           {error && !loading && (
             <div className="flex flex-col items-center justify-center text-center py-16">
@@ -556,8 +704,8 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
 
           {data && !loading && !error && (
             <>
-              {/* KPI grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {/* KPI grid — 2 cols mobile, 3 sm, 6 lg */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                 <KpiCard
                   label="Membres actifs"
                   value={formatNumber(data.stats.totalMembers)}
@@ -594,10 +742,10 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 />
               </div>
 
-              {/* Tabs */}
+              {/* Tabs — horizontal scrollable on mobile, wraps on desktop */}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="overflow-x-auto -mx-1 px-1">
-                  <TabsList className="h-auto flex-wrap">
+                <div className="flex overflow-x-auto border-b -mx-4 md:-mx-6 px-4 md:px-6">
+                  <TabsList className="h-auto flex-nowrap sm:flex-wrap bg-transparent p-0 rounded-none">
                     <TabsTrigger value="identity" className="gap-1">
                       <Building2 className="h-3.5 w-3.5" /> Identité
                     </TabsTrigger>
@@ -631,7 +779,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </div>
 
                 {/* Identity tab */}
-                <TabsContent value="identity" className="mt-3">
+                <TabsContent value="identity" className="mt-4">
                   <SectionCard title="Identité" description="Informations générales de l'organisation" icon={Building2}>
                     <div className="space-y-1">
                       <InfoRow label="Nom">
@@ -718,14 +866,85 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* Members tab */}
-                <TabsContent value="members" className="mt-3">
+                <TabsContent value="members" className="mt-4">
                   <SectionCard
                     title="Membres"
                     description={`${data.stats.totalMembers} actif(s) · ${data.stats.totalMembersPending} en attente`}
                     icon={Users}
+                    action={
+                      canEdit ? (
+                        <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setInviteOpen(true)}>
+                          <UserPlus className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Inviter un membre</span>
+                          <span className="sm:hidden">Inviter</span>
+                        </Button>
+                      ) : undefined
+                    }
                   >
-                    {data.members.length === 0 ? (
-                      <EmptyState icon={Users} title="Aucun membre" message="Les membres de votre organisation apparaîtront ici." />
+                    {/* Pending invitations section */}
+                    {data.members.filter((m) => m.status === "pending").length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Mail className="h-3.5 w-3.5 text-amber-600" />
+                          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                            Invitations en attente ({data.members.filter((m) => m.status === "pending").length})
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {data.members
+                            .filter((m) => m.status === "pending")
+                            .map((m) => {
+                              const roleMeta = ROLE_BADGE[m.role] || { className: "", icon: UserIcon }
+                              const RoleIcon = roleMeta.icon
+                              return (
+                                <div
+                                  key={m.id}
+                                  className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-50/50 dark:bg-amber-900/10 p-2"
+                                >
+                                  <Avatar className="h-7 w-7 shrink-0">
+                                    {m.user?.avatarUrl && <AvatarImage src={m.user.avatarUrl} alt={m.user?.name || m.user?.email || ""} />}
+                                    <AvatarFallback className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                      {getInitials(m.user?.name, m.user?.email)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium truncate">{m.user?.name || m.user?.email}</p>
+                                    <p className="text-[10px] text-muted-foreground truncate">{m.user?.email}</p>
+                                  </div>
+                                  <Badge variant="outline" className={cn("text-[10px] gap-1 shrink-0", roleMeta.className)}>
+                                    <RoleIcon className="h-2.5 w-2.5" />
+                                    {m.role}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-[10px] shrink-0 bg-amber-100 text-amber-700 border-amber-500/30 dark:bg-amber-900/30 dark:text-amber-400">
+                                    En attente
+                                  </Badge>
+                                  {canEdit && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 shrink-0"
+                                      disabled={removing}
+                                      onClick={() =>
+                                        setRemovingMember({
+                                          id: m.id,
+                                          name: m.user?.name || m.user?.email || "ce membre",
+                                        })
+                                      }
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                    </Button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Active members table */}
+                    {data.members.filter((m) => m.status !== "pending").length === 0 &&
+                    data.members.filter((m) => m.status === "pending").length === 0 ? (
+                      <EmptyState icon={Users} title="Aucun membre" message="Les membres de votre organisation apparaîtront ici. Cliquez sur « Inviter un membre » pour commencer." />
                     ) : (
                       <div className="overflow-x-auto -mx-2">
                         <Table>
@@ -737,45 +956,105 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                               <TableHead className="h-8 hidden md:table-cell">Invité le</TableHead>
                               <TableHead className="h-8 hidden lg:table-cell">Accepté le</TableHead>
                               <TableHead className="h-8 hidden lg:table-cell">Dernier login</TableHead>
+                              {canEdit && <TableHead className="h-8 w-10" />}
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {data.members.map((m) => {
-                              const roleMeta = ROLE_BADGE[m.role] || { className: "", icon: UserIcon }
-                              const RoleIcon = roleMeta.icon
-                              return (
-                                <TableRow key={m.id}>
-                                  <TableCell>
-                                    <div className="flex items-center gap-2">
-                                      <Avatar className="h-7 w-7">
-                                        {m.user?.avatarUrl && <AvatarImage src={m.user.avatarUrl} alt={m.user.name || m.user.email} />}
-                                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                                          {getInitials(m.user?.name, m.user?.email)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <div className="min-w-0">
-                                        <p className="text-xs font-medium truncate">{m.user?.name || "—"}</p>
-                                        <p className="text-[10px] text-muted-foreground truncate">{m.user?.email || "—"}</p>
+                            {data.members
+                              .filter((m) => m.status !== "pending")
+                              .map((m) => {
+                                const roleMeta = ROLE_BADGE[m.role] || { className: "", icon: UserIcon }
+                                const RoleIcon = roleMeta.icon
+                                const canManageThisMember =
+                                  canEdit &&
+                                  m.role !== "OWNER" &&
+                                  m.userId !== data.organization.ownerId &&
+                                  (data.currentRole === "OWNER" || (m.role !== "OWNER" && m.role !== "ADMIN"))
+                                return (
+                                  <TableRow key={m.id}>
+                                    <TableCell>
+                                      <div className="flex items-center gap-2">
+                                        <Avatar className="h-7 w-7">
+                                          {m.user?.avatarUrl && <AvatarImage src={m.user.avatarUrl} alt={m.user?.name || m.user?.email || ""} />}
+                                          <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                                            {getInitials(m.user?.name, m.user?.email)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-medium truncate">{m.user?.name || "—"}</p>
+                                          <p className="text-[10px] text-muted-foreground truncate">{m.user?.email || "—"}</p>
+                                        </div>
                                       </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className={cn("text-[10px] gap-1", roleMeta.className)}>
-                                      <RoleIcon className="h-2.5 w-2.5" />
-                                      {m.role}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(m.status))}>
-                                      {m.status}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{formatDate(m.invitedAt)}</TableCell>
-                                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(m.acceptedAt)}</TableCell>
-                                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(m.user?.lastLoginAt)}</TableCell>
-                                </TableRow>
-                              )
-                            })}
+                                    </TableCell>
+                                    <TableCell>
+                                      {memberMenuId === m.id ? (
+                                        <Select
+                                          value={m.role}
+                                          onValueChange={(nv) => void handleChangeRole(m.id, nv)}
+                                          disabled={roleChangingId === m.id}
+                                        >
+                                          <SelectTrigger className="h-7 text-[11px] w-[110px]">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {assignableRoles.map((r) => (
+                                              <SelectItem key={r.value} value={r.value} className="text-xs">
+                                                {r.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      ) : (
+                                        <Badge variant="outline" className={cn("text-[10px] gap-1", roleMeta.className)}>
+                                          <RoleIcon className="h-2.5 w-2.5" />
+                                          {m.role}
+                                        </Badge>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(m.status))}>
+                                        {m.status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{formatDate(m.invitedAt)}</TableCell>
+                                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(m.acceptedAt)}</TableCell>
+                                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(m.user?.lastLoginAt)}</TableCell>
+                                    {canEdit && (
+                                      <TableCell>
+                                        <div className="flex items-center gap-1">
+                                          {canManageThisMember && (
+                                            <>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 px-2 text-[11px]"
+                                                onClick={() => setMemberMenuId(memberMenuId === m.id ? null : m.id)}
+                                                disabled={roleChangingId === m.id}
+                                              >
+                                                {roleChangingId === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Rôle"}
+                                              </Button>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                disabled={removing}
+                                                onClick={() =>
+                                                  setRemovingMember({
+                                                    id: m.id,
+                                                    name: m.user?.name || m.user?.email || "ce membre",
+                                                  })
+                                                }
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                              </Button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    )}
+                                  </TableRow>
+                                )
+                              })}
                           </TableBody>
                         </Table>
                       </div>
@@ -784,7 +1063,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* Workspaces tab */}
-                <TabsContent value="workspaces" className="mt-3">
+                <TabsContent value="workspaces" className="mt-4">
                   <SectionCard title="Workspaces" description={`${data.stats.totalWorkspaces} workspace(s)`} icon={Boxes}>
                     {data.workspaces.length === 0 ? (
                       <EmptyState icon={Boxes} title="Aucun workspace" message="Les workspaces de votre organisation apparaîtront ici." />
@@ -814,7 +1093,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* Subscription tab */}
-                <TabsContent value="subscription" className="mt-3">
+                <TabsContent value="subscription" className="mt-4">
                   <SectionCard title="Abonnement" description="Statut et cycle de facturation" icon={CreditCard}>
                     {!data.subscription ? (
                       <EmptyState icon={CreditCard} title="Aucun abonnement" message="Aucun abonnement actif. Souscrivez un plan pour activer la facturation." />
@@ -844,7 +1123,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* License tab */}
-                <TabsContent value="license" className="mt-3">
+                <TabsContent value="license" className="mt-4">
                   <SectionCard title="Licence" description="Limites et fonctionnalités du plan" icon={KeyRound}>
                     {!data.license ? (
                       <EmptyState icon={KeyRound} title="Aucune licence" message="Aucune licence active. Activez une clé pour débloquer les fonctionnalités." />
@@ -896,7 +1175,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* Quota tab */}
-                <TabsContent value="quota" className="mt-3">
+                <TabsContent value="quota" className="mt-4">
                   <SectionCard
                     title="Quota"
                     description={data.quota ? `Période ${data.quota.periodMonth}/${data.quota.periodYear}` : "Aucune donnée de quota"}
@@ -943,7 +1222,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* Invoices tab */}
-                <TabsContent value="invoices" className="mt-3">
+                <TabsContent value="invoices" className="mt-4">
                   <SectionCard
                     title="Factures"
                     description={`${data.stats.totalInvoices} facture(s)`}
@@ -989,7 +1268,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
                 </TabsContent>
 
                 {/* API Keys tab */}
-                <TabsContent value="apikeys" className="mt-3">
+                <TabsContent value="apikeys" className="mt-4">
                   <SectionCard title="Clés API" description={`${data.stats.totalApiKeys} active(s)`} icon={KeyRound}>
                     {data.apiKeys.length === 0 ? (
                       <EmptyState icon={KeyRound} title="Aucune clé API" message="Aucune clé API n'a été générée par les membres de l'organisation." />
@@ -1061,7 +1340,7 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
 
                 {/* Audit tab (OWNER/ADMIN only) */}
                 {data.canSeeAudit && (
-                  <TabsContent value="audit" className="mt-3">
+                  <TabsContent value="audit" className="mt-4">
                     <SectionCard
                       title="Journal d'audit"
                       description="20 derniers événements"
@@ -1083,7 +1362,142 @@ export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDial
             </>
           )}
         </div>
+
+        {/* Sticky footer */}
+        <div className="border-t bg-background px-4 md:px-6 py-3 flex items-center justify-end gap-2 sticky bottom-0 z-10">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Fermer
+          </Button>
+        </div>
       </DialogContent>
+
+      {/* Sub-dialog: Invite member */}
+      <SubDialog open={inviteOpen} onOpenChange={(o) => !inviting && setInviteOpen(o)}>
+        <SubDialogContent className="w-full sm:max-w-md p-0 gap-0 max-h-[100vh] sm:max-h-[90vh] h-full sm:h-auto flex flex-col overflow-hidden rounded-none sm:rounded-lg">
+          <SubDialogHeader className="px-4 md:px-6 py-4 border-b sticky top-0 bg-background z-10">
+            <SubDialogTitle className="flex items-center gap-2 text-base">
+              <UserPlus className="h-4 w-4" />
+              Inviter un membre
+            </SubDialogTitle>
+            <SubDialogDescription className="text-xs">
+              L&apos;utilisateur recevra une invitation à rejoindre votre organisation.
+            </SubDialogDescription>
+          </SubDialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium flex items-center gap-1.5">
+                <Mail className="h-3 w-3" />
+                Email du membre à inviter
+              </label>
+              <Input
+                type="email"
+                placeholder="exemple@entreprise.ci"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                disabled={inviting}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleInvite()
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Si l&apos;utilisateur n&apos;a pas encore de compte, un compte en attente sera créé.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium flex items-center gap-1.5">
+                <Shield className="h-3 w-3" />
+                Rôle à attribuer
+              </label>
+              <Select value={inviteRole} onValueChange={setInviteRole} disabled={inviting}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {invitableRoles.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {data?.currentRole === "OWNER"
+                  ? "OWNER peut inviter tous les rôles sauf un autre OWNER."
+                  : "ADMIN peut inviter uniquement des Manager / Agent / Viewer (pas d'ADMIN ou OWNER)."}
+              </p>
+            </div>
+
+            {/* Plan limit hint */}
+            {data?.license && (
+              <div className="rounded-md border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                Limite du plan :{" "}
+                <span className="font-medium text-foreground">
+                  {data.stats.totalMembers + data.stats.totalMembersPending} / {data.license.maxUsers} membres
+                </span>
+              </div>
+            )}
+          </div>
+
+          <SubDialogFooter className="border-t bg-background px-4 md:px-6 py-3 sticky bottom-0">
+            <Button variant="outline" onClick={() => setInviteOpen(false)} disabled={inviting}>
+              Annuler
+            </Button>
+            <Button onClick={() => void handleInvite()} disabled={inviting || !inviteEmail.trim()} className="gap-1.5">
+              {inviting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Invitation en cours…
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4" />
+                  Inviter
+                </>
+              )}
+            </Button>
+          </SubDialogFooter>
+        </SubDialogContent>
+      </SubDialog>
+
+      {/* Confirm member removal */}
+      <AlertDialog
+        open={!!removingMember}
+        onOpenChange={(o) => !removing && !o && setRemovingMember(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retirer ce membre ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{removingMember?.name}</strong> sera retiré de l&apos;organisation.
+              Cette action est réversible (le membre pourra être réinvité). Une trace sera
+              conservée dans l&apos;AuditLog.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleRemoveMember()}
+              disabled={removing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Suppression…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Retirer
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

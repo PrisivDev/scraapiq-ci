@@ -1,0 +1,1219 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { format } from "date-fns"
+     5→import { fr } from "date-fns/locale"
+     6→import {
+     7→  Building2,
+     8→  Users,
+     9→  Calendar,
+    10→  CreditCard,
+    11→  KeyRound,
+    12→  FileText,
+    13→  ScrollText,
+    14→  Activity,
+    15→  Boxes,
+    16→  ShieldCheck,
+    17→  Loader2,
+    18→  Save,
+    19→  X,
+    20→  ChevronDown,
+    21→  ChevronRight,
+    22→  Crown,
+    23→  Shield,
+    24→  UserCog,
+    25→  User as UserIcon,
+    26→  Eye,
+    27→  Mail,
+    28→  AlertCircle,
+    29→  Hash,
+    30→  Layers,
+    31→  Gauge,
+    32→  Receipt,
+    33→  MapPin,
+    34→} from "lucide-react"
+    35→import { toast } from "sonner"
+    36→
+    37→import {
+    38→  Dialog,
+    39→  DialogContent,
+    40→  DialogHeader,
+    41→  DialogTitle,
+    42→  DialogDescription,
+    43→} from "@/components/ui/dialog"
+    44→import {
+    45→  Tabs,
+    46→  TabsList,
+    47→  TabsTrigger,
+    48→  TabsContent,
+    49→} from "@/components/ui/tabs"
+    50→import {
+    51→  Card,
+    52→  CardContent,
+    53→  CardHeader,
+    54→  CardTitle,
+    55→  CardDescription,
+    56→} from "@/components/ui/card"
+    57→import { Badge } from "@/components/ui/badge"
+    58→import { Button } from "@/components/ui/button"
+    59→import { Input } from "@/components/ui/input"
+    60→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    61→import { Progress } from "@/components/ui/progress"
+    62→import { Separator } from "@/components/ui/separator"
+    63→import {
+    64→  Table,
+    65→  TableHeader,
+    66→  TableBody,
+    67→  TableHead,
+    68→  TableRow,
+    69→  TableCell,
+    70→} from "@/components/ui/table"
+    71→import {
+    72→  Collapsible,
+    73→  CollapsibleContent,
+    74→  CollapsibleTrigger,
+    75→} from "@/components/ui/collapsible"
+    76→import { cn } from "@/lib/utils"
+    77→
+    78→// ============================================================================
+    79→// Types — mirror the API response shape
+    80→// ============================================================================
+    81→
+    82→interface OrgUser {
+    83→  id: string
+    84→  name: string | null
+    85→  email: string
+    86→  avatarUrl: string | null
+    87→  status?: string
+    88→  lastLoginAt?: string | null
+    89→  createdAt?: string
+    90→  role?: string
+    91→}
+    92→
+    93→interface MemberRow {
+    94→  id: string
+    95→  userId: string
+    96→  role: string
+    97→  status: string
+    98→  permissions: string[]
+    99→  invitedBy: string | null
+   100→  invitedAt: string
+   101→  acceptedAt: string | null
+   102→  user: OrgUser | null
+   103→}
+   104→
+   105→interface WorkspaceRow {
+   106→  id: string
+   107→  name: string
+   108→  slug: string
+   109→  organizationId: string
+   110→  createdAt: string
+   111→  updatedAt: string
+   112→}
+   113→
+   114→interface SubscriptionRow {
+   115→  id: string
+   116→  organizationId: string
+   117→  licenseId: string | null
+   118→  plan: string
+   119→  status: string
+   120→  billingCycle: string
+   121→  amountXOF: number
+   122→  currentPeriodStart: string
+   123→  currentPeriodEnd: string
+   124→  cancelAtPeriodEnd: boolean
+   125→  paymentMethod: string | null
+   126→  trialEndsAt: string | null
+   127→  createdAt: string
+   128→  updatedAt: string
+   129→}
+   130→
+   131→interface LicenseRow {
+   132→  id: string
+   133→  key: string
+   134→  keyMasked: string
+   135→  plan: string
+   136→  name: string
+   137→  maxUsers: number
+   138→  maxCompanies: number
+   139→  maxApiCalls: number
+   140→  maxExports: number
+   141→  maxSources: number
+   142→  maxWorkspaces: number
+   143→  features: string[]
+   144→  status: string
+   145→  activatedAt: string | null
+   146→  expiresAt: string | null
+   147→  organizationId: string | null
+   148→  createdAt: string
+   149→  updatedAt: string
+   150→}
+   151→
+   152→interface QuotaRow {
+   153→  id: string
+   154→  organizationId: string
+   155→  periodYear: number
+   156→  periodMonth: number
+   157→  apiCalls: number
+   158→  companiesStored: number
+   159→  exportsCount: number
+   160→  scrapeJobs: number
+   161→  usersCount: number
+   162→  updatedAt: string
+   163→}
+   164→
+   165→interface InvoiceRow {
+   166→  id: string
+   167→  organizationId: string
+   168→  subscriptionId: string | null
+   169→  number: string
+   170→  amountXOF: number
+   171→  taxXOF: number
+   172→  totalXOF: number
+   173→  status: string
+   174→  dueDate: string
+   175→  paidAt: string | null
+   176→  items: unknown[]
+   177→  pdfUrl: string | null
+   178→  createdAt: string
+   179→}
+   180→
+   181→interface ApiKeyRow {
+   182→  id: string
+   183→  name: string
+   184→  keyPrefix: string
+   185→  scopes: string[]
+   186→  lastUsedAt: string | null
+   187→  expiresAt: string | null
+   188→  revokedAt: string | null
+   189→  createdAt: string
+   190→  ownerName: string | null
+   191→  ownerEmail: string | null
+   192→}
+   193→
+   194→interface AuditLogRow {
+   195→  id: string
+   196→  action: string
+   197→  category: string
+   198→  severity: string
+   199→  ip: string | null
+   200→  createdAt: string
+   201→  metadata: Record<string, unknown>
+   202→  userId: string | null
+   203→  userEmail: string | null
+   204→  userName: string | null
+   205→}
+   206→
+   207→interface OrganizationRow {
+   208→  id: string
+   209→  name: string
+   210→  slug: string
+   211→  plan: string
+   212→  ownerId: string
+   213→  settings: Record<string, unknown>
+   214→  createdAt: string
+   215→  updatedAt: string
+   216→}
+   217→
+   218→interface OrgStats {
+   219→  totalMembers: number
+   220→  totalMembersPending: number
+   221→  totalWorkspaces: number
+   222→  totalInvoices: number
+   223→  totalApiKeys: number
+   224→  totalCompanies: number
+   225→  memberSince: string
+   226→  daysActive: number
+   227→}
+   228→
+   229→interface OrgDetailsResponse {
+   230→  organization: OrganizationRow
+   231→  owner: (OrgUser & { role?: string }) | null
+   232→  workspaces: WorkspaceRow[]
+   233→  members: MemberRow[]
+   234→  subscription: SubscriptionRow | null
+   235→  license: LicenseRow | null
+   236→  quota: QuotaRow | null
+   237→  invoices: InvoiceRow[]
+   238→  apiKeys: ApiKeyRow[]
+   239→  stats: OrgStats
+   240→  auditLogs: AuditLogRow[] | null
+   241→  currentRole: string
+   242→  canSeeAudit: boolean
+   243→}
+   244→
+   245→// ============================================================================
+   246→// Helpers
+   247→// ============================================================================
+   248→
+   249→function formatDate(date: string | Date | null | undefined, pattern = "d MMM yyyy"): string {
+   250→  if (!date) return "—"
+   251→  try {
+   252→    const d = typeof date === "string" ? new Date(date) : date
+   253→    if (isNaN(d.getTime())) return "—"
+   254→    return format(d, pattern, { locale: fr })
+   255→  } catch {
+   256→    return "—"
+   257→  }
+   258→}
+   259→
+   260→function formatDateTime(date: string | Date | null | undefined): string {
+   261→  return formatDate(date, "d MMM yyyy 'à' HH:mm")
+   262→}
+   263→
+   264→function formatCurrency(amount: number | null | undefined): string {
+   265→  if (amount === null || amount === undefined) return "—"
+   266→  return new Intl.NumberFormat("fr-FR").format(amount) + " FCFA"
+   267→}
+   268→
+   269→function formatNumber(n: number | null | undefined): string {
+   270→  if (n === null || n === undefined) return "0"
+   271→  return new Intl.NumberFormat("fr-FR").format(n)
+   272→}
+   273→
+   274→function getInitials(name: string | null | undefined, email?: string | null): string {
+   275→  const src = name || email || "?"
+   276→  const parts = src.split(/[\s@._-]+/).filter(Boolean)
+   277→  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+   278→  return src.slice(0, 2).toUpperCase()
+   279→}
+   280→
+   281→// ============================================================================
+   282→// Badge color helpers
+   283→// ============================================================================
+   284→
+   285→const PLAN_BADGE: Record<string, string> = {
+   286→  starter: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+   287→  pro: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
+   288→  enterprise: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+   289→  custom: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+   290→}
+   291→
+   292→const ROLE_BADGE: Record<string, { className: string; icon: React.ComponentType<{ className?: string }> }> = {
+   293→  OWNER: { className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", icon: Crown },
+   294→  ADMIN: { className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", icon: Shield },
+   295→  MANAGER: { className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400", icon: UserCog },
+   296→  AGENT: { className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400", icon: UserIcon },
+   297→  VIEWER: { className: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200", icon: Eye },
+   298→}
+   299→
+   300→function statusBadgeClass(status: string): string {
+   301→  const s = status.toLowerCase()
+   302→  if (["active", "paid", "success", "delivered", "ready"].includes(s)) {
+   303→    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+   304→  }
+   305→  if (["pending", "trialing", "warning", "warn", "past_due"].includes(s)) {
+   306→    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+   307→  }
+   308→  if (["revoked", "cancelled", "expired", "failed", "void", "suspended", "error"].includes(s)) {
+   309→    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+   310→  }
+   311→  return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+   312→}
+   313→
+   314→function severityBadgeClass(severity: string): string {
+   315→  const s = severity.toLowerCase()
+   316→  if (s === "critical" || s === "error") return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+   317→  if (s === "warn") return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+   318→  if (s === "info") return "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
+   319→  return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+   320→}
+   321→
+   322→function progressColorClass(pct: number): string {
+   323→  if (pct >= 90) return "bg-red-500"
+   324→  if (pct >= 60) return "bg-amber-500"
+   325→  return "bg-emerald-500"
+   326→}
+   327→
+   328→// ============================================================================
+   329→// Sub-components
+   330→// ============================================================================
+   331→
+   332→function EmptyState({
+   333→  icon: Icon,
+   334→  title,
+   335→  message,
+   336→}: {
+   337→  icon: React.ComponentType<{ className?: string }>
+   338→  title: string
+   339→  message: string
+   340→}) {
+   341→  return (
+   342→    <div className="flex flex-col items-center justify-center text-center py-10 px-4">
+   343→      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
+   344→        <Icon className="h-6 w-6" />
+   345→      </div>
+   346→      <h4 className="text-sm font-semibold mb-1">{title}</h4>
+   347→      <p className="text-xs text-muted-foreground max-w-md">{message}</p>
+   348→    </div>
+   349→  )
+   350→}
+   351→
+   352→function KpiCard({
+   353→  label,
+   354→  value,
+   355→  sub,
+   356→  icon: Icon,
+   357→}: {
+   358→  label: string
+   359→  value: string | number
+   360→  sub?: string
+   361→  icon: React.ComponentType<{ className?: string }>
+   362→}) {
+   363→  return (
+   364→    <div className="rounded-lg border bg-card p-3 flex items-start gap-3">
+   365→      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+   366→        <Icon className="h-4 w-4" />
+   367→      </div>
+   368→      <div className="min-w-0 flex-1">
+   369→        <p className="text-[10px] uppercase tracking-wide text-muted-foreground truncate">{label}</p>
+   370→        <p className="text-base font-semibold leading-tight truncate">{value}</p>
+   371→        {sub && <p className="text-[10px] text-muted-foreground truncate">{sub}</p>}
+   372→      </div>
+   373→    </div>
+   374→  )
+   375→}
+   376→
+   377→function InfoRow({
+   378→  label,
+   379→  children,
+   380→}: {
+   381→  label: string
+   382→  children: React.ReactNode
+   383→}) {
+   384→  return (
+   385→    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1.5">
+   386→      <span className="text-xs text-muted-foreground">{label}</span>
+   387→      <span className="text-sm text-foreground sm:text-right break-all">{children}</span>
+   388→    </div>
+   389→  )
+   390→}
+   391→
+   392→function SectionCard({
+   393→  title,
+   394→  description,
+   395→  icon: Icon,
+   396→  children,
+   397→  action,
+   398→}: {
+   399→  title: string
+   400→  description?: string
+   401→  icon: React.ComponentType<{ className?: string }>
+   402→  children: React.ReactNode
+   403→  action?: React.ReactNode
+   404→}) {
+   405→  return (
+   406→    <Card>
+   407→      <CardHeader className="pb-3">
+   408→        <div className="flex items-start justify-between gap-2">
+   409→          <div className="flex items-start gap-2">
+   410→            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+   411→              <Icon className="h-3.5 w-3.5" />
+   412→            </div>
+   413→            <div>
+   414→              <CardTitle className="text-sm">{title}</CardTitle>
+   415→              {description && <CardDescription className="text-[11px]">{description}</CardDescription>}
+   416→            </div>
+   417→          </div>
+   418→          {action}
+   419→        </div>
+   420→      </CardHeader>
+   421→      <CardContent className="pt-0">{children}</CardContent>
+   422→    </Card>
+   423→  )
+   424→}
+   425→
+   426→// ============================================================================
+   427→// Main component
+   428→// ============================================================================
+   429→
+   430→interface OrgDetailsDialogProps {
+   431→  open: boolean
+   432→  onOpenChange: (open: boolean) => void
+   433→}
+   434→
+   435→export function OrganizationDetailsDialog({ open, onOpenChange }: OrgDetailsDialogProps) {
+   436→  const [loading, setLoading] = React.useState(false)
+   437→  const [error, setError] = React.useState<string | null>(null)
+   438→  const [data, setData] = React.useState<OrgDetailsResponse | null>(null)
+   439→  const [activeTab, setActiveTab] = React.useState("identity")
+   440→
+   441→  // Inline edit state (org name)
+   442→  const [editingName, setEditingName] = React.useState(false)
+   443→  const [nameValue, setNameValue] = React.useState("")
+   444→  const [savingName, setSavingName] = React.useState(false)
+   445→
+   446→  const fetchData = React.useCallback(async () => {
+   447→    setLoading(true)
+   448→    setError(null)
+   449→    try {
+   450→      const res = await fetch("/api/organization/details", { credentials: "include" })
+   451→      if (!res.ok) {
+   452→        const j = await res.json().catch(() => null)
+   453→        throw new Error(j?.error || `HTTP ${res.status}`)
+   454→      }
+   455→      const json: OrgDetailsResponse = await res.json()
+   456→      setData(json)
+   457→      setNameValue(json.organization.name)
+   458→    } catch (e) {
+   459→      setError(e instanceof Error ? e.message : "Erreur inconnue")
+   460→    } finally {
+   461→      setLoading(false)
+   462→    }
+   463→  }, [])
+   464→
+   465→  React.useEffect(() => {
+   466→    if (open) {
+   467→      void fetchData()
+   468→    }
+   469→  }, [open, fetchData])
+   470→
+   471→  const handleSaveName = async () => {
+   472→    if (!data) return
+   473→    const trimmed = nameValue.trim()
+   474→    if (!trimmed || trimmed.length > 100) {
+   475→      toast.error("Nom invalide (1 à 100 caractères)")
+   476→      return
+   477→    }
+   478→    if (trimmed === data.organization.name) {
+   479→      setEditingName(false)
+   480→      return
+   481→    }
+   482→    setSavingName(true)
+   483→    try {
+   484→      const res = await fetch("/api/organization", {
+   485→        method: "PUT",
+   486→        headers: { "Content-Type": "application/json" },
+   487→        credentials: "include",
+   488→        body: JSON.stringify({ name: trimmed }),
+   489→      })
+   490→      if (!res.ok) {
+   491→        const j = await res.json().catch(() => null)
+   492→        throw new Error(j?.error || `HTTP ${res.status}`)
+   493→      }
+   494→      toast.success("Organisation renommée", { description: `« ${trimmed} »` })
+   495→      setEditingName(false)
+   496→      await fetchData()
+   497→    } catch (e) {
+   498→      toast.error("Erreur", { description: e instanceof Error ? e.message : "Inconnue" })
+   499→    } finally {
+   500→      setSavingName(false)
+   501→    }
+   502→  }
+   503→
+   504→  const canEdit = data?.currentRole === "OWNER" || data?.currentRole === "ADMIN"
+   505→
+   506→  return (
+   507→    <Dialog open={open} onOpenChange={onOpenChange}>
+   508→      <DialogContent className="sm:max-w-4xl p-0 gap-0 max-h-[90vh] flex flex-col overflow-hidden">
+   509→        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+   510→          <div className="flex items-start justify-between gap-3 pr-8">
+   511→            <div className="flex items-start gap-3 min-w-0">
+   512→              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
+   513→                <Building2 className="h-6 w-6" />
+   514→              </div>
+   515→              <div className="min-w-0">
+   516→                <DialogTitle className="text-xl truncate">
+   517→                  {loading ? "Chargement…" : data?.organization.name || "Organisation"}
+   518→                </DialogTitle>
+   519→                <DialogDescription className="text-xs flex flex-wrap items-center gap-x-2 gap-y-0.5">
+   520→                  {data && (
+   521→                    <>
+   522→                      <Badge variant="outline" className={cn("text-[10px] capitalize", PLAN_BADGE[data.organization.plan] || statusBadgeClass(data.organization.plan))}>
+   523→                        {data.organization.plan}
+   524→                      </Badge>
+   525→                      <span className="inline-flex items-center gap-1">
+   526→                        <Hash className="h-3 w-3" />
+   527→                        {data.organization.slug}
+   528→                      </span>
+   529→                      <span className="inline-flex items-center gap-1">
+   530→                        <Calendar className="h-3 w-3" />
+   531→                        Membre depuis {formatDate(data.stats.memberSince)} ({data.stats.daysActive} jour{data.stats.daysActive > 1 ? "s" : ""})
+   532→                      </span>
+   533→                    </>
+   534→                  )}
+   535→                </DialogDescription>
+   536→              </div>
+   537→            </div>
+   538→          </div>
+   539→        </DialogHeader>
+   540→
+   541→        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+   542→          {loading && <LoadingState />}
+   543→          {error && !loading && (
+   544→            <div className="flex flex-col items-center justify-center text-center py-16">
+   545→              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 mb-3">
+   546→                <AlertCircle className="h-6 w-6" />
+   547→              </div>
+   548→              <h4 className="text-base font-semibold mb-1">Impossible de charger les détails</h4>
+   549→              <p className="text-sm text-muted-foreground mb-3">{error}</p>
+   550→              <Button onClick={() => void fetchData()} variant="outline" size="sm">
+   551→                <Loader2 className="h-3.5 w-3.5 mr-2" />
+   552→                Réessayer
+   553→              </Button>
+   554→            </div>
+   555→          )}
+   556→
+   557→          {data && !loading && !error && (
+   558→            <>
+   559→              {/* KPI grid */}
+   560→              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+   561→                <KpiCard
+   562→                  label="Membres actifs"
+   563→                  value={formatNumber(data.stats.totalMembers)}
+   564→                  sub={`${data.stats.totalMembersPending} en attente`}
+   565→                  icon={Users}
+   566→                />
+   567→                <KpiCard
+   568→                  label="Workspaces"
+   569→                  value={formatNumber(data.stats.totalWorkspaces)}
+   570→                  icon={Boxes}
+   571→                />
+   572→                <KpiCard
+   573→                  label="Plan"
+   574→                  value={data.organization.plan}
+   575→                  sub={data.license ? "Licence active" : "Sans licence"}
+   576→                  icon={ShieldCheck}
+   577→                />
+   578→                <KpiCard
+   579→                  label="Quota API"
+   580→                  value={data.quota ? `${formatNumber(data.quota.apiCalls)} / ${formatNumber(data.license?.maxApiCalls ?? 100000)}` : "0"}
+   581→                  sub={data.quota ? `${data.quota.periodMonth}/${data.quota.periodYear}` : "Aucun quota"}
+   582→                  icon={Gauge}
+   583→                />
+   584→                <KpiCard
+   585→                  label="Entreprises"
+   586→                  value={formatNumber(data.stats.totalCompanies)}
+   587→                  sub={data.license ? `/ ${formatNumber(data.license.maxCompanies)}` : "global"}
+   588→                  icon={Layers}
+   589→                />
+   590→                <KpiCard
+   591→                  label="Jours actifs"
+   592→                  value={formatNumber(data.stats.daysActive)}
+   593→                  icon={Activity}
+   594→                />
+   595→              </div>
+   596→
+   597→              {/* Tabs */}
+   598→              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+   599→                <div className="overflow-x-auto -mx-1 px-1">
+   600→                  <TabsList className="h-auto flex-wrap">
+   601→                    <TabsTrigger value="identity" className="gap-1">
+   602→                      <Building2 className="h-3.5 w-3.5" /> Identité
+   603→                    </TabsTrigger>
+   604→                    <TabsTrigger value="members" className="gap-1">
+   605→                      <Users className="h-3.5 w-3.5" /> Membres
+   606→                    </TabsTrigger>
+   607→                    <TabsTrigger value="workspaces" className="gap-1">
+   608→                      <Boxes className="h-3.5 w-3.5" /> Workspaces
+   609→                    </TabsTrigger>
+   610→                    <TabsTrigger value="subscription" className="gap-1">
+   611→                      <CreditCard className="h-3.5 w-3.5" /> Abonnement
+   612→                    </TabsTrigger>
+   613→                    <TabsTrigger value="license" className="gap-1">
+   614→                      <KeyRound className="h-3.5 w-3.5" /> Licence
+   615→                    </TabsTrigger>
+   616→                    <TabsTrigger value="quota" className="gap-1">
+   617→                      <Gauge className="h-3.5 w-3.5" /> Quota
+   618→                    </TabsTrigger>
+   619→                    <TabsTrigger value="invoices" className="gap-1">
+   620→                      <FileText className="h-3.5 w-3.5" /> Factures
+   621→                    </TabsTrigger>
+   622→                    <TabsTrigger value="apikeys" className="gap-1">
+   623→                      <KeyRound className="h-3.5 w-3.5" /> API Keys
+   624→                    </TabsTrigger>
+   625→                    {data.canSeeAudit && (
+   626→                      <TabsTrigger value="audit" className="gap-1">
+   627→                        <ScrollText className="h-3.5 w-3.5" /> Audit
+   628→                      </TabsTrigger>
+   629→                    )}
+   630→                  </TabsList>
+   631→                </div>
+   632→
+   633→                {/* Identity tab */}
+   634→                <TabsContent value="identity" className="mt-3">
+   635→                  <SectionCard title="Identité" description="Informations générales de l'organisation" icon={Building2}>
+   636→                    <div className="space-y-1">
+   637→                      <InfoRow label="Nom">
+   638→                        {editingName ? (
+   639→                          <div className="flex items-center gap-2 max-w-xs">
+   640→                            <Input
+   641→                              value={nameValue}
+   642→                              onChange={(e) => setNameValue(e.target.value)}
+   643→                              className="h-8 text-sm"
+   644→                              disabled={savingName}
+   645→                              autoFocus
+   646→                              onKeyDown={(e) => {
+   647→                                if (e.key === "Enter") void handleSaveName()
+   648→                                if (e.key === "Escape") {
+   649→                                  setEditingName(false)
+   650→                                  setNameValue(data.organization.name)
+   651→                                }
+   652→                              }}
+   653→                            />
+   654→                            <Button size="icon" className="h-8 w-8" onClick={() => void handleSaveName()} disabled={savingName}>
+   655→                              {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+   656→                            </Button>
+   657→                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditingName(false); setNameValue(data.organization.name) }} disabled={savingName}>
+   658→                              <X className="h-3.5 w-3.5" />
+   659→                            </Button>
+   660→                          </div>
+   661→                        ) : (
+   662→                          <span className="inline-flex items-center gap-2">
+   663→                            {data.organization.name}
+   664→                            {canEdit && (
+   665→                              <Button
+   666→                                variant="ghost"
+   667→                                size="sm"
+   668→                                className="h-6 px-2 text-[11px]"
+   669→                                onClick={() => setEditingName(true)}
+   670→                              >
+   671→                                Modifier
+   672→                              </Button>
+   673→                            )}
+   674→                          </span>
+   675→                        )}
+   676→                      </InfoRow>
+   677→                      <InfoRow label="Slug">
+   678→                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{data.organization.slug}</code>
+   679→                      </InfoRow>
+   680→                      <InfoRow label="Plan">
+   681→                        <Badge variant="outline" className={cn("text-[10px] capitalize", PLAN_BADGE[data.organization.plan] || statusBadgeClass(data.organization.plan))}>
+   682→                          {data.organization.plan}
+   683→                        </Badge>
+   684→                      </InfoRow>
+   685→                      <Separator className="my-2" />
+   686→                      {data.owner && (
+   687→                        <>
+   688→                          <InfoRow label="Owner">
+   689→                            <span className="inline-flex items-center gap-2">
+   690→                              <Avatar className="h-6 w-6">
+   691→                                {data.owner.avatarUrl && <AvatarImage src={data.owner.avatarUrl} alt={data.owner.name || data.owner.email} />}
+   692→                                <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   693→                                  {getInitials(data.owner.name, data.owner.email)}
+   694→                                </AvatarFallback>
+   695→                              </Avatar>
+   696→                              <span className="font-medium">{data.owner.name || "—"}</span>
+   697→                              <span className="text-muted-foreground text-xs">&lt;{data.owner.email}&gt;</span>
+   698→                              {data.owner.role && (
+   699→                                <Badge variant="outline" className={cn("text-[10px]", (ROLE_BADGE[data.owner.role] || { className: "" }).className)}>
+   700→                                  {data.owner.role}
+   701→                                </Badge>
+   702→                              )}
+   703→                            </span>
+   704→                          </InfoRow>
+   705→                        </>
+   706→                      )}
+   707→                      <InfoRow label="Créé le">{formatDate(data.organization.createdAt)}</InfoRow>
+   708→                      <InfoRow label="Modifié le">{formatDate(data.organization.updatedAt)}</InfoRow>
+   709→                      <Separator className="my-2" />
+   710→                      <div className="py-1.5">
+   711→                        <span className="text-xs text-muted-foreground">Settings (JSON)</span>
+   712→                        <pre className="mt-1 text-[11px] bg-muted/60 rounded-md p-2 overflow-x-auto max-h-40">
+   713→                          {JSON.stringify(data.organization.settings, null, 2)}
+   714→                        </pre>
+   715→                      </div>
+   716→                    </div>
+   717→                  </SectionCard>
+   718→                </TabsContent>
+   719→
+   720→                {/* Members tab */}
+   721→                <TabsContent value="members" className="mt-3">
+   722→                  <SectionCard
+   723→                    title="Membres"
+   724→                    description={`${data.stats.totalMembers} actif(s) · ${data.stats.totalMembersPending} en attente`}
+   725→                    icon={Users}
+   726→                  >
+   727→                    {data.members.length === 0 ? (
+   728→                      <EmptyState icon={Users} title="Aucun membre" message="Les membres de votre organisation apparaîtront ici." />
+   729→                    ) : (
+   730→                      <div className="overflow-x-auto -mx-2">
+   731→                        <Table>
+   732→                          <TableHeader>
+   733→                            <TableRow>
+   734→                              <TableHead className="h-8">Membre</TableHead>
+   735→                              <TableHead className="h-8">Rôle</TableHead>
+   736→                              <TableHead className="h-8">Statut</TableHead>
+   737→                              <TableHead className="h-8 hidden md:table-cell">Invité le</TableHead>
+   738→                              <TableHead className="h-8 hidden lg:table-cell">Accepté le</TableHead>
+   739→                              <TableHead className="h-8 hidden lg:table-cell">Dernier login</TableHead>
+   740→                            </TableRow>
+   741→                          </TableHeader>
+   742→                          <TableBody>
+   743→                            {data.members.map((m) => {
+   744→                              const roleMeta = ROLE_BADGE[m.role] || { className: "", icon: UserIcon }
+   745→                              const RoleIcon = roleMeta.icon
+   746→                              return (
+   747→                                <TableRow key={m.id}>
+   748→                                  <TableCell>
+   749→                                    <div className="flex items-center gap-2">
+   750→                                      <Avatar className="h-7 w-7">
+   751→                                        {m.user?.avatarUrl && <AvatarImage src={m.user.avatarUrl} alt={m.user.name || m.user.email} />}
+   752→                                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+   753→                                          {getInitials(m.user?.name, m.user?.email)}
+   754→                                        </AvatarFallback>
+   755→                                      </Avatar>
+   756→                                      <div className="min-w-0">
+   757→                                        <p className="text-xs font-medium truncate">{m.user?.name || "—"}</p>
+   758→                                        <p className="text-[10px] text-muted-foreground truncate">{m.user?.email || "—"}</p>
+   759→                                      </div>
+   760→                                    </div>
+   761→                                  </TableCell>
+   762→                                  <TableCell>
+   763→                                    <Badge variant="outline" className={cn("text-[10px] gap-1", roleMeta.className)}>
+   764→                                      <RoleIcon className="h-2.5 w-2.5" />
+   765→                                      {m.role}
+   766→                                    </Badge>
+   767→                                  </TableCell>
+   768→                                  <TableCell>
+   769→                                    <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(m.status))}>
+   770→                                      {m.status}
+   771→                                    </Badge>
+   772→                                  </TableCell>
+   773→                                  <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{formatDate(m.invitedAt)}</TableCell>
+   774→                                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(m.acceptedAt)}</TableCell>
+   775→                                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(m.user?.lastLoginAt)}</TableCell>
+   776→                                </TableRow>
+   777→                              )
+   778→                            })}
+   779→                          </TableBody>
+   780→                        </Table>
+   781→                      </div>
+   782→                    )}
+   783→                  </SectionCard>
+   784→                </TabsContent>
+   785→
+   786→                {/* Workspaces tab */}
+   787→                <TabsContent value="workspaces" className="mt-3">
+   788→                  <SectionCard title="Workspaces" description={`${data.stats.totalWorkspaces} workspace(s)`} icon={Boxes}>
+   789→                    {data.workspaces.length === 0 ? (
+   790→                      <EmptyState icon={Boxes} title="Aucun workspace" message="Les workspaces de votre organisation apparaîtront ici." />
+   791→                    ) : (
+   792→                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   793→                        {data.workspaces.map((w) => (
+   794→                          <div key={w.id} className="rounded-md border p-3 bg-card">
+   795→                            <div className="flex items-start gap-2">
+   796→                              <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary shrink-0">
+   797→                                <Layers className="h-3.5 w-3.5" />
+   798→                              </div>
+   799→                              <div className="min-w-0">
+   800→                                <p className="text-sm font-medium truncate">{w.name}</p>
+   801→                                <p className="text-[11px] text-muted-foreground truncate">
+   802→                                  <code className="bg-muted px-1 rounded">{w.slug}</code>
+   803→                                </p>
+   804→                                <p className="text-[10px] text-muted-foreground mt-1">
+   805→                                  Créé le {formatDate(w.createdAt)}
+   806→                                </p>
+   807→                              </div>
+   808→                            </div>
+   809→                          </div>
+   810→                        ))}
+   811→                      </div>
+   812→                    )}
+   813→                  </SectionCard>
+   814→                </TabsContent>
+   815→
+   816→                {/* Subscription tab */}
+   817→                <TabsContent value="subscription" className="mt-3">
+   818→                  <SectionCard title="Abonnement" description="Statut et cycle de facturation" icon={CreditCard}>
+   819→                    {!data.subscription ? (
+   820→                      <EmptyState icon={CreditCard} title="Aucun abonnement" message="Aucun abonnement actif. Souscrivez un plan pour activer la facturation." />
+   821→                    ) : (
+   822→                      <div className="space-y-1">
+   823→                        <InfoRow label="Statut">
+   824→                          <Badge variant="outline" className={cn("text-[10px] capitalize", statusBadgeClass(data.subscription.status))}>
+   825→                            {data.subscription.status}
+   826→                          </Badge>
+   827→                        </InfoRow>
+   828→                        <InfoRow label="Plan">{data.subscription.plan}</InfoRow>
+   829→                        <InfoRow label="Cycle">{data.subscription.billingCycle === "monthly" ? "Mensuel" : "Annuel"}</InfoRow>
+   830→                        <InfoRow label="Montant">
+   831→                          {formatCurrency(data.subscription.amountXOF)} / {data.subscription.billingCycle === "monthly" ? "mois" : "an"}
+   832→                        </InfoRow>
+   833→                        <Separator className="my-2" />
+   834→                        <InfoRow label="Période début">{formatDate(data.subscription.currentPeriodStart)}</InfoRow>
+   835→                        <InfoRow label="Période fin">{formatDate(data.subscription.currentPeriodEnd)}</InfoRow>
+   836→                        <InfoRow label="Méthode de paiement">{data.subscription.paymentMethod || "—"}</InfoRow>
+   837→                        <InfoRow label="Annulation fin de période">
+   838→                          {data.subscription.cancelAtPeriodEnd ? "Oui" : "Non"}
+   839→                        </InfoRow>
+   840→                        <InfoRow label="Fin d'essai">{formatDate(data.subscription.trialEndsAt)}</InfoRow>
+   841→                      </div>
+   842→                    )}
+   843→                  </SectionCard>
+   844→                </TabsContent>
+   845→
+   846→                {/* License tab */}
+   847→                <TabsContent value="license" className="mt-3">
+   848→                  <SectionCard title="Licence" description="Limites et fonctionnalités du plan" icon={KeyRound}>
+   849→                    {!data.license ? (
+   850→                      <EmptyState icon={KeyRound} title="Aucune licence" message="Aucune licence active. Activez une clé pour débloquer les fonctionnalités." />
+   851→                    ) : (
+   852→                      <div className="space-y-2">
+   853→                        <InfoRow label="Clé">
+   854→                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{data.license.keyMasked}</code>
+   855→                        </InfoRow>
+   856→                        <InfoRow label="Plan">
+   857→                          <Badge variant="outline" className={cn("text-[10px] capitalize", PLAN_BADGE[data.license.plan] || statusBadgeClass(data.license.plan))}>
+   858→                            {data.license.plan}
+   859→                          </Badge>
+   860→                        </InfoRow>
+   861→                        <InfoRow label="Nom">{data.license.name}</InfoRow>
+   862→                        <InfoRow label="Statut">
+   863→                          <Badge variant="outline" className={cn("text-[10px] capitalize", statusBadgeClass(data.license.status))}>
+   864→                            {data.license.status}
+   865→                          </Badge>
+   866→                        </InfoRow>
+   867→                        <Separator className="my-2" />
+   868→                        <p className="text-xs text-muted-foreground">Limites</p>
+   869→                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+   870→                          <LimitTile label="Utilisateurs" value={data.license.maxUsers} icon={Users} />
+   871→                          <LimitTile label="Entreprises" value={data.license.maxCompanies} icon={Layers} />
+   872→                          <LimitTile label="Appels API" value={data.license.maxApiCalls} icon={Gauge} />
+   873→                          <LimitTile label="Exports" value={data.license.maxExports} icon={FileText} />
+   874→                          <LimitTile label="Sources" value={data.license.maxSources} icon={MapPin} />
+   875→                          <LimitTile label="Workspaces" value={data.license.maxWorkspaces} icon={Boxes} />
+   876→                        </div>
+   877→                        <Separator className="my-2" />
+   878→                        <p className="text-xs text-muted-foreground">Fonctionnalités</p>
+   879→                        <div className="flex flex-wrap gap-1">
+   880→                          {data.license.features.length === 0 ? (
+   881→                            <span className="text-xs text-muted-foreground">Aucune fonctionnalité.</span>
+   882→                          ) : (
+   883→                            data.license.features.map((f) => (
+   884→                              <Badge key={f} variant="secondary" className="text-[10px]">
+   885→                                {f}
+   886→                              </Badge>
+   887→                            ))
+   888→                          )}
+   889→                        </div>
+   890→                        <Separator className="my-2" />
+   891→                        <InfoRow label="Activée le">{formatDate(data.license.activatedAt)}</InfoRow>
+   892→                        <InfoRow label="Expire le">{formatDate(data.license.expiresAt)}</InfoRow>
+   893→                      </div>
+   894→                    )}
+   895→                  </SectionCard>
+   896→                </TabsContent>
+   897→
+   898→                {/* Quota tab */}
+   899→                <TabsContent value="quota" className="mt-3">
+   900→                  <SectionCard
+   901→                    title="Quota"
+   902→                    description={data.quota ? `Période ${data.quota.periodMonth}/${data.quota.periodYear}` : "Aucune donnée de quota"}
+   903→                    icon={Gauge}
+   904→                  >
+   905→                    {!data.quota ? (
+   906→                      <EmptyState icon={Gauge} title="Aucun quota enregistré" message="Le quota du mois courant apparaîtra ici une fois les compteurs initialisés." />
+   907→                    ) : (
+   908→                      <div className="space-y-3">
+   909→                        <QuotaBar
+   910→                          label="Appels API"
+   911→                          current={data.quota.apiCalls}
+   912→                          max={data.license?.maxApiCalls}
+   913→                        />
+   914→                        <QuotaBar
+   915→                          label="Entreprises stockées"
+   916→                          current={data.quota.companiesStored}
+   917→                          max={data.license?.maxCompanies}
+   918→                        />
+   919→                        <QuotaBar
+   920→                          label="Exports"
+   921→                          current={data.quota.exportsCount}
+   922→                          max={data.license?.maxExports}
+   923→                        />
+   924→                        <div>
+   925→                          <div className="flex items-center justify-between mb-1">
+   926→                            <span className="text-xs text-muted-foreground">Scrape jobs</span>
+   927→                            <span className="text-xs font-medium">{formatNumber(data.quota.scrapeJobs)}</span>
+   928→                          </div>
+   929→                          <Progress value={0} className="h-2 bg-muted" />
+   930→                          <p className="text-[10px] text-muted-foreground mt-0.5">Aucune limite configurée</p>
+   931→                        </div>
+   932→                        <QuotaBar
+   933→                          label="Utilisateurs"
+   934→                          current={data.quota.usersCount}
+   935→                          max={data.license?.maxUsers}
+   936→                        />
+   937→                        <p className="text-[10px] text-muted-foreground">
+   938→                          Mis à jour le {formatDateTime(data.quota.updatedAt)}
+   939→                        </p>
+   940→                      </div>
+   941→                    )}
+   942→                  </SectionCard>
+   943→                </TabsContent>
+   944→
+   945→                {/* Invoices tab */}
+   946→                <TabsContent value="invoices" className="mt-3">
+   947→                  <SectionCard
+   948→                    title="Factures"
+   949→                    description={`${data.stats.totalInvoices} facture(s)`}
+   950→                    icon={Receipt}
+   951→                  >
+   952→                    {data.invoices.length === 0 ? (
+   953→                      <EmptyState icon={Receipt} title="Aucune facture" message="Vos factures apparaîtront ici une fois le premier paiement traité." />
+   954→                    ) : (
+   955→                      <div className="overflow-x-auto -mx-2">
+   956→                        <Table>
+   957→                          <TableHeader>
+   958→                            <TableRow>
+   959→                              <TableHead className="h-8">Numéro</TableHead>
+   960→                              <TableHead className="h-8">Montant HT</TableHead>
+   961→                              <TableHead className="h-8 hidden md:table-cell">TVA</TableHead>
+   962→                              <TableHead className="h-8">Total TTC</TableHead>
+   963→                              <TableHead className="h-8">Statut</TableHead>
+   964→                              <TableHead className="h-8 hidden lg:table-cell">Échéance</TableHead>
+   965→                              <TableHead className="h-8 hidden lg:table-cell">Payée le</TableHead>
+   966→                            </TableRow>
+   967→                          </TableHeader>
+   968→                          <TableBody>
+   969→                            {data.invoices.map((inv) => (
+   970→                              <TableRow key={inv.id}>
+   971→                                <TableCell className="text-xs font-mono">{inv.number}</TableCell>
+   972→                                <TableCell className="text-xs">{formatCurrency(inv.amountXOF)}</TableCell>
+   973→                                <TableCell className="text-xs hidden md:table-cell">{formatCurrency(inv.taxXOF)}</TableCell>
+   974→                                <TableCell className="text-xs font-medium">{formatCurrency(inv.totalXOF)}</TableCell>
+   975→                                <TableCell>
+   976→                                  <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(inv.status))}>
+   977→                                    {inv.status}
+   978→                                  </Badge>
+   979→                                </TableCell>
+   980→                                <TableCell className="text-xs text-muted-foreground hidden lg:table-cell">{formatDate(inv.dueDate)}</TableCell>
+   981→                                <TableCell className="text-xs text-muted-foreground hidden lg:table-cell">{formatDate(inv.paidAt)}</TableCell>
+   982→                              </TableRow>
+   983→                            ))}
+   984→                          </TableBody>
+   985→                        </Table>
+   986→                      </div>
+   987→                    )}
+   988→                  </SectionCard>
+   989→                </TabsContent>
+   990→
+   991→                {/* API Keys tab */}
+   992→                <TabsContent value="apikeys" className="mt-3">
+   993→                  <SectionCard title="Clés API" description={`${data.stats.totalApiKeys} active(s)`} icon={KeyRound}>
+   994→                    {data.apiKeys.length === 0 ? (
+   995→                      <EmptyState icon={KeyRound} title="Aucune clé API" message="Aucune clé API n'a été générée par les membres de l'organisation." />
+   996→                    ) : (
+   997→                      <div className="overflow-x-auto -mx-2">
+   998→                        <Table>
+   999→                          <TableHeader>
+  1000→                            <TableRow>
+  1001→                              <TableHead className="h-8">Nom</TableHead>
+  1002→                              <TableHead className="h-8">Préfixe</TableHead>
+  1003→                              <TableHead className="h-8 hidden md:table-cell">Scopes</TableHead>
+  1004→                              <TableHead className="h-8 hidden lg:table-cell">Dernier usage</TableHead>
+  1005→                              <TableHead className="h-8 hidden lg:table-cell">Expire le</TableHead>
+  1006→                              <TableHead className="h-8">Statut</TableHead>
+  1007→                            </TableRow>
+  1008→                          </TableHeader>
+  1009→                          <TableBody>
+  1010→                            {data.apiKeys.map((k) => {
+  1011→                              const isRevoked = !!k.revokedAt
+  1012→                              const isExpired = k.expiresAt ? new Date(k.expiresAt) < new Date() : false
+  1013→                              const status = isRevoked ? "revoked" : isExpired ? "expired" : "active"
+  1014→                              return (
+  1015→                                <TableRow key={k.id}>
+  1016→                                  <TableCell>
+  1017→                                    <p className="text-xs font-medium truncate">{k.name}</p>
+  1018→                                    {k.ownerEmail && (
+  1019→                                      <p className="text-[10px] text-muted-foreground truncate">{k.ownerEmail}</p>
+  1020→                                    )}
+  1021→                                  </TableCell>
+  1022→                                  <TableCell>
+  1023→                                    <code className="text-[11px] bg-muted px-1.5 py-0.5 rounded font-mono">
+  1024→                                      {k.keyPrefix}…
+  1025→                                    </code>
+  1026→                                  </TableCell>
+  1027→                                  <TableCell className="hidden md:table-cell">
+  1028→                                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+  1029→                                      {k.scopes.length === 0 ? (
+  1030→                                        <span className="text-[10px] text-muted-foreground">—</span>
+  1031→                                      ) : (
+  1032→                                        k.scopes.slice(0, 3).map((s) => (
+  1033→                                          <Badge key={s} variant="secondary" className="text-[9px]">{s}</Badge>
+  1034→                                        ))
+  1035→                                      )}
+  1036→                                      {k.scopes.length > 3 && (
+  1037→                                        <Badge variant="outline" className="text-[9px]">+{k.scopes.length - 3}</Badge>
+  1038→                                      )}
+  1039→                                    </div>
+  1040→                                  </TableCell>
+  1041→                                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+  1042→                                    {formatDate(k.lastUsedAt)}
+  1043→                                  </TableCell>
+  1044→                                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+  1045→                                    {formatDate(k.expiresAt)}
+  1046→                                  </TableCell>
+  1047→                                  <TableCell>
+  1048→                                    <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(status))}>
+  1049→                                      {status}
+  1050→                                    </Badge>
+  1051→                                  </TableCell>
+  1052→                                </TableRow>
+  1053→                              )
+  1054→                            })}
+  1055→                          </TableBody>
+  1056→                        </Table>
+  1057→                      </div>
+  1058→                    )}
+  1059→                  </SectionCard>
+  1060→                </TabsContent>
+  1061→
+  1062→                {/* Audit tab (OWNER/ADMIN only) */}
+  1063→                {data.canSeeAudit && (
+  1064→                  <TabsContent value="audit" className="mt-3">
+  1065→                    <SectionCard
+  1066→                      title="Journal d'audit"
+  1067→                      description="20 derniers événements"
+  1068→                      icon={ScrollText}
+  1069→                    >
+  1070→                      {!data.auditLogs || data.auditLogs.length === 0 ? (
+  1071→                        <EmptyState icon={ScrollText} title="Aucun événement" message="Les actions des membres apparaîtront ici." />
+  1072→                      ) : (
+  1073→                        <div className="space-y-2">
+  1074→                          {data.auditLogs.map((log) => (
+  1075→                            <AuditLogItem key={log.id} log={log} />
+  1076→                          ))}
+  1077→                        </div>
+  1078→                      )}
+  1079→                    </SectionCard>
+  1080→                  </TabsContent>
+  1081→                )}
+  1082→              </Tabs>
+  1083→            </>
+  1084→          )}
+  1085→        </div>
+  1086→      </DialogContent>
+  1087→    </Dialog>
+  1088→  )
+  1089→}
+  1090→
+  1091→// ============================================================================
+  1092→// Sub-components used inside tabs
+  1093→// ============================================================================
+  1094→
+  1095→function LimitTile({
+  1096→  label,
+  1097→  value,
+  1098→  icon: Icon,
+  1099→}: {
+  1100→  label: string
+  1101→  value: number
+  1102→  icon: React.ComponentType<{ className?: string }>
+  1103→}) {
+  1104→  return (
+  1105→    <div className="rounded-md border bg-card p-2 flex items-center gap-2">
+  1106→      <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+  1107→      <div className="min-w-0">
+  1108→        <p className="text-[10px] text-muted-foreground truncate">{label}</p>
+  1109→        <p className="text-xs font-semibold truncate">{formatNumber(value)}</p>
+  1110→      </div>
+  1111→    </div>
+  1112→  )
+  1113→}
+  1114→
+  1115→function QuotaBar({
+  1116→  label,
+  1117→  current,
+  1118→  max,
+  1119→}: {
+  1120→  label: string
+  1121→  current: number
+  1122→  max?: number | null
+  1123→}) {
+  1124→  const effectiveMax = max && max > 0 ? max : null
+  1125→  const pct = effectiveMax ? Math.min(100, Math.round((current / effectiveMax) * 100)) : 0
+  1126→  return (
+  1127→    <div>
+  1128→      <div className="flex items-center justify-between mb-1">
+  1129→        <span className="text-xs text-muted-foreground">{label}</span>
+  1130→        <span className="text-xs font-medium">
+  1131→          {formatNumber(current)}
+  1132→          {effectiveMax ? ` / ${formatNumber(effectiveMax)}` : ""}
+  1133→          {effectiveMax && <span className="text-[10px] text-muted-foreground ml-1">({pct}%)</span>}
+  1134→        </span>
+  1135→      </div>
+  1136→      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+  1137→        <div
+  1138→          className={cn("h-full transition-all", progressColorClass(pct))}
+  1139→          style={{ width: `${Math.max(pct, current > 0 ? 4 : 0)}%` }}
+  1140→        />
+  1141→      </div>
+  1142→    </div>
+  1143→  )
+  1144→}
+  1145→
+  1146→function AuditLogItem({ log }: { log: AuditLogRow }) {
+  1147→  const [open, setOpen] = React.useState(false)
+  1148→  const hasMetadata = log.metadata && Object.keys(log.metadata).length > 0
+  1149→  return (
+  1150→    <div className="rounded-md border bg-card p-2.5">
+  1151→      <div className="flex items-start gap-2">
+  1152→        <div className="flex flex-col items-center pt-0.5">
+  1153→          <div className={cn("h-2 w-2 rounded-full", progressColorClass(50))} />
+  1154→          <div className="w-px h-full bg-border mt-1" />
+  1155→        </div>
+  1156→        <div className="flex-1 min-w-0">
+  1157→          <div className="flex flex-wrap items-center gap-2">
+  1158→            <Badge variant="outline" className={cn("text-[10px]", severityBadgeClass(log.severity))}>
+  1159→              {log.severity}
+  1160→            </Badge>
+  1161→            <Badge variant="secondary" className="text-[10px]">{log.action}</Badge>
+  1162→            <Badge variant="outline" className="text-[10px]">{log.category}</Badge>
+  1163→            <span className="text-[10px] text-muted-foreground ml-auto">
+  1164→              {formatDateTime(log.createdAt)}
+  1165→            </span>
+  1166→          </div>
+  1167→          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+  1168→            {log.userEmail && (
+  1169→              <span className="inline-flex items-center gap-1">
+  1170→                <Mail className="h-3 w-3" />
+  1171→                {log.userName ? `${log.userName} <${log.userEmail}>` : log.userEmail}
+  1172→              </span>
+  1173→            )}
+  1174→            {log.ip && (
+  1175→              <span className="inline-flex items-center gap-1">
+  1176→                <MapPin className="h-3 w-3" />
+  1177→                {log.ip}
+  1178→              </span>
+  1179→            )}
+  1180→          </div>
+  1181→          {hasMetadata && (
+  1182→            <Collapsible open={open} onOpenChange={setOpen}>
+  1183→              <CollapsibleTrigger asChild>
+  1184→                <button className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline">
+  1185→                  {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+  1186→                  {open ? "Masquer" : "Voir"} les détails
+  1187→                </button>
+  1188→              </CollapsibleTrigger>
+  1189→              <CollapsibleContent>
+  1190→                <pre className="mt-1 text-[10px] bg-muted/60 rounded p-2 overflow-x-auto max-h-32">
+  1191→                  {JSON.stringify(log.metadata, null, 2)}
+  1192→                </pre>
+  1193→              </CollapsibleContent>
+  1194→            </Collapsible>
+  1195→          )}
+  1196→        </div>
+  1197→      </div>
+  1198→    </div>
+  1199→  )
+  1200→}
+  1201→
+  1202→function LoadingState() {
+  1203→  return (
+  1204→    <div className="space-y-3">
+  1205→      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+  1206→        {Array.from({ length: 6 }).map((_, i) => (
+  1207→          <div key={i} className="rounded-lg border bg-card p-3 h-[68px] animate-pulse" />
+  1208→        ))}
+  1209→      </div>
+  1210→      <div className="h-9 w-full rounded-lg bg-muted animate-pulse" />
+  1211→      <div className="space-y-2">
+  1212→        {Array.from({ length: 4 }).map((_, i) => (
+  1213→          <div key={i} className="h-12 rounded-md border bg-card animate-pulse" />
+  1214→        ))}
+  1215→      </div>
+  1216→    </div>
+  1217→  )
+  1218→}
+  1219→
