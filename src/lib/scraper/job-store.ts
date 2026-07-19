@@ -9,15 +9,19 @@
  *  - Récupérer les résultats
  */
 
-import { GoogleMapsScraper } from "./google-maps-scraper"
 import type { SearchQuery, ScrapeResult, ScrapeProgress, ScrapeEvent, ScrapedPlace } from "./types"
+
+// Lazy import : GoogleMapsScraper (qui importe Playwright/Chromium) n'est chargé
+// qu'au moment de lancer un job, pas quand on liste les jobs.
+// Cela évite l'OOM quand l'API GET /api/scraper/jobs compile ce module.
+type GoogleMapsScraperType = InstanceType<typeof import("./google-maps-scraper").GoogleMapsScraper>
 
 interface JobState {
   id: string
   query: SearchQuery
   progress: ScrapeProgress
   result?: ScrapeResult
-  scraper: GoogleMapsScraper
+  scraper?: GoogleMapsScraperType // optionnel car lazy-loaded
   events: ScrapeEvent[] // derniers N events pour replay
   createdAt: string
 }
@@ -42,7 +46,7 @@ const MAX_EVENTS_KEPT = 50
  * Protection mémoire : limite à 1 job simultané (Chromium est gourmand).
  * Si un job est déjà en cours, on refuse (429).
  */
-export function startScrapeJob(jobId: string, query: SearchQuery): JobState {
+export async function startScrapeJob(jobId: string, query: SearchQuery): Promise<JobState> {
   // Protection : refuse si un job est déjà running (évite l'OOM)
   for (const [, existing] of jobs) {
     if (existing.progress.status === "running" || existing.progress.status === "queued") {
@@ -50,15 +54,17 @@ export function startScrapeJob(jobId: string, query: SearchQuery): JobState {
     }
   }
 
+  // Lazy import du scraper (Playwright/Chromium) — seulement au lancement d'un job
+  const { GoogleMapsScraper } = await import("./google-maps-scraper")
   const scraper = new GoogleMapsScraper({
     headless: true,
     maxResults: query.maxResults || 20,
     maxScrolls: 5,
     extractReviews: false,
-    extractPhotos: false, // désactivé pour économiser la mémoire
+    extractPhotos: false,
     maxPhotos: 0,
     pageTimeout: 25000,
-    retries: 1, // réduit de 2 à 1
+    retries: 1,
   })
 
   const state: JobState = {

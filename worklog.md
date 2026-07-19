@@ -3079,3 +3079,26 @@ Stage Summary:
 - Protection OOM : 1 job à la fois, photos désactivées, retries réduits
 - Le scraper Playwright peut tuer le serveur par OOM si lancé (30GB VM avec Chromium) — limitation environnement (4GB RAM)
 - Lint 0 erreur, API fonctionnelle
+
+---
+Task ID: 43
+Agent: Main (Architect)
+Task: Corriger l'erreur "sandbox is inactive" — OOM du serveur Next.js
+
+Work Log:
+- Diagnostic : l'erreur {"error":"sandbox is inactive"} venait du serveur Next.js qui crashait par OOM (Out of Memory)
+- Cause racine : page.tsx importait statiquement 20 vues (dont scraper-view qui importe Playwright/Chromium, agents-view qui importe z-ai SDK, etc.). Turbopack compilait tout en même temps → 30GB VM → OOM kill (4GB RAM disponible)
+- Solution : convertir tous les imports statiques en lazy loading dynamique
+  * Créé un map `viewLoaders` qui associe chaque NavKey à une fonction d'import dynamique
+  * Créé un composant `LazyView` qui ne charge qu'UNE vue à la fois via `useEffect + import()`
+  * Turbopack ne compile que la vue active, pas les 20 d'un coup
+  * Loader animé pendant le chargement de chaque vue
+- Ajouté NODE_OPTIONS="--max-old-space-size=2048" pour augmenter la limite mémoire de Node.js
+- Protection OMM du scraper (Task 42) : limite 1 job simultané, extractPhotos: false, retries réduits
+
+Stage Summary:
+- Erreur "sandbox is inactive" RÉSOLUE : le serveur ne crash plus par OOM
+- Page / compile en 12.6s (vs crash avant) avec seulement ~2GB utilisés
+- Lazy loading : chaque vue se compile à la demande (quand l'utilisateur clique)
+- Lint 0 erreur
+- Toutes les fonctionnalités préservées (RBAC, navigation, props passées aux vues)

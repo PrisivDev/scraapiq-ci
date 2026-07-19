@@ -1,43 +1,100 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense, lazy, type ComponentType } from "react"
 import { Sidebar, type NavKey } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/analytics/dashboard-header"
 import { CompanyDetailDialog } from "@/components/dashboard/company-detail-dialog"
 import { NewJobDialog } from "@/components/dashboard/new-job-dialog"
 import { Footer } from "@/components/dashboard/footer"
-import { companies, type Company } from "@/lib/mock-data"
+import { type Company } from "@/lib/mock-data"
 import { toast } from "sonner"
 import {
   Sheet,
   SheetContent,
 } from "@/components/ui/sheet"
-
-// Views
-import { AnalyticsDashboard } from "@/components/dashboard/analytics/analytics-dashboard"
-import { AssistantView } from "@/components/dashboard/views/assistant-view"
-import { IntelligentSearchView } from "@/components/dashboard/views/intelligent-search-view"
-import { CompaniesView } from "@/components/dashboard/views/companies-view"
-import { OSMMapViewWrapper } from "@/components/dashboard/views/osm-map-wrapper"
-import { SourcesView } from "@/components/dashboard/views/sources-view"
-import { JobsView } from "@/components/dashboard/views/jobs-view"
-import { ScraperView } from "@/components/dashboard/views/scraper-view"
-import { ExportEngineView } from "@/components/dashboard/views/export-engine-view"
-import { TeamView } from "@/components/dashboard/views/team-view"
-import { SettingsView } from "@/components/dashboard/views/settings-view"
-import { ApiDocsView } from "@/components/dashboard/views/api-docs-view"
-import { NotificationsView } from "@/components/dashboard/views/notifications-view"
-import { BackOfficeView } from "@/components/dashboard/views/back-office-view"
-import { QueueMonitoringView } from "@/components/dashboard/views/queue-monitoring-view"
-import { SecurityView } from "@/components/dashboard/views/security-view"
-import { PWAView } from "@/components/dashboard/views/pwa-view"
-import { BusinessIntelView } from "@/components/dashboard/views/business-intel-view"
-import { SaasView } from "@/components/dashboard/views/saas-view"
-import { AgentsView } from "@/components/dashboard/views/agents-view"
-import { DbViewerView } from "@/components/dashboard/views/db-viewer"
 import type { SearchFilters } from "@/components/dashboard/search-panel"
 import { canAccess, canPerform, type UserRole, DEFAULT_ROLE } from "@/lib/rbac-nav"
-import { ShieldX } from "lucide-react"
+import { ShieldX, Loader2 } from "lucide-react"
+
+// Loader pour les vues dynamiques
+function ViewLoader() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="text-center">
+        <Loader2 className="h-6 w-6 mx-auto animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground mt-2">Chargement...</p>
+      </div>
+    </div>
+  )
+}
+
+// Map des vues — lazy import UNE seule vue à la fois (évite l'OOM)
+// Chaque vue n'est compilée par Turbopack que quand l'utilisateur y accède
+const viewLoaders: Record<NavKey, () => Promise<{ default: ComponentType<any> }>> = {
+  dashboard: () => import("@/components/dashboard/analytics/analytics-dashboard").then(m => ({ default: (p: any) => <m.AnalyticsDashboard {...p} /> })),
+  assistant: () => import("@/components/dashboard/views/assistant-view").then(m => ({ default: m.AssistantView })),
+  search: () => import("@/components/dashboard/views/intelligent-search-view").then(m => ({ default: m.IntelligentSearchView })),
+  companies: () => import("@/components/dashboard/views/companies-view").then(m => ({ default: m.CompaniesView })),
+  map: () => import("@/components/dashboard/views/osm-map-wrapper").then(m => ({ default: m.OSMMapViewWrapper })),
+  sources: () => import("@/components/dashboard/views/sources-view").then(m => ({ default: m.SourcesView })),
+  jobs: () => import("@/components/dashboard/views/jobs-view").then(m => ({ default: m.JobsView })),
+  scraper: () => import("@/components/dashboard/views/scraper-view").then(m => ({ default: m.ScraperView })),
+  exports: () => import("@/components/dashboard/views/export-engine-view").then(m => ({ default: m.ExportEngineView })),
+  team: () => import("@/components/dashboard/views/team-view").then(m => ({ default: m.TeamView })),
+  settings: () => import("@/components/dashboard/views/settings-view").then(m => ({ default: m.SettingsView })),
+  api: () => import("@/components/dashboard/views/api-docs-view").then(m => ({ default: m.ApiDocsView })),
+  notifications: () => import("@/components/dashboard/views/notifications-view").then(m => ({ default: m.NotificationsView })),
+  backoffice: () => import("@/components/dashboard/views/back-office-view").then(m => ({ default: m.BackOfficeView })),
+  queue: () => import("@/components/dashboard/views/queue-monitoring-view").then(m => ({ default: m.QueueMonitoringView })),
+  security: () => import("@/components/dashboard/views/security-view").then(m => ({ default: m.SecurityView })),
+  pwa: () => import("@/components/dashboard/views/pwa-view").then(m => ({ default: m.PWAView })),
+  bi: () => import("@/components/dashboard/views/business-intel-view").then(m => ({ default: m.BusinessIntelView })),
+  saas: () => import("@/components/dashboard/views/saas-view").then(m => ({ default: m.SaasView })),
+  agents: () => import("@/components/dashboard/views/agents-view").then(m => ({ default: m.AgentsView })),
+  db: () => import("@/components/dashboard/views/db-viewer").then(m => ({ default: m.DbViewerView })),
+}
+
+// Composant qui charge dynamiquement UNE vue selon la clé
+function LazyView({ navKey, props }: { navKey: NavKey; props?: Record<string, unknown> }) {
+  const [state, setState] = useState<{ View: ComponentType<any> | null; error: string | null; key: NavKey }>({
+    View: null,
+    error: null,
+    key: navKey,
+  })
+
+  useEffect(() => {
+    let active = true
+    const loader = viewLoaders[navKey]
+    
+    const loadView = async () => {
+      if (!loader) {
+        if (active) setState({ View: null, error: "Vue introuvable", key: navKey })
+        return
+      }
+      try {
+        const mod = await loader()
+        if (active) setState({ View: mod.default, error: null, key: navKey })
+      } catch (e) {
+        if (active) setState({ View: null, error: e instanceof Error ? e.message : "Erreur de chargement", key: navKey })
+      }
+    }
+    loadView()
+    
+    return () => { active = false }
+  }, [navKey])
+
+  // Si la clé a changé mais pas encore chargée, afficher le loader
+  if (state.key !== navKey || (!state.View && !state.error)) return <ViewLoader />
+  if (state.error) {
+    return (
+      <div className="flex items-center justify-center py-12 text-destructive">
+        <p className="text-sm">Erreur: {state.error}</p>
+      </div>
+    )
+  }
+  if (!state.View) return <ViewLoader />
+  return <state.View {...props} />
+}
 
 const navTitles: Record<NavKey, { title: string; subtitle: string }> = {
   dashboard: { title: "Tableau de bord", subtitle: "Vue d'ensemble — Abidjan & Côte d'Ivoire" },
@@ -171,62 +228,10 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              <>
-            {activeNav === "dashboard" && (
-              <AnalyticsDashboard onNavigate={handlePaletteNavigate} />
-            )}
-
-            {activeNav === "assistant" && (
-              <AssistantView />
-            )}
-
-            {activeNav === "search" && (
-              <IntelligentSearchView />
-            )}
-
-            {activeNav === "companies" && (
-              <CompaniesView
-                onSelectCompany={handleSelectCompany}
-                onExport={handleExport}
-              />
-            )}
-
-            {activeNav === "map" && (
-              <OSMMapViewWrapper />
-            )}
-
-            {activeNav === "sources" && <SourcesView />}
-
-            {activeNav === "jobs" && <JobsView />}
-
-            {activeNav === "scraper" && <ScraperView />}
-
-            {activeNav === "exports" && <ExportEngineView />}
-
-            {activeNav === "api" && <ApiDocsView />}
-
-            {activeNav === "notifications" && <NotificationsView />}
-
-            {activeNav === "team" && <TeamView />}
-
-            {activeNav === "backoffice" && <BackOfficeView />}
-
-            {activeNav === "queue" && <QueueMonitoringView />}
-
-            {activeNav === "security" && <SecurityView />}
-
-            {activeNav === "pwa" && <PWAView />}
-
-            {activeNav === "bi" && <BusinessIntelView />}
-
-            {activeNav === "saas" && <SaasView />}
-
-            {activeNav === "agents" && <AgentsView />}
-
-            {activeNav === "db" && <DbViewerView />}
-
-            {activeNav === "settings" && <SettingsView />}
-              </>
+              <LazyView navKey={activeNav} props={{
+                ...(activeNav === "dashboard" && { onNavigate: handlePaletteNavigate }),
+                ...(activeNav === "companies" && { onSelectCompany: handleSelectCompany, onExport: handleExport }),
+              }} />
             )}
           </div>
         </main>

@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     let state
     try {
-      state = startScrapeJob(jobId, query)
+      state = await startScrapeJob(jobId, query)
     } catch (jobErr) {
       // Job déjà en cours → 429 Too Many Requests
       const msg = jobErr instanceof Error ? jobErr.message : "Job déjà en cours"
