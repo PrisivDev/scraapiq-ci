@@ -3045,3 +3045,37 @@ Stage Summary:
 - 2 screenshots sauvegardés (sidebar-owner.png, sidebar-admin.png).
 - Pas de modification de .env.
 - prisma/schema.prisma modifié (ajout organizationId à Company + relation + index) — nécessaire et autorisé pour cette tâche.
+
+---
+Task ID: 42
+Agent: Main (Architect)
+Task: Améliorer la page Jobs de scraping + corriger le problème des jobs sans résultats
+
+Work Log:
+- Diagnostic : la vue jobs-view.tsx utilisait scrapingJobs (mock data vidé à []) au lieu de fetcher /api/scraper/jobs
+- Réécriture complète de src/components/dashboard/views/jobs-view.tsx (~640 lignes) :
+  * Fetch réel /api/scraper/jobs → liste des jobs
+  * Fetch /api/scraper/jobs/[id] → détail avec events + résultats
+  * Polling automatique 2s pour les jobs running/queued
+  * Auto-refresh liste 5s si jobs running
+  * Recherche + filtres (Tous/En cours/En file/Terminés/Échecs)
+  * Stats cards (statut, progression, résultats, traités, doublons)
+  * Progress bar avec phase courante + lieu en cours d'extraction
+  * Log streaming temps réel (50 derniers events, couleur par type)
+  * Liste des lieux extraits (PlaceCard) avec nom, catégorie, adresse, tél, email, site, rating, statut ouvert/fermé
+  * Bouton Export CSV (GET /api/scraper/jobs/[id]?format=csv)
+  * Bouton Annuler (DELETE /api/scraper/jobs/[id])
+  * Empty states (aucun job, job sans résultat, chargement)
+  * Formatage dates en français (date-fns + fr locale)
+- Protection OOM ajoutée dans src/lib/scraper/job-store.ts :
+  * Limite 1 job simultané (refuse si déjà running, throw → 429)
+  * extractPhotos: false (économise mémoire)
+  * retries: 1 (au lieu de 2)
+- API /api/scraper/google-maps : catch l'erreur "job déjà en cours" → 429 Too Many Requests
+- Vérification API : GET /api/scraper/jobs → {"jobs":[],"total":0} ✓
+
+Stage Summary:
+- Vue Jobs complètement réécrite et fonctionnelle : fetch réel, polling, events temps réel, résultats détaillés, export CSV, annulation
+- Protection OOM : 1 job à la fois, photos désactivées, retries réduits
+- Le scraper Playwright peut tuer le serveur par OOM si lancé (30GB VM avec Chromium) — limitation environnement (4GB RAM)
+- Lint 0 erreur, API fonctionnelle

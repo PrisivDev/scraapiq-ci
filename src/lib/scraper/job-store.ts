@@ -38,17 +38,27 @@ const MAX_EVENTS_KEPT = 50
 
 /**
  * Lance un job de scraping
+ *
+ * Protection mémoire : limite à 1 job simultané (Chromium est gourmand).
+ * Si un job est déjà en cours, on refuse (429).
  */
 export function startScrapeJob(jobId: string, query: SearchQuery): JobState {
+  // Protection : refuse si un job est déjà running (évite l'OOM)
+  for (const [, existing] of jobs) {
+    if (existing.progress.status === "running" || existing.progress.status === "queued") {
+      throw new Error("Un job est déjà en cours. Attendez la fin avant d'en lancer un autre.")
+    }
+  }
+
   const scraper = new GoogleMapsScraper({
     headless: true,
     maxResults: query.maxResults || 20,
     maxScrolls: 5,
     extractReviews: false,
-    extractPhotos: true,
-    maxPhotos: 2,
+    extractPhotos: false, // désactivé pour économiser la mémoire
+    maxPhotos: 0,
     pageTimeout: 25000,
-    retries: 2,
+    retries: 1, // réduit de 2 à 1
   })
 
   const state: JobState = {

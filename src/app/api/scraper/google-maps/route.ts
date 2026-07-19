@@ -58,7 +58,14 @@ export async function POST(req: NextRequest) {
       userId: auth.user.id,
     }
 
-    const state = startScrapeJob(jobId, query)
+    let state
+    try {
+      state = startScrapeJob(jobId, query)
+    } catch (jobErr) {
+      // Job déjà en cours → 429 Too Many Requests
+      const msg = jobErr instanceof Error ? jobErr.message : "Job déjà en cours"
+      return errorResponse(msg, 429)
+    }
 
     const estimatedDurationMs = (query.maxResults || 20) * 3000 // ~3s par lieu
 
