@@ -1,0 +1,899 @@
+     1→     1→"use client"
+     2→     2→
+     3→     3→import { useState, useMemo } from "react"
+     4→     4→import {
+     5→     5→  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+     6→     6→  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+     7→     7→  ComposedChart, ScatterChart, Scatter,
+     8→     8→  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+     9→     9→} from "recharts"
+    10→    10→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+    11→    11→import { Badge } from "@/components/ui/badge"
+    12→    12→import { Button } from "@/components/ui/button"
+    13→    13→import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+    14→    14→import {
+    15→    15→  ChartContainer, ChartTooltipContent, type ChartConfig,
+    16→    16→} from "@/components/ui/chart"
+    17→    17→import {
+    18→    18→  TrendingUp, TrendingDown, Building2, MapPin, Star, Award,
+    19→    19→  Download, Database, BarChart3, PieChart as PieIcon, Activity,
+    20→    20→  Globe, Zap, ArrowUp, ArrowDown, Target, Gauge,
+    21→    21→} from "lucide-react"
+    22→    22→import { cn } from "@/lib/utils"
+    23→    23→import { toast } from "sonner"
+    24→    24→
+    25→    25→// ============================================================================
+    26→    26→// DONNÉES BI
+    27→    27→// ============================================================================
+    28→    28→
+    29→    29→const biKpis = [
+    30→    30→  { label: "Entreprises totales", value: "38 862", delta: "+12.4%", trend: "up", spark: [28500, 29800, 31200, 32800, 34100, 35900, 37200, 38862] },
+    31→    31→  { label: "Croissance mensuelle", value: "+4 283", delta: "+8.2%", trend: "up", spark: [2100, 2400, 2800, 3100, 3500, 3900, 4100, 4283] },
+    32→    32→  { label: "Score qualité moyen", value: "78/100", delta: "+5 pts", trend: "up", spark: [65, 68, 70, 72, 74, 76, 77, 78] },
+    33→    33→  { label: "Taux complétude", value: "84.2%", delta: "+4.8%", trend: "up", spark: [72, 75, 78, 79, 81, 82, 83, 84.2] },
+    34→    34→  { label: "Sources actives", value: "6/6", delta: "Stable", trend: "stable", spark: [6, 6, 6, 5, 6, 6, 6, 6] },
+    35→    35→  { label: "Couverture géo", value: "12 communes", delta: "+2", trend: "up", spark: [8, 9, 9, 10, 10, 11, 11, 12] },
+    36→    36→]
+    37→    37→
+    38→    38→// Prévisions (3 mois) avec intervalle de confiance
+    39→    39→const forecastData = [
+    40→    40→  { month: "Avr", actual: 32800, forecast: null, lower: null, upper: null },
+    41→    41→  { month: "Mai", actual: 34100, forecast: null, lower: null, upper: null },
+    42→    42→  { month: "Juin", actual: 35900, forecast: null, lower: null, upper: null },
+    43→    43→  { month: "Juil", actual: 37200, forecast: null, lower: null, upper: null },
+    44→    44→  { month: "Août", actual: 38862, forecast: null, lower: null, upper: null },
+    45→    45→  { month: "Sep", actual: null, forecast: 41200, lower: 39800, upper: 42600 },
+    46→    46→  { month: "Oct", actual: null, forecast: 43500, lower: 41200, upper: 45800 },
+    47→    47→  { month: "Nov", actual: null, forecast: 45800, lower: 42500, upper: 49100 },
+    48→    48→]
+    49→    49→
+    50→    50→// Par secteur
+    51→    51→const sectorData = [
+    52→    52→  { sector: "Restauration", count: 8420, growth: 14.2, quality: 82, revenue: 4.2 },
+    53→    53→  { sector: "Commerce", count: 7180, growth: 8.5, quality: 75, revenue: 6.8 },
+    54→    54→  { sector: "Télécom", count: 5240, growth: 5.2, quality: 91, revenue: 12.4 },
+    55→    55→  { sector: "BTP", count: 4620, growth: 18.3, quality: 78, revenue: 8.9 },
+    56→    56→  { sector: "Santé", count: 3890, growth: 9.4, quality: 85, revenue: 5.6 },
+    57→    57→  { sector: "Banque", count: 3210, growth: 4.8, quality: 93, revenue: 15.2 },
+    58→    58→  { sector: "Agro", count: 2840, growth: 14.8, quality: 72, revenue: 7.3 },
+    59→    59→  { sector: "Transport", count: 2120, growth: 11.5, quality: 76, revenue: 4.8 },
+    60→    60→  { sector: "IT", count: 1820, growth: 22.1, quality: 88, revenue: 3.9 },
+    61→    61→  { sector: "Tourisme", count: 1450, growth: 3.2, quality: 80, revenue: 2.8 },
+    62→    62→]
+    63→    63→
+    64→    64→const sectorColors = ["#10b981", "#f97316", "#3b82f6", "#a16207", "#ef4444", "#8b5cf6", "#84cc16", "#f59e0b", "#06b6d4", "#ec4899"]
+    65→    65→
+    66→    66→// Par commune
+    67→    67→const communeData = [
+    68→    68→  { commune: "Cocody", count: 8210, growth: 14.2, quality: 84, density: 92 },
+    69→    69→  { commune: "Plateau", count: 6890, growth: 8.5, quality: 88, density: 85 },
+    70→    70→  { commune: "Yopougon", count: 5760, growth: 18.3, quality: 72, density: 68 },
+    71→    71→  { commune: "Marcory", count: 4340, growth: 6.1, quality: 79, density: 74 },
+    72→    72→  { commune: "Treichville", count: 3980, growth: 4.8, quality: 81, density: 78 },
+    73→    73→  { commune: "Koumassi", count: 3620, growth: 9.4, quality: 75, density: 65 },
+    74→    74→  { commune: "Abobo", count: 3450, growth: 22.1, quality: 68, density: 58 },
+    75→    75→  { commune: "Adjamé", count: 3280, growth: 7.2, quality: 73, density: 71 },
+    76→    76→]
+    77→    77→
+    78→    78→// Par ville
+    79→    79→const cityData = [
+    80→    80→  { city: "Abidjan", count: 38862, growth: 12.4, share: 78.5, quality: 78 },
+    81→    81→  { city: "Bouaké", count: 3210, growth: 8.9, share: 6.5, quality: 72 },
+    82→    82→  { city: "Yamoussoukro", count: 2450, growth: 6.2, share: 4.9, quality: 75 },
+    83→    83→  { city: "San-Pédro", count: 1890, growth: 11.5, share: 3.8, quality: 70 },
+    84→    84→  { city: "Korhogo", count: 1240, growth: 5.4, share: 2.5, quality: 68 },
+    85→    85→  { city: "Daloa", count: 980, growth: 7.8, share: 2.0, quality: 71 },
+    86→    86→  { city: "Grand-Bassam", count: 620, growth: 15.2, share: 1.3, quality: 76 },
+    87→    87→  { city: "Man", count: 390, growth: 4.1, share: 0.8, quality: 65 },
+    88→    88→]
+    89→    89→
+    90→    90→// Top entreprises
+    91→    91→const topCompanies = [
+    92→    92→  { rank: 1, name: "Orange CI", sector: "Télécom", score: 98, growth: 12.4, employees: "5000+", contacts: 8 },
+    93→    93→  { rank: 2, name: "MTN Côte d'Ivoire", sector: "Télécom", score: 96, growth: 8.9, employees: "3000+", contacts: 7 },
+    94→    94→  { rank: 3, name: "BICICI", sector: "Banque", score: 95, growth: 5.2, employees: "1000+", contacts: 9 },
+    95→    95→  { rank: 4, name: "SIFCA Industries", sector: "Agro", score: 94, growth: 18.3, employees: "2000+", contacts: 6 },
+    96→    96→  { rank: 5, name: "CFAO Motors CI", sector: "Commerce", score: 92, growth: 6.7, employees: "500+", contacts: 7 },
+    97→    97→  { rank: 6, name: "Société Cacao CI", sector: "Agro", score: 91, growth: 14.8, employees: "1000+", contacts: 5 },
+    98→    98→  { rank: 7, name: "Hôtel Ibis Plateau", sector: "Tourisme", score: 89, growth: 3.2, employees: "100+", contacts: 8 },
+    99→    99→  { rank: 8, name: "BTP Afrique", sector: "BTP", score: 87, growth: 22.1, employees: "200+", contacts: 4 },
+   100→   100→  { rank: 9, name: "Abidjan Tech Hub", sector: "IT", score: 86, growth: 28.4, employees: "50+", contacts: 6 },
+   101→   101→  { rank: 10, name: "EcoBank CI", sector: "Banque", score: 85, growth: 4.1, employees: "800+", contacts: 8 },
+   102→   102→]
+   103→   103→
+   104→   104→// Croissance par mois (12 mois)
+   105→   105→const growthData = Array.from({ length: 12 }, (_, i) => {
+   106→   106→  const date = new Date()
+   107→   107→  date.setMonth(date.getMonth() - (11 - i))
+   108→   108→  return {
+   109→   109→    month: date.toLocaleDateString("fr-FR", { month: "short" }),
+   110→   110→    new: Math.floor(2000 + Math.random() * 3000 + i * 200),
+   111→   111→    total: 38862 - (11 - i) * 3500 + Math.floor(Math.random() * 500),
+   112→   112→    growth: parseFloat((8 + Math.random() * 6 + i * 0.3).toFixed(1)),
+   113→   113→  }
+   114→   114→})
+   115→   115→
+   116→   116→// Qualité des données par dimension
+   117→   117→const qualityDimensions = [
+   118→   118→  { dimension: "Complétude", current: 85, target: 90, trend: "up" },
+   119→   119→  { dimension: "Validité contacts", current: 78, target: 85, trend: "up" },
+   120→   120→  { dimension: "Qualité nom", current: 92, target: 95, trend: "up" },
+   121→   121→  { dimension: "Précision géo", current: 68, target: 80, trend: "up" },
+   122→   122→  { dimension: "Fiabilité source", current: 88, target: 90, trend: "stable" },
+   123→   123→  { dimension: "Fraîcheur", current: 92, target: 85, trend: "up" },
+   124→   124→  { dimension: "Présence online", current: 72, target: 80, trend: "up" },
+   125→   125→]
+   126→   126→
+   127→   127→// Matrice qualité × croissance (scatter)
+   128→   128→const qualityGrowthMatrix = sectorData.map((s) => ({
+   129→   129→  name: s.sector,
+   130→   130→  quality: s.quality,
+   131→   131→  growth: s.growth,
+   132→   132→  count: s.count,
+   133→   133→}))
+   134→   134→
+   135→   135→// Power BI dataset structure
+   136→   136→const powerBISchema = {
+   137→   137→  tables: [
+   138→   138→    { name: "Companies", rows: 38862, columns: ["id", "name", "sector", "commune", "city", "phone", "email", "website", "lat", "lng", "rating", "status", "quality_score", "created_at"] },
+   139→   139→    { name: "Sectors", rows: 10, columns: ["code", "label", "color", "keywords"] },
+   140→   140→    { name: "Communes", rows: 12, columns: ["name", "city", "lat", "lng", "count"] },
+   141→   141→    { name: "ScrapingJobs", rows: 4821, columns: ["id", "keyword", "source", "status", "results", "duration_ms", "created_at"] },
+   142→   142→    { name: "AuditLogs", rows: 12450, columns: ["id", "user_id", "action", "category", "ip", "created_at"] },
+   143→   143→  ],
+   144→   144→  measures: [
+   145→   145→    "Total Companies = COUNT(Companies[id])",
+   146→   146→    "Avg Quality = AVERAGE(Companies[quality_score])",
+   147→   147→    "Growth Rate = ([Total Companies] - PREVIOUSMONTH([Total Companies])) / PREVIOUSMONTH([Total Companies])",
+   148→   148→    "Companies by Sector = COUNTROWS(FILTER(Companies, Companies[sector] = SELECTEDVALUE(Sectors[label])))",
+   149→   149→    "Quality Score = AVERAGE(Companies[quality_score])",
+   150→   150→    "Contact Completeness = DIVIDE(COUNTROWS(FILTER(Companies, NOT(ISBLANK(Companies[phone])))), [Total Companies])",
+   151→   151→  ],
+   152→   152→  endpoints: [
+   153→   153→    "GET /api/v1/companies → dataset Companies",
+   154→   154→    "GET /api/v1/companies?format=csv → export Power BI",
+   155→   155→    "GET /api/v1/queue → metrics temps réel",
+   156→   156→    "WebSocket → streaming data",
+   157→   157→  ],
+   158→   158→}
+   159→   159→
+   160→   160→const chartConfig = {
+   161→   161→  actual: { label: "Réel", color: "var(--chart-1)" },
+   162→   162→  forecast: { label: "Prévision", color: "var(--chart-2)" },
+   163→   163→  count: { label: "Entreprises", color: "var(--chart-1)" },
+   164→   164→  growth: { label: "Croissance %", color: "var(--chart-2)" },
+   165→   165→  quality: { label: "Qualité", color: "var(--chart-3)" },
+   166→   166→} satisfies ChartConfig
+   167→   167→
+   168→   168→// ============================================================================
+   169→   169→// COMPOSANT PRINCIPAL
+   170→   170→// ============================================================================
+   171→   171→
+   172→   172→export function BusinessIntelView() {
+   173→   173→  const [view, setView] = useState<"overview" | "forecast" | "sectors" | "geo" | "quality" | "powerbi">("overview")
+   174→   174→
+   175→   175→  return (
+   176→   176→    <div className="space-y-4">
+   177→   177→      {/* Header */}
+   178→   178→      <div className="flex flex-wrap items-center justify-between gap-3">
+   179→   179→        <div>
+   180→   180→          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   181→   181→            <BarChart3 className="h-6 w-6 text-primary" />
+   182→   182→            Business Intelligence
+   183→   183→          </h1>
+   184→   184→          <p className="text-sm text-muted-foreground mt-0.5">
+   185→   185→            Power BI Ready · Prévisions · Secteurs · Communes · Villes · Top · Croissance · Qualité
+   186→   186→          </p>
+   187→   187→        </div>
+   188→   188→        <div className="flex items-center gap-2">
+   189→   189→          <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.success("Dataset Power BI exporté")}>
+   190→   190→            <Download className="h-3.5 w-3.5" />
+   191→   191→            Export Power BI
+   192→   192→          </Button>
+   193→   193→        </div>
+   194→   194→      </div>
+   195→   195→
+   196→   196→      {/* View tabs */}
+   197→   197→      <div className="flex gap-1 overflow-x-auto pb-1">
+   198→   198→        {[
+   199→   199→          { key: "overview", label: "Vue d'ensemble" },
+   200→   200→          { key: "forecast", label: "Prévisions" },
+   201→   201→          { key: "sectors", label: "Secteurs" },
+   202→   202→          { key: "geo", label: "Géographie" },
+   203→   203→          { key: "quality", label: "Qualité données" },
+   204→   204→          { key: "powerbi", label: "Power BI Ready" },
+   205→   205→        ].map((t) => (
+   206→   206→          <button
+   207→   207→            key={t.key}
+   208→   208→            onClick={() => setView(t.key as typeof view)}
+   209→   209→            className={cn(
+   210→   210→              "rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
+   211→   211→              view === t.key ? "bg-primary text-primary-foreground" : "bg-muted/50 hover:bg-accent"
+   212→   212→            )}
+   213→   213→          >
+   214→   214→            {t.label}
+   215→   215→          </button>
+   216→   216→        ))}
+   217→   217→      </div>
+   218→   218→
+   219→   219→      {view === "overview" && <OverviewTab />}
+   220→   220→      {view === "forecast" && <ForecastTab />}
+   221→   221→      {view === "sectors" && <SectorsTab />}
+   222→   222→      {view === "geo" && <GeoTab />}
+   223→   223→      {view === "quality" && <QualityTab />}
+   224→   224→      {view === "powerbi" && <PowerBITab />}
+   225→   225→    </div>
+   226→   226→  )
+   227→   227→}
+   228→   228→
+   229→   229→// ============================================================================
+   230→   230→// TAB: OVERVIEW
+   231→   231→// ============================================================================
+   232→   232→
+   233→   233→function OverviewTab() {
+   234→   234→  return (
+   235→   235→    <div className="space-y-4">
+   236→   236→      {/* KPIs */}
+   237→   237→      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+   238→   238→        {biKpis.map((kpi) => (
+   239→   239→          <Card key={kpi.label}>
+   240→   240→            <CardContent className="p-3">
+   241→   241→              <div className="flex items-center justify-between mb-1">
+   242→   242→                <Sparkline data={kpi.spark} color={kpi.trend === "up" ? "#10b981" : "#f97316"} />
+   243→   243→                <span className={cn(
+   244→   244→                  "flex items-center gap-0.5 text-[10px] font-semibold",
+   245→   245→                  kpi.trend === "up" && "text-emerald-600",
+   246→   246→                  kpi.trend === "down" && "text-orange-600",
+   247→   247→                  kpi.trend === "stable" && "text-muted-foreground"
+   248→   248→                )}>
+   249→   249→                  {kpi.trend === "up" && <ArrowUp className="h-2.5 w-2.5" />}
+   250→   250→                  {kpi.trend === "down" && <ArrowDown className="h-2.5 w-2.5" />}
+   251→   251→                  {kpi.delta}
+   252→   252→                </span>
+   253→   253→              </div>
+   254→   254→              <p className="text-xl font-bold">{kpi.value}</p>
+   255→   255→              <p className="text-[10px] text-muted-foreground uppercase">{kpi.label}</p>
+   256→   256→            </CardContent>
+   257→   257→          </Card>
+   258→   258→        ))}
+   259→   259→      </div>
+   260→   260→
+   261→   261→      {/* Charts row 1 */}
+   262→   262→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   263→   263→        <Card>
+   264→   264→          <CardHeader className="pb-2">
+   265→   265→            <CardTitle className="text-sm flex items-center gap-2">
+   266→   266→              <TrendingUp className="h-4 w-4 text-primary" />
+   267→   267→              Croissance des entreprises (12 mois)
+   268→   268→            </CardTitle>
+   269→   269→          </CardHeader>
+   270→   270→          <CardContent>
+   271→   271→            <ChartContainer config={chartConfig} className="h-[240px] w-full">
+   272→   272→              <ComposedChart data={growthData} margin={{ left: -12, right: 8, top: 8 }}>
+   273→   273→                <defs>
+   274→   274→                  <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
+   275→   275→                    <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+   276→   276→                    <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
+   277→   277→                  </linearGradient>
+   278→   278→                </defs>
+   279→   279→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+   280→   280→                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   281→   281→                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   282→   282→                <Tooltip content={<ChartTooltipContent />} />
+   283→   283→                <Area type="monotone" dataKey="total" stroke="var(--chart-1)" fill="url(#gTotal)" strokeWidth={2} name="Total" />
+   284→   284→                <Bar dataKey="new" fill="var(--chart-2)" radius={[2, 2, 0, 0]} name="Nouvelles" />
+   285→   285→              </ComposedChart>
+   286→   286→            </ChartContainer>
+   287→   287→          </CardContent>
+   288→   288→        </Card>
+   289→   289→
+   290→   290→        <Card>
+   291→   291→          <CardHeader className="pb-2">
+   292→   292→            <CardTitle className="text-sm flex items-center gap-2">
+   293→   293→              <PieIcon className="h-4 w-4 text-primary" />
+   294→   294→              Répartition par secteur
+   295→   295→            </CardTitle>
+   296→   296→          </CardHeader>
+   297→   297→          <CardContent>
+   298→   298→            <ChartContainer config={chartConfig} className="h-[240px] w-full">
+   299→   299→              <PieChart>
+   300→   300→                <Pie data={sectorData.slice(0, 8)} dataKey="count" nameKey="sector" innerRadius={45} outerRadius={85} paddingAngle={2}>
+   301→   301→                  {sectorData.slice(0, 8).map((_, i) => (
+   302→   302→                    <Cell key={i} fill={sectorColors[i]} />
+   303→   303→                  ))}
+   304→   304→                </Pie>
+   305→   305→                <Tooltip content={({ active, payload }) => {
+   306→   306→                  if (active && payload?.length) {
+   307→   307→                    const p = payload[0].payload as typeof sectorData[0]
+   308→   308→                    return (
+   309→   309→                      <div className="rounded-lg border bg-background p-2 shadow-md">
+   310→   310→                        <p className="text-xs font-medium">{p.sector}</p>
+   311→   311→                        <p className="text-xs text-muted-foreground">{p.count.toLocaleString("fr-FR")} ({(p.count / 38862 * 100).toFixed(1)}%)</p>
+   312→   312→                      </div>
+   313→   313→                    )
+   314→   314→                  }
+   315→   315→                  return null
+   316→   316→                }} />
+   317→   317→                <Legend wrapperStyle={{ fontSize: 9 }} iconType="circle" />
+   318→   318→              </PieChart>
+   319→   319→            </ChartContainer>
+   320→   320→          </CardContent>
+   321→   321→        </Card>
+   322→   322→      </div>
+   323→   323→
+   324→   324→      {/* Top entreprises */}
+   325→   325→      <Card>
+   326→   326→        <CardHeader className="pb-2">
+   327→   327→          <CardTitle className="text-sm flex items-center gap-2">
+   328→   328→            <Award className="h-4 w-4 text-primary" />
+   329→   329→            Top 10 entreprises (par score qualité)
+   330→   330→          </CardTitle>
+   331→   331→        </CardHeader>
+   332→   332→        <CardContent className="p-0">
+   333→   333→          <div className="overflow-x-auto">
+   334→   334→            <table className="w-full text-xs">
+   335→   335→              <thead className="bg-muted/30">
+   336→   336→                <tr className="text-left">
+   337→   337→                  <th className="p-2 font-medium">#</th>
+   338→   338→                  <th className="p-2 font-medium">Entreprise</th>
+   339→   339→                  <th className="p-2 font-medium">Secteur</th>
+   340→   340→                  <th className="p-2 font-medium">Score</th>
+   341→   341→                  <th className="p-2 font-medium">Croissance</th>
+   342→   342→                  <th className="p-2 font-medium">Effectif</th>
+   343→   343→                  <th className="p-2 font-medium">Contacts</th>
+   344→   344→                </tr>
+   345→   345→              </thead>
+   346→   346→              <tbody>
+   347→   347→                {topCompanies.map((c) => (
+   348→   348→                  <tr key={c.rank} className="border-b last:border-b-0 hover:bg-muted/20">
+   349→   349→                    <td className="p-2">
+   350→   350→                      <span className={cn(
+   351→   351→                        "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold",
+   352→   352→                        c.rank === 1 && "bg-amber-500/20 text-amber-600",
+   353→   353→                        c.rank === 2 && "bg-slate-400/20 text-slate-600",
+   354→   354→                        c.rank === 3 && "bg-orange-700/20 text-orange-700",
+   355→   355→                        c.rank > 3 && "bg-muted text-muted-foreground"
+   356→   356→                      )}>{c.rank}</span>
+   357→   357→                    </td>
+   358→   358→                    <td className="p-2 font-medium">{c.name}</td>
+   359→   359→                    <td className="p-2 text-muted-foreground">{c.sector}</td>
+   360→   360→                    <td className="p-2">
+   361→   361→                      <div className="flex items-center gap-1">
+   362→   362→                        <div className="w-10 h-1.5 rounded-full bg-muted overflow-hidden">
+   363→   363→                          <div className="h-full bg-primary rounded-full" style={{ width: `${c.score}%` }} />
+   364→   364→                        </div>
+   365→   365→                        <span className="font-medium tabular-nums">{c.score}</span>
+   366→   366→                      </div>
+   367→   367→                    </td>
+   368→   368→                    <td className="p-2">
+   369→   369→                      <span className="text-emerald-600 font-medium">+{c.growth}%</span>
+   370→   370→                    </td>
+   371→   371→                    <td className="p-2 text-muted-foreground">{c.employees}</td>
+   372→   372→                    <td className="p-2">
+   373→   373→                      <Badge variant="outline" className="text-[9px]">{c.contacts}</Badge>
+   374→   374→                    </td>
+   375→   375→                  </tr>
+   376→   376→                ))}
+   377→   377→              </tbody>
+   378→   378→            </table>
+   379→   379→          </div>
+   380→   380→        </CardContent>
+   381→   381→      </Card>
+   382→   382→    </div>
+   383→   383→  )
+   384→   384→}
+   385→   385→
+   386→   386→// ============================================================================
+   387→   387→// TAB: PRÉVISIONS
+   388→   388→// ============================================================================
+   389→   389→
+   390→   390→function ForecastTab() {
+   391→   391→  return (
+   392→   392→    <div className="space-y-4">
+   393→   393→      <Card>
+   394→   394→        <CardHeader className="pb-2">
+   395→   395→          <CardTitle className="text-sm flex items-center gap-2">
+   396→   396→            <Target className="h-4 w-4 text-primary" />
+   397→   397→            Prévision du nombre d'entreprises (3 mois)
+   398→   398→          </CardTitle>
+   399→   399→          <CardDescription className="text-xs">Modèle basé sur la tendance linéaire des 5 derniers mois avec intervalle de confiance à 95%</CardDescription>
+   400→   400→        </CardHeader>
+   401→   401→        <CardContent>
+   402→   402→          <ChartContainer config={chartConfig} className="h-[300px] w-full">
+   403→   403→            <ComposedChart data={forecastData} margin={{ left: -12, right: 8, top: 8 }}>
+   404→   404→              <defs>
+   405→   405→                <linearGradient id="gForecast" x1="0" y1="0" x2="0" y2="1">
+   406→   406→                  <stop offset="5%" stopColor="var(--chart-2)" stopOpacity={0.3} />
+   407→   407→                  <stop offset="95%" stopColor="var(--chart-2)" stopOpacity={0} />
+   408→   408→                </linearGradient>
+   409→   409→              </defs>
+   410→   410→              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+   411→   411→              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+   412→   412→              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" domain={[30000, 50000]} />
+   413→   413→              <Tooltip content={<ChartTooltipContent />} />
+   414→   414→              <Legend wrapperStyle={{ fontSize: 11 }} />
+   415→   415→              {/* Intervalle de confiance */}
+   416→   416→              <Area type="monotone" dataKey="upper" stroke="none" fill="var(--chart-2)" fillOpacity={0.1} name="Borne sup" />
+   417→   417→              <Area type="monotone" dataKey="lower" stroke="none" fill="white" fillOpacity={1} name="Borne inf" />
+   418→   418→              {/* Réel */}
+   419→   419→              <Line type="monotone" dataKey="actual" stroke="var(--chart-1)" strokeWidth={3} dot={{ r: 4 }} name="Réel" />
+   420→   420→              {/* Prévision */}
+   421→   421→              <Line type="monotone" dataKey="forecast" stroke="var(--chart-2)" strokeWidth={3} strokeDasharray="6 3" dot={{ r: 4 }} name="Prévision" />
+   422→   422→            </ComposedChart>
+   423→   423→          </ChartContainer>
+   424→   424→        </CardContent>
+   425→   425→      </Card>
+   426→   426→
+   427→   427→      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+   428→   428→        <Card className="border-l-4 border-l-primary">
+   429→   429→          <CardContent className="p-4">
+   430→   430→            <p className="text-[10px] text-muted-foreground uppercase">Prévision Septembre</p>
+   431→   431→            <p className="text-2xl font-bold">41 200</p>
+   432→   432→            <p className="text-xs text-emerald-600">+2 338 vs Août (+6.0%)</p>
+   433→   433→            <p className="text-[10px] text-muted-foreground mt-1">Intervalle: 39 800 — 42 600</p>
+   434→   434→          </CardContent>
+   435→   435→        </Card>
+   436→   436→        <Card className="border-l-4 border-l-primary">
+   437→   437→          <CardContent className="p-4">
+   438→   438→            <p className="text-[10px] text-muted-foreground uppercase">Prévision Octobre</p>
+   439→   439→            <p className="text-2xl font-bold">43 500</p>
+   440→   440→            <p className="text-xs text-emerald-600">+2 300 vs Sept (+5.6%)</p>
+   441→   441→            <p className="text-[10px] text-muted-foreground mt-1">Intervalle: 41 200 — 45 800</p>
+   442→   442→          </CardContent>
+   443→   443→        </Card>
+   444→   444→        <Card className="border-l-4 border-l-primary">
+   445→   445→          <CardContent className="p-4">
+   446→   446→            <p className="text-[10px] text-muted-foreground uppercase">Prévision Novembre</p>
+   447→   447→            <p className="text-2xl font-bold">45 800</p>
+   448→   448→            <p className="text-xs text-emerald-600">+2 300 vs Oct (+5.3%)</p>
+   449→   449→            <p className="text-[10px] text-muted-foreground mt-1">Intervalle: 42 500 — 49 100</p>
+   450→   450→          </CardContent>
+   451→   451→        </Card>
+   452→   452→      </div>
+   453→   453→
+   454→   454→      <Card>
+   455→   455→        <CardHeader className="pb-2">
+   456→   456→          <CardTitle className="text-sm">Prévisions par secteur (3 mois)</CardTitle>
+   457→   457→        </CardHeader>
+   458→   458→        <CardContent>
+   459→   459→          <ChartContainer config={chartConfig} className="h-[220px] w-full">
+   460→   460→            <BarChart data={sectorData.slice(0, 6).map((s) => ({
+   461→   461→              sector: s.sector,
+   462→   462→              current: s.count,
+   463→   463→              forecast: Math.round(s.count * (1 + s.growth / 100 * 3)),
+   464→   464→            }))} margin={{ left: -12, right: 8, top: 8 }}>
+   465→   465→              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+   466→   466→              <XAxis dataKey="sector" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" angle={-20} textAnchor="end" height={50} />
+   467→   467→              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   468→   468→              <Tooltip content={<ChartTooltipContent />} />
+   469→   469→              <Legend wrapperStyle={{ fontSize: 11 }} />
+   470→   470→              <Bar dataKey="current" fill="var(--chart-1)" radius={[3, 3, 0, 0]} name="Actuel" />
+   471→   471→              <Bar dataKey="forecast" fill="var(--chart-2)" radius={[3, 3, 0, 0]} name="Prévision (+3 mois)" />
+   472→   472→            </BarChart>
+   473→   473→          </ChartContainer>
+   474→   474→        </CardContent>
+   475→   475→      </Card>
+   476→   476→    </div>
+   477→   477→  )
+   478→   478→}
+   479→   479→
+   480→   480→// ============================================================================
+   481→   481→// TAB: SECTEURS
+   482→   482→// ============================================================================
+   483→   483→
+   484→   484→function SectorsTab() {
+   485→   485→  return (
+   486→   486→    <div className="space-y-4">
+   487→   487→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   488→   488→        <Card>
+   489→   489→          <CardHeader className="pb-2"><CardTitle className="text-sm">Volume par secteur</CardTitle></CardHeader>
+   490→   490→          <CardContent>
+   491→   491→            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+   492→   492→              <BarChart data={sectorData} layout="vertical" margin={{ left: 80, right: 8, top: 8 }}>
+   493→   493→                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+   494→   494→                <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   495→   495→                <YAxis type="category" dataKey="sector" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
+   496→   496→                <Tooltip cursor={{ fill: "var(--muted)" }} content={<ChartTooltipContent />} />
+   497→   497→                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+   498→   498→                  {sectorData.map((_, i) => <Cell key={i} fill={sectorColors[i]} />)}
+   499→   499→                </Bar>
+   500→   500→              </BarChart>
+   501→   501→            </ChartContainer>
+   502→   502→          </CardContent>
+   503→   503→        </Card>
+   504→   504→
+   505→   505→        <Card>
+   506→   506→          <CardHeader className="pb-2"><CardTitle className="text-sm">Croissance par secteur (%)</CardTitle></CardHeader>
+   507→   507→          <CardContent>
+   508→   508→            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+   509→   509→              <BarChart data={sectorData} layout="vertical" margin={{ left: 80, right: 8, top: 8 }}>
+   510→   510→                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+   511→   511→                <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" unit="%" />
+   512→   512→                <YAxis type="category" dataKey="sector" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
+   513→   513→                <Tooltip cursor={{ fill: "var(--muted)" }} content={<ChartTooltipContent />} />
+   514→   514→                <Bar dataKey="growth" radius={[0, 4, 4, 0]}>
+   515→   515→                  {sectorData.map((s) => <Cell key={s.sector} fill={s.growth > 15 ? "#10b981" : s.growth > 8 ? "#f97316" : "#64748b"} />)}
+   516→   516→                </Bar>
+   517→   517→              </BarChart>
+   518→   518→            </ChartContainer>
+   519→   519→          </CardContent>
+   520→   520→        </Card>
+   521→   521→      </div>
+   522→   522→
+   523→   523→      {/* Matrice qualité × croissance */}
+   524→   524→      <Card>
+   525→   525→        <CardHeader className="pb-2">
+   526→   526→          <CardTitle className="text-sm flex items-center gap-2">
+   527→   527→            <Gauge className="h-4 w-4 text-primary" />
+   528→   528→            Matrice Qualité × Croissance (scatter)
+   529→   529→          </CardTitle>
+   530→   530→          <CardDescription className="text-xs">Taille des bulles = nombre d'entreprises</CardDescription>
+   531→   531→        </CardHeader>
+   532→   532→        <CardContent>
+   533→   533→          <ChartContainer config={chartConfig} className="h-[300px] w-full">
+   534→   534→            <ScatterChart margin={{ left: -12, right: 8, top: 8 }}>
+   535→   535→              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+   536→   536→              <XAxis type="number" dataKey="quality" name="Qualité" domain={[60, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" label={{ value: "Score qualité", position: "bottom", fontSize: 10 }} />
+   537→   537→              <YAxis type="number" dataKey="growth" name="Croissance" domain={[0, 30]} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" unit="%" label={{ value: "Croissance %", angle: -90, position: "insideLeft", fontSize: 10 }} />
+   538→   538→              <Tooltip
+   539→   539→                cursor={{ strokeDasharray: "3 3" }}
+   540→   540→                content={({ active, payload }) => {
+   541→   541→                  if (active && payload?.length) {
+   542→   542→                    const p = payload[0].payload as typeof qualityGrowthMatrix[0]
+   543→   543→                    return (
+   544→   544→                      <div className="rounded-lg border bg-background p-2 shadow-md">
+   545→   545→                        <p className="text-xs font-medium">{p.name}</p>
+   546→   546→                        <p className="text-xs text-muted-foreground">Qualité: {p.quality} · Croissance: {p.growth}% · {p.count} entr.</p>
+   547→   547→                      </div>
+   548→   548→                    )
+   549→   549→                  }
+   550→   550→                  return null
+   551→   551→                }}
+   552→   552→              />
+   553→   553→              <Scatter data={qualityGrowthMatrix}>
+   554→   554→                {qualityGrowthMatrix.map((_, i) => <Cell key={i} fill={sectorColors[i]} />)}
+   555→   555→              </Scatter>
+   556→   556→            </ScatterChart>
+   557→   557→          </ChartContainer>
+   558→   558→        </CardContent>
+   559→   559→      </Card>
+   560→   560→
+   561→   561→      {/* Tableau détaillé */}
+   562→   562→      <Card>
+   563→   563→        <CardHeader className="pb-2"><CardTitle className="text-sm">Détail par secteur</CardTitle></CardHeader>
+   564→   564→        <CardContent className="p-0">
+   565→   565→          <div className="overflow-x-auto">
+   566→   566→            <table className="w-full text-xs">
+   567→   567→              <thead className="bg-muted/30">
+   568→   568→                <tr className="text-left">
+   569→   569→                  <th className="p-2 font-medium">Secteur</th>
+   570→   570→                  <th className="p-2 font-medium text-right">Entreprises</th>
+   571→   571→                  <th className="p-2 font-medium text-right">Croissance</th>
+   572→   572→                  <th className="p-2 font-medium text-right">Qualité</th>
+   573→   573→                  <th className="p-2 font-medium text-right">CA estimé (Mds FCFA)</th>
+   574→   574→                </tr>
+   575→   575→              </thead>
+   576→   576→              <tbody>
+   577→   577→                {sectorData.map((s, i) => (
+   578→   578→                  <tr key={s.sector} className="border-b last:border-b-0 hover:bg-muted/20">
+   579→   579→                    <td className="p-2">
+   580→   580→                      <span className="flex items-center gap-2">
+   581→   581→                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: sectorColors[i] }} />
+   582→   582→                        {s.sector}
+   583→   583→                      </span>
+   584→   584→                    </td>
+   585→   585→                    <td className="p-2 text-right tabular-nums">{s.count.toLocaleString("fr-FR")}</td>
+   586→   586→                    <td className="p-2 text-right"><span className="text-emerald-600">+{s.growth}%</span></td>
+   587→   587→                    <td className="p-2 text-right">
+   588→   588→                      <div className="flex items-center gap-1 justify-end">
+   589→   589→                        <div className="w-8 h-1.5 rounded-full bg-muted overflow-hidden">
+   590→   590→                          <div className="h-full bg-primary rounded-full" style={{ width: `${s.quality}%` }} />
+   591→   591→                        </div>
+   592→   592→                        <span className="tabular-nums">{s.quality}</span>
+   593→   593→                      </div>
+   594→   594→                    </td>
+   595→   595→                    <td className="p-2 text-right tabular-nums">{s.revenue}</td>
+   596→   596→                  </tr>
+   597→   597→                ))}
+   598→   598→              </tbody>
+   599→   599→            </table>
+   600→   600→          </div>
+   601→   601→        </CardContent>
+   602→   602→      </Card>
+   603→   603→    </div>
+   604→   604→  )
+   605→   605→}
+   606→   606→
+   607→   607→// ============================================================================
+   608→   608→// TAB: GÉOGRAPHIE
+   609→   609→// ============================================================================
+   610→   610→
+   611→   611→function GeoTab() {
+   612→   612→  return (
+   613→   613→    <div className="space-y-4">
+   614→   614→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   615→   615→        {/* Communes */}
+   616→   616→        <Card>
+   617→   617→          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><MapPin className="h-4 w-4 text-primary" /> Par commune (Abidjan)</CardTitle></CardHeader>
+   618→   618→          <CardContent>
+   619→   619→            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+   620→   620→              <BarChart data={communeData} margin={{ left: -12, right: 8, top: 8 }}>
+   621→   621→                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+   622→   622→                <XAxis dataKey="commune" tickLine={false} axisLine={false} tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" angle={-20} textAnchor="end" height={50} />
+   623→   623→                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   624→   624→                <Tooltip cursor={{ fill: "var(--muted)" }} content={<ChartTooltipContent />} />
+   625→   625→                <Bar dataKey="count" fill="var(--chart-1)" radius={[3, 3, 0, 0]} name="Entreprises" />
+   626→   626→              </BarChart>
+   627→   627→            </ChartContainer>
+   628→   628→          </CardContent>
+   629→   629→        </Card>
+   630→   630→
+   631→   631→        {/* Villes */}
+   632→   632→        <Card>
+   633→   633→          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Globe className="h-4 w-4 text-primary" /> Par ville (Côte d'Ivoire)</CardTitle></CardHeader>
+   634→   634→          <CardContent>
+   635→   635→            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+   636→   636→              <BarChart data={cityData} layout="vertical" margin={{ left: 80, right: 8, top: 8 }}>
+   637→   637→                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+   638→   638→                <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   639→   639→                <YAxis type="category" dataKey="city" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
+   640→   640→                <Tooltip cursor={{ fill: "var(--muted)" }} content={<ChartTooltipContent />} />
+   641→   641→                <Bar dataKey="count" fill="var(--chart-2)" radius={[0, 4, 4, 0]} name="Entreprises" />
+   642→   642→              </BarChart>
+   643→   643→            </ChartContainer>
+   644→   644→          </CardContent>
+   645→   645→        </Card>
+   646→   646→      </div>
+   647→   647→
+   648→   648→      {/* Croissance communale */}
+   649→   649→      <Card>
+   650→   650→        <CardHeader className="pb-2"><CardTitle className="text-sm">Croissance & qualité par commune</CardTitle></CardHeader>
+   651→   651→        <CardContent>
+   652→   652→          <ChartContainer config={chartConfig} className="h-[240px] w-full">
+   653→   653→            <ComposedChart data={communeData} margin={{ left: -12, right: 8, top: 8 }}>
+   654→   654→              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+   655→   655→              <XAxis dataKey="commune" tickLine={false} axisLine={false} tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" angle={-20} textAnchor="end" height={50} />
+   656→   656→              <YAxis yAxisId="left" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   657→   657→              <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" domain={[0, 30]} unit="%" />
+   658→   658→              <Tooltip content={<ChartTooltipContent />} />
+   659→   659→              <Legend wrapperStyle={{ fontSize: 11 }} />
+   660→   660→              <Bar yAxisId="left" dataKey="count" fill="var(--chart-1)" radius={[3, 3, 0, 0]} name="Entreprises" />
+   661→   661→              <Line yAxisId="right" type="monotone" dataKey="growth" stroke="var(--chart-2)" strokeWidth={2} name="Croissance %" />
+   662→   662→              <Line yAxisId="right" type="monotone" dataKey="quality" stroke="var(--chart-3)" strokeWidth={2} strokeDasharray="4 2" name="Qualité" />
+   663→   663→            </ComposedChart>
+   664→   664→          </ChartContainer>
+   665→   665→        </CardContent>
+   666→   666→      </Card>
+   667→   667→
+   668→   668→      {/* Tableau villes */}
+   669→   669→      <Card>
+   670→   670→        <CardHeader className="pb-2"><CardTitle className="text-sm">Détail par ville</CardTitle></CardHeader>
+   671→   671→        <CardContent className="p-0">
+   672→   672→          <div className="overflow-x-auto">
+   673→   673→            <table className="w-full text-xs">
+   674→   674→              <thead className="bg-muted/30">
+   675→   675→                <tr className="text-left">
+   676→   676→                  <th className="p-2 font-medium">Ville</th>
+   677→   677→                  <th className="p-2 font-medium text-right">Entreprises</th>
+   678→   678→                  <th className="p-2 font-medium text-right">Part %</th>
+   679→   679→                  <th className="p-2 font-medium text-right">Croissance</th>
+   680→   680→                  <th className="p-2 font-medium text-right">Qualité</th>
+   681→   681→                </tr>
+   682→   682→              </thead>
+   683→   683→              <tbody>
+   684→   684→                {cityData.map((c) => (
+   685→   685→                  <tr key={c.city} className="border-b last:border-b-0 hover:bg-muted/20">
+   686→   686→                    <td className="p-2 font-medium">{c.city}</td>
+   687→   687→                    <td className="p-2 text-right tabular-nums">{c.count.toLocaleString("fr-FR")}</td>
+   688→   688→                    <td className="p-2 text-right">
+   689→   689→                      <div className="flex items-center gap-1 justify-end">
+   690→   690→                        <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+   691→   691→                          <div className="h-full bg-primary rounded-full" style={{ width: `${c.share * 1.2}%` }} />
+   692→   692→                        </div>
+   693→   693→                        <span className="tabular-nums">{c.share}%</span>
+   694→   694→                      </div>
+   695→   695→                    </td>
+   696→   696→                    <td className="p-2 text-right text-emerald-600">+{c.growth}%</td>
+   697→   697→                    <td className="p-2 text-right tabular-nums">{c.quality}</td>
+   698→   698→                  </tr>
+   699→   699→                ))}
+   700→   700→              </tbody>
+   701→   701→            </table>
+   702→   702→          </div>
+   703→   703→        </CardContent>
+   704→   704→      </Card>
+   705→   705→    </div>
+   706→   706→  )
+   707→   707→}
+   708→   708→
+   709→   709→// ============================================================================
+   710→   710→// TAB: QUALITÉ
+   711→   711→// ============================================================================
+   712→   712→
+   713→   713→function QualityTab() {
+   714→   714→  return (
+   715→   715→    <div className="space-y-4">
+   716→   716→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   717→   717→        <Card><CardContent className="p-4"><p className="text-2xl font-bold text-emerald-600">78</p><p className="text-[10px] text-muted-foreground uppercase">Score global</p></CardContent></Card>
+   718→   718→        <Card><CardContent className="p-4"><p className="text-2xl font-bold">84.2%</p><p className="text-[10px] text-muted-foreground uppercase">Complétude</p></CardContent></Card>
+   719→   719→        <Card><CardContent className="p-4"><p className="text-2xl font-bold">17.8%</p><p className="text-[10px] text-muted-foreground uppercase">Doublons détectés</p></CardContent></Card>
+   720→   720→        <Card><CardContent className="p-4"><p className="text-2xl font-bold text-emerald-600">8 421</p><p className="text-[10px] text-muted-foreground uppercase">Fiches enrichies IA</p></CardContent></Card>
+   721→   721→      </div>
+   722→   722→
+   723→   723→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   724→   724→        <Card>
+   725→   725→          <CardHeader className="pb-2"><CardTitle className="text-sm">Qualité par dimension (radar)</CardTitle></CardHeader>
+   726→   726→          <CardContent>
+   727→   727→            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+   728→   728→              <RadarChart data={qualityDimensions} outerRadius={80}>
+   729→   729→                <PolarGrid stroke="var(--border)" />
+   730→   730→                <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" />
+   731→   731→                <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 8 }} stroke="var(--muted-foreground)" />
+   732→   732→                <Radar name="Actuel" dataKey="current" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.3} strokeWidth={2} />
+   733→   733→                <Radar name="Objectif" dataKey="target" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.1} strokeWidth={2} strokeDasharray="4 4" />
+   734→   734→                <Legend wrapperStyle={{ fontSize: 10 }} />
+   735→   735→                <Tooltip content={<ChartTooltipContent />} />
+   736→   736→              </RadarChart>
+   737→   737→            </ChartContainer>
+   738→   738→          </CardContent>
+   739→   739→        </Card>
+   740→   740→
+   741→   741→        <Card>
+   742→   742→          <CardHeader className="pb-2"><CardTitle className="text-sm">Évolution qualité (12 mois)</CardTitle></CardHeader>
+   743→   743→          <CardContent>
+   744→   744→            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+   745→   745→              <LineChart data={growthData.map((g, i) => ({
+   746→   746→                month: g.month,
+   747→   747→                qualite: 60 + i * 2 + Math.random() * 3,
+   748→   748→                completude: 65 + i * 2.2 + Math.random() * 3,
+   749→   749→                geo: 40 + i * 3 + Math.random() * 4,
+   750→   750→              }))} margin={{ left: -12, right: 8, top: 8 }}>
+   751→   751→                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+   752→   752→                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   753→   753→                <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+   754→   754→                <Tooltip content={<ChartTooltipContent />} />
+   755→   755→                <Legend wrapperStyle={{ fontSize: 11 }} />
+   756→   756→                <Line type="monotone" dataKey="qualite" stroke="var(--chart-1)" strokeWidth={2} name="Qualité globale" />
+   757→   757→                <Line type="monotone" dataKey="completude" stroke="var(--chart-2)" strokeWidth={2} name="Complétude" />
+   758→   758→                <Line type="monotone" dataKey="geo" stroke="var(--chart-3)" strokeWidth={2} name="Précision géo" />
+   759→   759→              </LineChart>
+   760→   760→            </ChartContainer>
+   761→   761→          </CardContent>
+   762→   762→        </Card>
+   763→   763→      </div>
+   764→   764→
+   765→   765→      <Card>
+   766→   766→        <CardHeader className="pb-2"><CardTitle className="text-sm">Détail par dimension</CardTitle></CardHeader>
+   767→   767→        <CardContent className="space-y-2">
+   768→   768→          {qualityDimensions.map((d) => (
+   769→   769→            <div key={d.dimension} className="flex items-center gap-3">
+   770→   770→              <span className="text-xs w-32 shrink-0">{d.dimension}</span>
+   771→   771→              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+   772→   772→                <div className={cn("h-full rounded-full", d.current >= d.target ? "bg-emerald-500" : "bg-orange-500")} style={{ width: `${d.current}%` }} />
+   773→   773→              </div>
+   774→   774→              <span className="text-xs font-medium tabular-nums w-8 text-right">{d.current}</span>
+   775→   775→              <span className="text-[10px] text-muted-foreground">/ {d.target}</span>
+   776→   776→              {d.current >= d.target ? (
+   777→   777→                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+   778→   778→              ) : (
+   779→   779→                <AlertCircle className="h-3.5 w-3.5 text-orange-500" />
+   780→   780→              )}
+   781→   781→            </div>
+   782→   782→          ))}
+   783→   783→        </CardContent>
+   784→   784→      </Card>
+   785→   785→    </div>
+   786→   786→  )
+   787→   787→}
+   788→   788→
+   789→   789→// ============================================================================
+   790→   790→// TAB: POWER BI READY
+   791→   791→// ============================================================================
+   792→   792→
+   793→   793→function PowerBITab() {
+   794→   794→  return (
+   795→   795→    <div className="space-y-4">
+   796→   796→      <Card className="border-l-4 border-l-primary">
+   797→   797→        <CardContent className="p-4 flex items-center gap-4">
+   798→   798→          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shrink-0">
+   799→   799→            <Database className="h-6 w-6" />
+   800→   800→          </div>
+   801→   801→          <div className="flex-1">
+   802→   802→            <p className="text-sm font-semibold">ScrapIQ CI — Power BI Ready</p>
+   803→   803→            <p className="text-xs text-muted-foreground">5 tables · 6 mesures DAX · 4 endpoints · Export direct vers Power BI Desktop / Service</p>
+   804→   804→          </div>
+   805→   805→          <Button size="sm" className="gap-2" onClick={() => toast.success("Dataset .pbi exporté")}>
+   806→   806→            <Download className="h-4 w-4" />
+   807→   807→            Exporter
+   808→   808→          </Button>
+   809→   809→        </CardContent>
+   810→   810→      </Card>
+   811→   811→
+   812→   812→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   813→   813→        {/* Tables */}
+   814→   814→        <Card>
+   815→   815→          <CardHeader className="pb-2"><CardTitle className="text-sm">Tables disponibles</CardTitle></CardHeader>
+   816→   816→          <CardContent className="space-y-2">
+   817→   817→            {powerBISchema.tables.map((t) => (
+   818→   818→              <div key={t.name} className="flex items-center gap-2 text-xs">
+   819→   819→                <Badge variant="outline" className="font-mono text-[10px] bg-primary/5">{t.name}</Badge>
+   820→   820→                <span className="text-muted-foreground">{t.rows.toLocaleString("fr-FR")} lignes</span>
+   821→   821→                <span className="text-[10px] text-muted-foreground truncate">{t.columns.length} colonnes</span>
+   822→   822→              </div>
+   823→   823→            ))}
+   824→   824→          </CardContent>
+   825→   825→        </Card>
+   826→   826→
+   827→   827→        {/* Measures */}
+   828→   828→        <Card>
+   829→   829→          <CardHeader className="pb-2"><CardTitle className="text-sm">Mesures DAX</CardTitle></CardHeader>
+   830→   830→          <CardContent className="space-y-2">
+   831→   831→            {powerBISchema.measures.map((m, i) => (
+   832→   832→              <div key={i} className="rounded-md bg-muted/30 p-2 text-[10px] font-mono">
+   833→   833→                {m}
+   834→   834→              </div>
+   835→   835→            ))}
+   836→   836→          </CardContent>
+   837→   837→        </Card>
+   838→   838→      </div>
+   839→   839→
+   840→   840→      {/* Endpoints */}
+   841→   841→      <Card>
+   842→   842→        <CardHeader className="pb-2"><CardTitle className="text-sm">Endpoints d'intégration</CardTitle></CardHeader>
+   843→   843→        <CardContent className="space-y-2">
+   844→   844→          {powerBISchema.endpoints.map((e, i) => (
+   845→   845→            <div key={i} className="flex items-center gap-2 text-xs">
+   846→   846→              <Badge variant="outline" className="font-mono text-[10px] bg-emerald-500/5 text-emerald-600">GET</Badge>
+   847→   847→              <span className="font-mono text-[10px]">{e}</span>
+   848→   848→            </div>
+   849→   849→          ))}
+   850→   850→        </CardContent>
+   851→   851→      </Card>
+   852→   852→
+   853→   853→      {/* Instructions */}
+   854→   854→      <Card>
+   855→   855→        <CardHeader className="pb-2"><CardTitle className="text-sm">Comment connecter Power BI</CardTitle></CardHeader>
+   856→   856→        <CardContent className="space-y-3 text-xs">
+   857→   857→          <div className="flex gap-2">
+   858→   858→            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">1</span>
+   859→   859→            <p>Ouvrez Power BI Desktop → "Obtenir les données" → "Web"</p>
+   860→   860→          </div>
+   861→   861→          <div className="flex gap-2">
+   862→   862→            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">2</span>
+   863→   863→            <p>Entrez l'URL : <code className="bg-muted px-1.5 py-0.5 rounded">https://app.scraapiq.ci/api/v1/companies?format=json</code></p>
+   864→   864→          </div>
+   865→   865→          <div className="flex gap-2">
+   866→   866→            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">3</span>
+   867→   867→            <p>Ajoutez l'en-tête d'authentification : <code className="bg-muted px-1.5 py-0.5 rounded">Authorization: Bearer votre_token_jwt</code></p>
+   868→   868→          </div>
+   869→   869→          <div className="flex gap-2">
+   870→   870→            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">4</span>
+   871→   871→            <p>Configurez le rafraîchissement automatique (toutes les 1h / 24h)</p>
+   872→   872→          </div>
+   873→   873→        </CardContent>
+   874→   874→      </Card>
+   875→   875→    </div>
+   876→   876→  )
+   877→   877→}
+   878→   878→
+   879→   879→// ============================================================================
+   880→   880→// HELPERS
+   881→   881→// ============================================================================
+   882→   882→
+   883→   883→function Sparkline({ data, color }: { data: number[]; color: string }) {
+   884→   884→  const max = Math.max(...data)
+   885→   885→  const min = Math.min(...data)
+   886→   886→  const range = max - min || 1
+   887→   887→  const w = 60
+   888→   888→  const h = 20
+   889→   889→  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(" ")
+   890→   890→  return (
+   891→   891→    <svg width={w} height={h}>
+   892→   892→      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+   893→   893→    </svg>
+   894→   894→  )
+   895→   895→}
+   896→   896→
+   897→   897→// Additional imports
+   898→   898→import { AlertCircle, CheckCircle2 } from "lucide-react"
+   899→   899→

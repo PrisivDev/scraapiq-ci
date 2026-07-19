@@ -59,6 +59,46 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
     }
   }, [])
 
+  // Quota API réel — fetch /api/v1/quota (used / limit + percentage)
+  // Remplace le hardcoded "68 / 100 k" qui était faux.
+  // États : loading ("…") → ready ("42 / 100 k") → error ("— / —").
+  // Couleur : vert <60%, orange 60-90%, rouge >90%.
+  const [quota, setQuota] = useState<{
+    used: number | null
+    limit: number | null
+    percentage: number
+  }>({ used: null, limit: null, percentage: 0 })
+  useEffect(() => {
+    let mounted = true
+    fetch("/api/v1/quota", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!mounted || !json?.data?.apiCalls) return
+        const api = json.data.apiCalls as { used: number; limit: number; percentage: number }
+        setQuota({ used: api.used, limit: api.limit, percentage: api.percentage })
+      })
+      .catch(() => {
+        // Silent fail — header still renders, just no quota number
+        if (mounted) setQuota({ used: null, limit: null, percentage: 0 })
+      })
+    return () => { mounted = false }
+  }, [])
+
+  // Format "42 / 100 k" : si limit >= 1000, on divise par 1000 et on suffixe "k"
+  function formatQuotaNumber(n: number): string {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
+    if (n >= 1000) return `${Math.round(n / 1000)}k`
+    return String(n)
+  }
+  const quotaLabel = quota.used === null || quota.limit === null
+    ? "… / …"
+    : `${formatQuotaNumber(quota.used)} / ${formatQuotaNumber(quota.limit)}`
+  const quotaPct = quota.percentage
+  const quotaColor =
+    quotaPct >= 90 ? "text-red-600 dark:text-red-400"
+    : quotaPct >= 60 ? "text-orange-600 dark:text-orange-400"
+    : "text-emerald-600 dark:text-emerald-400"
+
   const handleNavigate = useCallback((url: string) => {
     if (url.startsWith("#")) {
       const navKey = url.slice(1)
@@ -137,12 +177,12 @@ export function DashboardHeader({ onNewJob, onMobileMenu, onNavigate, title, sub
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Quota */}
-        <div className="hidden lg:flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5">
-          <Zap className="h-4 w-4 text-accent-foreground" />
+        {/* Quota — fetch /api/v1/quota (used / limit) */}
+        <div className="hidden lg:flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5" title={`Quota API — ${quotaPct.toFixed(1)}% utilisé`}>
+          <Zap className={cn("h-4 w-4", quotaColor)} />
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Quota API</span>
-            <span className="text-xs font-semibold">68 / 100 k</span>
+            <span className={cn("text-xs font-semibold tabular-nums", quotaColor)}>{quotaLabel}</span>
           </div>
         </div>
 

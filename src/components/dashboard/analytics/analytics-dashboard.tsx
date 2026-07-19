@@ -21,6 +21,9 @@ export function AnalyticsDashboard({ onNavigate }: AnalyticsDashboardProps) {
   // (mock "Adama" / "AgriBusiness CI" supprimé)
   const [firstName, setFirstName] = useState<string>("")
   const [organizationName, setOrganizationName] = useState<string>("votre organisation")
+  // Récupère le nombre réel d'entreprises depuis /api/v1/bi
+  // (mock "38 862" supprimé — le banner d'export affiche maintenant le vrai total)
+  const [totalCompanies, setTotalCompanies] = useState<number>(0)
   useEffect(() => {
     let mounted = true
     fetch("/api/me", { credentials: "include" })
@@ -33,6 +36,13 @@ export function AnalyticsDashboard({ onNavigate }: AnalyticsDashboardProps) {
         }
         const orgName = d.user.memberships?.[0]?.organization?.name
         if (orgName) setOrganizationName(orgName)
+      })
+      .catch(() => {})
+    fetch("/api/v1/bi", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!mounted || !json?.data?.totalCompanies) return
+        setTotalCompanies(json.data.totalCompanies as number)
       })
       .catch(() => {})
     return () => {
@@ -93,7 +103,7 @@ export function AnalyticsDashboard({ onNavigate }: AnalyticsDashboardProps) {
         <div className="flex-1">
           <h3 className="font-semibold">Export Enterprise</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Exportez l'ensemble de vos 38 862 entreprises en Excel, CSV, JSON ou via l'API REST.
+            Exportez l'ensemble de vos {totalCompanies.toLocaleString("fr-FR")} entreprises en Excel, CSV, JSON ou via l'API REST.
             Champs normalisés (+225), coordonnées complètes, géolocalisation incluse.
           </p>
           <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-muted-foreground">

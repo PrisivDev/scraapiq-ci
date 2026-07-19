@@ -529,3 +529,42 @@ model ReportExecution {
   @@index([status])
   @@index([createdAt])
 }
+
+// ============================================================================
+// SCRAPE JOB RECORDS (persistent history of scraping jobs)
+// ============================================================================
+// The in-memory store (src/lib/scraper/job-store.ts) keeps live state
+// (Playwright instance, recent events, currentPlace) but is wiped on server
+// restart. ScrapeJobRecord is the durable history row that survives restarts
+// and powers GET /api/scraper/jobs (list) + GET /api/scraper/jobs/[id] (detail)
+// even after the in-memory state has been garbage-collected.
+//
+// The `jobId` field is the in-memory job ID (e.g. "scrape-ab12cd34"); it is
+// unique so we can merge live + historical state on read.
+
+model ScrapeJobRecord {
+  id                 String    @id @default(cuid())
+  jobId              String    @unique // in-memory job ID (scrape-xxxx)
+  organizationId     String?   // null = global/OWNER-only (mirrors SearchQuery.organizationId)
+  userId             String?   // null = no authenticated user (shouldn't happen in practice)
+  keyword            String
+  city               String?
+  commune            String?
+  neighborhood       String?
+  status             String    @default("queued") // queued | running | completed | failed | cancelled
+  progress           Int       @default(0) // 0-100
+  resultsCount       Int       @default(0)
+  processedCount     Int       @default(0)
+  duplicatesDetected Int       @default(0)
+  errors             String    @default("[]") // JSON array of error strings
+  duration           Int?      // milliseconds (set on completion/failure)
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
+}
