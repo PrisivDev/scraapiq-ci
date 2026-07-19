@@ -44,7 +44,19 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+  // scripts/ contains standalone Node.js scripts (seed-prod, scraper-worker, etc.)
+  // Plain .js files use CommonJS require() (forbidden by the TS rule above)
+  // and are excluded from the Next.js tsconfig.json — lint them separately if needed.
+  ignores: [
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "examples/**",
+    "skills",
+    "scripts/scraper-worker.js",
+  ]
 }];
 
 export default eslintConfig;

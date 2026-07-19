@@ -58,3 +58,4 @@ server.log
 .env.production
 .env.production.local
 !.env.example
+!.env.production.example

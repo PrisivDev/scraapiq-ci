@@ -1,0 +1,256 @@
+# =============================================================================
+# docker-compose.yml — ScrapIQ CI Production Stack
+# =============================================================================
+# Brings up the full production stack:
+#   - PostgreSQL 16 (with pgvector for AI embeddings)
+#   - Redis 7 (BullMQ queues + session cache)
+#   - Next.js app (standalone server)
+#   - Scraper worker (isolated Playwright/Chromium process)
+#
+# Usage:
+#   1. cp .env.example .env.production
+#   2. Edit .env.production (set all secrets — see scripts/generate-secrets.sh)
+#   3. docker compose --env-file .env.production up -d --build
+#   4. docker compose logs -f app
+#
+# First-time setup (after the stack is up):
+#   docker compose exec app npx prisma db push
+#   docker compose exec app node scripts/seed-prod.ts
+#
+# See DEPLOYMENT.md for the full production guide.
+# =============================================================================
+
+# NOTE: `version` is obsolete in Compose v2 but kept for backwards compat.
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 + pgvector (AI embeddings for semantic search)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: scraapiq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scraapiq}
+      POSTGRES_USER: ${POSTGRES_USER:-scraapiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scraapiq_dev_password}
+      # Tuning for small VPS (8GB). For larger servers, increase shared_buffers.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432" # Bind to localhost only — access via SSH tunnel or app network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scraapiq} -d ${POSTGRES_DB:-scraapiq}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - scraapiq-net
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 (BullMQ queues + rate limiting + session cache)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: scraapiq-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379" # Bind to localhost only
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - scraapiq-net
+
+  # ---------------------------------------------------------------------------
+  # Next.js app (web server — standalone build)
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scraapiq-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # --- Database ---
+      DATABASE_URL: postgresql://${POSTGRES_USER:-scraapiq}:${POSTGRES_PASSWORD:-scraapiq_dev_password}@postgres:5432/${POSTGRES_DB:-scraapiq}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-scraapiq}:${POSTGRES_PASSWORD:-scraapiq_dev_password}@postgres:5432/${POSTGRES_DB:-scraapiq}?schema=public
+
+      # --- Redis ---
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+
+      # --- App config ---
+      NODE_ENV: production
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
+      # --- Auth secrets (REQUIRED — generate with scripts/generate-secrets.sh) ---
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-scraapiq-ci}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-scraapiq-users}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      TWOFACTOR_ENCRYPTION_KEY: ${TWOFACTOR_ENCRYPTION_KEY}
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET}
+      API_KEY_SALT: ${API_KEY_SALT}
+
+      # --- OAuth (optional — leave empty to disable) ---
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_CALLBACK_URL: ${OAUTH_GOOGLE_CALLBACK_URL:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      OAUTH_MICROSOFT_CALLBACK_URL: ${OAUTH_MICROSOFT_CALLBACK_URL:-}
+      OAUTH_MICROSOFT_TENANT: ${OAUTH_MICROSOFT_TENANT:-common}
+
+      # --- AI (z-ai-web-dev-sdk) ---
+      ZAI_API_KEY: ${ZAI_API_KEY}
+
+      # --- Email / SMTP ---
+      SMTP_URL: ${SMTP_URL:-}
+      FROM_EMAIL: ${FROM_EMAIL:-noreply@scraapiq.ci}
+      FROM_NAME: ${FROM_NAME:-ScrapIQ CI}
+
+      # --- Payments ---
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      ORANGE_MONEY_CLIENT_ID: ${ORANGE_MONEY_CLIENT_ID:-}
+      ORANGE_MONEY_CLIENT_SECRET: ${ORANGE_MONEY_CLIENT_SECRET:-}
+      ORANGE_MONEY_MERCHANT_KEY: ${ORANGE_MONEY_MERCHANT_KEY:-}
+      MTN_MOMO_SUBSCRIPTION_KEY: ${MTN_MOMO_SUBSCRIPTION_KEY:-}
+      MTN_MOMO_API_USER: ${MTN_MOMO_API_USER:-}
+      MTN_MOMO_API_KEY: ${MTN_MOMO_API_KEY:-}
+
+      # --- Monitoring ---
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # --- Playwright ---
+      PLAYWRIGHT_NO_SANDBOX: 'true'
+      SCRAPER_PROXY_POOL: ${SCRAPER_PROXY_POOL:-}
+
+      # --- Admin bootstrap (for scripts/seed-prod.ts) ---
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@scraapiq.ci}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
+      ADMIN_ORG_NAME: ${ADMIN_ORG_NAME:-ScrapIQ CI}
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount public/ as read-only so static assets can be updated without rebuild
+      - ./public:/app/public:ro
+      # Named volume for uploads (user-generated content)
+      - app_uploads:/app/upload
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    networks:
+      - scraapiq-net
+
+  # ---------------------------------------------------------------------------
+  # Scraper worker (isolated Playwright/Chromium process)
+  # ---------------------------------------------------------------------------
+  # Consumes scraping jobs from Redis and runs Chromium in isolation,
+  # preventing OOM crashes in the main app process (see Task 46 notes).
+  #
+  # The worker uses ioredis (bundled in the Next.js standalone output) to
+  # BRPOP jobs from the "scraapiq:scraper:queue" Redis list, then dispatches
+  # each job to the app's /api/scraper/* endpoints via HTTP.
+  #
+  # If no jobs are queued, the worker idles (consuming ~50MB RAM).
+  # ---------------------------------------------------------------------------
+  scraper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scraapiq-scraper-worker
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Worker-only env (subset of app env — no JWT secrets needed for scraping)
+      REDIS_URL: redis://redis:6379
+      APP_URL: http://app:3000
+      NODE_ENV: production
+      SCRAPER_MODE: worker
+      WORKER_ID: scraper-worker-${HOSTNAME}
+      WORKER_CONCURRENCY: '1'
+      BRPOP_TIMEOUT_SECONDS: '30'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Scraper API auth — the worker calls /api/scraper/* which requires auth.
+      # In production, use a service account API key (not a user JWT).
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ZAI_API_KEY: ${ZAI_API_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-scraapiq}:${POSTGRES_PASSWORD:-scraapiq_dev_password}@postgres:5432/${POSTGRES_DB:-scraapiq}?schema=public
+
+      # Playwright
+      PLAYWRIGHT_NO_SANDBOX: 'true'
+      SCRAPER_PROXY_POOL: ${SCRAPER_PROXY_POOL:-}
+    command: ["node", "scripts/scraper-worker.js"]
+    volumes:
+      - app_uploads:/app/upload
+    deploy:
+      resources:
+        limits:
+          memory: 2G # Chromium needs ~500MB + headroom for concurrent tabs
+        reservations:
+          memory: 1G
+    networks:
+      - scraapiq-net
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  scraapiq-net:
+    driver: bridge
+    name: scraapiq-net
+
+# =============================================================================
+# Volumes (persistent data)
+# =============================================================================
+volumes:
+  postgres_data:
+    name: scraapiq-postgres-data
+  redis_data:
+    name: scraapiq-redis-data
+  app_uploads:
+    name: scraapiq-uploads

@@ -1,13 +1,30 @@
 // ScrapIQ CI — Schéma Auth Enterprise
 // Multi-tenant · JWT · OAuth Google/Microsoft · 2FA TOTP · RBAC · Sessions · Blacklist JWT
+//
+// Database: PostgreSQL 16 + pgvector (production) — see prisma/migrations/.
+// In dev the same schema runs against SQLite via `file:./dev.db` (pgvector
+// Unsupported("vector") columns are silently omitted by SQLite).
+//
+// RLS (Row-Level Security):
+//   Every table carrying `organizationId` SHOULD have row-level security enabled
+//   in production as defense-in-depth (Prisma queries already enforce tenant
+//   scoping, but RLS prevents accidental cross-tenant leaks from raw SQL or
+//   future services that bypass Prisma). See the per-model `// RLS:` comments
+//   below for the exact `CREATE POLICY` statements to run after `migrate deploy`.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL") // for migrations / prisma migrate deploy
+  // pgvector — enables AI embedding similarity search (CompanyEmbedding).
+  // The extension MUST be installed on the Postgres cluster first:
+  //   CREATE EXTENSION IF NOT EXISTS vector;
+  extensions = [vector]
 }
 
 // ============================================================================
@@ -15,77 +32,80 @@ datasource db {
 // ============================================================================
 
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  plan        String   @default("starter") // starter | pro | enterprise | custom
-  ownerId     String
-  settings    String   @default("{}") // JSON
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("starter") // starter | pro | enterprise | custom
+  ownerId   String
+  settings  String   @default("{}") // JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  members     Member[]
+  members    Member[]
   workspaces Workspace[]
-  companies   Company[]   // NEW relation — multi-tenant scoping for Company
-  owner       User     @relation("OrgOwner", fields: [ownerId], references: [id])
+  companies  Company[] // NEW relation — multi-tenant scoping for Company
+  owner      User        @relation("OrgOwner", fields: [ownerId], references: [id])
 
   @@index([slug])
 }
 
 model Workspace {
-  id              String   @id @default(cuid())
-  name            String
-  slug            String
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String       @id @default(cuid())
+  name           String
+  slug           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  members         Member[]
+  members Member[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
 }
+
+// RLS: enable row-level security on this table in production
+// CREATE POLICY tenant_isolation ON "Workspace" USING (organization_id = current_setting('app.current_org_id')::text);
 
 // ============================================================================
 // USERS & MEMBERSHIPS (RBAC)
 // ============================================================================
 
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  emailVerified   DateTime?
-  passwordHash    String?  // null si OAuth-only
-  name            String?
-  avatarUrl       String?
-  locale          String   @default("fr")
-  timezone        String   @default("Africa/Abidjan")
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String? // null si OAuth-only
+  name          String?
+  avatarUrl     String?
+  locale        String    @default("fr")
+  timezone      String    @default("Africa/Abidjan")
 
   // 2FA
-  twoFactorEnabled    Boolean  @default(false)
-  twoFactorSecret     String?  // TOTP secret (encrypted at rest)
+  twoFactorEnabled     Boolean   @default(false)
+  twoFactorSecret      String? // TOTP secret (encrypted at rest)
   twoFactorBackupCodes String? // JSON array of hashed codes
-  twoFactorEnabledAt  DateTime?
+  twoFactorEnabledAt   DateTime?
 
   // Status
-  status          String   @default("active") // active | suspended | pending
-  lastLoginAt     DateTime?
-  lastLoginIp     String?
-  failedLoginAttempts Int   @default(0)
-  lockedUntil     DateTime?
+  status              String    @default("active") // active | suspended | pending
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  ownedOrgs       Organization[] @relation("OrgOwner")
-  memberships     Member[]
-  accounts        Account[]         // OAuth providers
-  sessions        Session[]
-  auditLogs       AuditLog[]
-  refreshTokens   RefreshToken[]
-  jwtBlacklist    JwtBlacklist[]
-  apiKeys         ApiKey[]
+  ownedOrgs     Organization[] @relation("OrgOwner")
+  memberships   Member[]
+  accounts      Account[] // OAuth providers
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+  jwtBlacklist  JwtBlacklist[]
+  apiKeys       ApiKey[]
 
   @@index([email])
   @@index([status])
@@ -100,44 +120,47 @@ enum MemberRole {
 }
 
 model Member {
-  id              String   @id @default(cuid())
-  userId          String
-  organizationId  String
-  workspaceId     String?
-  role            MemberRole @default(VIEWER)
-  permissions     String   @default("[]") // JSON array of permission strings
-  invitedBy       String?
-  invitedAt       DateTime @default(now())
-  acceptedAt      DateTime?
-  status          String   @default("pending") // pending | active | revoked
+  id             String     @id @default(cuid())
+  userId         String
+  organizationId String
+  workspaceId    String?
+  role           MemberRole @default(VIEWER)
+  permissions    String     @default("[]") // JSON array of permission strings
+  invitedBy      String?
+  invitedAt      DateTime   @default(now())
+  acceptedAt     DateTime?
+  status         String     @default("pending") // pending | active | revoked
 
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace       Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId, workspaceId])
   @@index([userId])
   @@index([organizationId])
 }
 
+// RLS: enable row-level security on this table in production
+// CREATE POLICY tenant_isolation ON "Member" USING (organization_id = current_setting('app.current_org_id')::text);
+
 // ============================================================================
 // OAUTH ACCOUNTS (Google, Microsoft, ...)
 // ============================================================================
 
 model Account {
-  id                String  @id @default(cuid())
+  id                String    @id @default(cuid())
   userId            String
-  provider          String  // google | microsoft | github | ...
+  provider          String // google | microsoft | github | ...
   providerAccountId String
   accessToken       String?
   refreshToken      String?
   tokenType         String?
   scope             String?
   expiresAt         DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -148,20 +171,20 @@ model Account {
 // ============================================================================
 
 model Session {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
-  token         String   @unique // opaque session token (separate from JWT)
+  token         String    @unique // opaque session token (separate from JWT)
   userAgent     String?
   ip            String?
-  location      String?  // "Abidjan, CI"
-  device        String?  // parsed from UA
-  lastSeenAt    DateTime @default(now())
+  location      String? // "Abidjan, CI"
+  device        String? // parsed from UA
+  lastSeenAt    DateTime  @default(now())
   expiresAt     DateTime
   revokedAt     DateTime?
-  revokedReason String?  // logout | expired | security | admin
-  createdAt     DateTime @default(now())
+  revokedReason String? // logout | expired | security | admin
+  createdAt     DateTime  @default(now())
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -172,20 +195,20 @@ model Session {
 // ============================================================================
 
 model RefreshToken {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
-  token         String   @unique // hashed refresh token
-  family        String   // family ID (rotating tokens share a family)
-  session       String?  // linked session id
+  token         String    @unique // hashed refresh token
+  family        String // family ID (rotating tokens share a family)
+  session       String? // linked session id
   userAgent     String?
   ip            String?
   expiresAt     DateTime
   usedAt        DateTime?
   revokedAt     DateTime?
-  revokedReason String?  // used | rotated | logout | replay_detected | admin
-  createdAt     DateTime @default(now())
+  revokedReason String? // used | rotated | logout | replay_detected | admin
+  createdAt     DateTime  @default(now())
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([family])
@@ -197,14 +220,14 @@ model RefreshToken {
 // ============================================================================
 
 model JwtBlacklist {
-  id            String   @id @default(cuid())
-  userId        String
-  jti           String   @unique // JWT ID (claim)
-  reason        String   @default("logout") // logout | breach | admin | password_change
-  expiresAt     DateTime // when the original JWT would have expired (auto-purge)
-  createdAt     DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  jti       String   @unique // JWT ID (claim)
+  reason    String   @default("logout") // logout | breach | admin | password_change
+  expiresAt DateTime // when the original JWT would have expired (auto-purge)
+  createdAt DateTime @default(now())
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -215,18 +238,18 @@ model JwtBlacklist {
 // ============================================================================
 
 model ApiKey {
-  id            String   @id @default(cuid())
-  userId        String
-  name          String
-  keyHash       String   @unique
-  keyPrefix     String   // first 8 chars for display
-  scopes        String   @default("[]") // JSON array
-  lastUsedAt    DateTime?
-  expiresAt     DateTime?
-  revokedAt     DateTime?
-  createdAt     DateTime @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String // first 8 chars for display
+  scopes     String    @default("[]") // JSON array
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -236,69 +259,81 @@ model ApiKey {
 // ============================================================================
 
 model License {
-  id            String   @id @default(cuid())
-  key           String   @unique @default(cuid())
-  plan          String   // starter | pro | enterprise | custom
-  name          String   // nom du plan acheté
-  maxUsers      Int      @default(5)
-  maxCompanies  Int      @default(10000)
-  maxApiCalls   Int      @default(100000)
-  maxExports    Int      @default(100)
-  maxSources    Int      @default(3)
-  maxWorkspaces Int      @default(1)
-  features      String   @default("[]") // JSON array of feature strings
-  status        String   @default("inactive") // inactive | active | suspended | expired
-  activatedAt   DateTime?
-  expiresAt     DateTime?
+  id             String    @id @default(cuid())
+  key            String    @unique @default(cuid())
+  plan           String // starter | pro | enterprise | custom
+  name           String // nom du plan acheté
+  maxUsers       Int       @default(5)
+  maxCompanies   Int       @default(10000)
+  maxApiCalls    Int       @default(100000)
+  maxExports     Int       @default(100)
+  maxSources     Int       @default(3)
+  maxWorkspaces  Int       @default(1)
+  features       String    @default("[]") // JSON array of feature strings
+  status         String    @default("inactive") // inactive | active | suspended | expired
+  activatedAt    DateTime?
+  expiresAt      DateTime?
   organizationId String? // null = non activée
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([key])
   @@index([status])
   @@index([organizationId])
 }
 
+// RLS: enable row-level security on this table in production
+// — organization_id is NULLABLE here (license may be unactivated); the policy
+//   must allow NULL rows (super-admin only) in addition to scoped rows:
+// CREATE POLICY tenant_isolation ON "License"
+//   USING (organization_id IS NULL OR organization_id = current_setting('app.current_org_id')::text);
+
 model Subscription {
-  id                  String   @id @default(cuid())
-  organizationId      String   @unique
-  licenseId           String?
-  plan                String   @default("starter") // starter | pro | enterprise | custom
-  status              String   @default("trialing") // trialing | active | past_due | cancelled | expired
-  billingCycle        String   @default("monthly") // monthly | yearly
-  amountXOF           Int      @default(25000) // FCFA
-  currentPeriodStart  DateTime
-  currentPeriodEnd    DateTime
-  cancelAtPeriodEnd   Boolean  @default(false)
-  paymentMethod       String?  // orange_money | mtn_momo | moov | card | bank_transfer
-  providerSubId       String?  // ID côté fournisseur de paiement
-  trialEndsAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  organizationId     String    @unique
+  licenseId          String?
+  plan               String    @default("starter") // starter | pro | enterprise | custom
+  status             String    @default("trialing") // trialing | active | past_due | cancelled | expired
+  billingCycle       String    @default("monthly") // monthly | yearly
+  amountXOF          Int       @default(25000) // FCFA
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean   @default(false)
+  paymentMethod      String? // orange_money | mtn_momo | moov | card | bank_transfer
+  providerSubId      String? // ID côté fournisseur de paiement
+  trialEndsAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([organizationId])
   @@index([status])
 }
 
+// RLS: enable row-level security on this table in production
+// CREATE POLICY tenant_isolation ON "Subscription" USING (organization_id = current_setting('app.current_org_id')::text);
+
 model Invoice {
-  id              String   @id @default(cuid())
-  organizationId  String
-  subscriptionId  String?
-  number          String   @unique // INV-2026-001
-  amountXOF       Int      // montant en FCFA
-  taxXOF          Int      @default(0) // TVA 18%
-  totalXOF        Int      // amount + tax
-  status          String   @default("pending") // pending | paid | void | refunded
-  dueDate         DateTime
-  paidAt          DateTime?
-  items           String   @default("[]") // JSON array of line items
-  pdfUrl          String?
-  createdAt       DateTime @default(now())
+  id             String    @id @default(cuid())
+  organizationId String
+  subscriptionId String?
+  number         String    @unique // INV-2026-001
+  amountXOF      Int // montant en FCFA
+  taxXOF         Int       @default(0) // TVA 18%
+  totalXOF       Int // amount + tax
+  status         String    @default("pending") // pending | paid | void | refunded
+  dueDate        DateTime
+  paidAt         DateTime?
+  items          String    @default("[]") // JSON array of line items
+  pdfUrl         String?
+  createdAt      DateTime  @default(now())
 
   @@index([organizationId])
   @@index([status])
   @@index([number])
 }
+
+// RLS: enable row-level security on this table in production
+// CREATE POLICY tenant_isolation ON "Invoice" USING (organization_id = current_setting('app.current_org_id')::text);
 
 model QuotaUsage {
   id              String   @id @default(cuid())
@@ -316,18 +351,21 @@ model QuotaUsage {
   @@index([organizationId])
 }
 
-model AuditLog {
-  id            String   @id @default(cuid())
-  userId        String?
-  action        String   // login | logout | login_failed | 2fa_enable | token_revoked | ...
-  category      String   // auth | security | oauth | twofactor | session | api
-  severity      String   @default("info") // debug | info | warn | error | critical
-  ip            String?
-  userAgent     String?
-  metadata      String   @default("{}") // JSON
-  createdAt     DateTime @default(now())
+// RLS: enable row-level security on this table in production
+// CREATE POLICY tenant_isolation ON "QuotaUsage" USING (organization_id = current_setting('app.current_org_id')::text);
 
-  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String // login | logout | login_failed | 2fa_enable | token_revoked | ...
+  category  String // auth | security | oauth | twofactor | session | api
+  severity  String   @default("info") // debug | info | warn | error | critical
+  ip        String?
+  userAgent String?
+  metadata  String   @default("{}") // JSON
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([action])
@@ -340,53 +378,96 @@ model AuditLog {
 // ============================================================================
 
 model Company {
-  id              String   @id @default(cuid())
-  organizationId  String?   // null = global/shared (visible OWNER only), set = org-scoped
-  name            String
-  sector          String?
-  commune         String?
-  city            String?
-  address         String?
-  phone           String?
-  email           String?
-  website         String?
-  rccm            String?
-  lat             Float?
-  lng             Float?
-  rating          Float?
-  reviewCount     Int?
-  status          String   @default("active") // active | closed | relocated
-  description     String?
-  employees       String?
-  sources         String   @default("[]") // JSON array
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String        @id @default(cuid())
+  organizationId String? // null = global/shared (visible OWNER only), set = org-scoped
+  name           String
+  sector         String?
+  commune        String?
+  city           String?
+  address        String?
+  phone          String?
+  email          String?
+  website        String?
+  rccm           String?
+  lat            Float?
+  lng            Float?
+  rating         Float?
+  reviewCount    Int?
+  status         String        @default("active") // active | closed | relocated
+  description    String?
+  employees      String?
+  sources        String        @default("[]") // JSON array
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // AI dedup — pgvector embedding for similarity search (1:1 with Company).
+  // The actual vector is stored in CompanyEmbedding to keep the hot Company
+  // row lean and because Prisma cannot represent Unsupported("vector") inline.
+  embedding CompanyEmbedding?
 
   @@index([name])
   @@index([sector])
   @@index([city])
   @@index([commune])
   @@index([status])
-  @@index([organizationId])  // NEW index for tenant filtering
+  @@index([organizationId]) // NEW index for tenant filtering
 }
+
+// RLS: enable row-level security on this table in production
+// — organization_id is NULLABLE here (global/shared companies are visible
+//   to OWNER only); the policy must allow NULL rows in addition to scoped rows:
+// CREATE POLICY tenant_isolation ON "Company"
+//   USING (organization_id IS NULL OR organization_id = current_setting('app.current_org_id')::text);
+
+// ============================================================================
+// COMPANY EMBEDDINGS (pgvector — AI deduplication & semantic search)
+// ============================================================================
+// Each Company has at most one embedding (1:1). The `vector(1536)` type is
+// pgvector-native and matches OpenAI text-embedding-3-small dimensionality.
+// Use raw SQL for similarity queries, e.g.:
+//   SELECT company_id, embedding <=> $1 AS distance
+//   FROM "CompanyEmbedding"
+//   WHERE company_id <> $2
+//   ORDER BY embedding <=> $1 LIMIT 10;
+// (Prisma Client cannot express the <=> operator — fall back to $queryRaw.)
+
+model CompanyEmbedding {
+  id        String                       @id @default(cuid())
+  companyId String                       @unique
+  embedding Unsupported("vector(1536)")? // pgvector 1536-dimensional
+  model     String                       @default("text-embedding-3-small")
+  createdAt DateTime                     @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+// RLS: enable row-level security on this table in production
+// — inherits tenant scope from Company via companyId; join Company in the policy:
+// CREATE POLICY tenant_isolation ON "CompanyEmbedding"
+//   USING (EXISTS (SELECT 1 FROM "Company" c
+//                  WHERE c.id = company_id
+//                  AND (c.organization_id IS NULL
+//                       OR c.organization_id = current_setting('app.current_org_id')::text)));
 
 // ============================================================================
 // REST API LOGS (audit trail for all REST API calls)
 // ============================================================================
 
 model RestApiLog {
-  id          String   @id @default(cuid())
-  method      String
-  endpoint    String
-  statusCode  Int
-  responseMs  Int
-  ip          String?
-  userAgent   String?
-  apiKeyId    String?
-  userId      String?
-  error       String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  method     String
+  endpoint   String
+  statusCode Int
+  responseMs Int
+  ip         String?
+  userAgent  String?
+  apiKeyId   String?
+  userId     String?
+  error      String?
+  createdAt  DateTime @default(now())
 
   @@index([endpoint])
   @@index([createdAt])
@@ -398,32 +479,32 @@ model RestApiLog {
 // ============================================================================
 
 model Webhook {
-  id          String   @id @default(cuid())
-  url         String
-  events      String   @default("[]") // JSON array of event names
-  secret      String?  // signing secret
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  url       String
+  events    String   @default("[]") // JSON array of event names
+  secret    String? // signing secret
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  deliveries  WebhookDelivery[]
+  deliveries WebhookDelivery[]
 
   @@index([isActive])
 }
 
 model WebhookDelivery {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   webhookId   String
   event       String
-  payload     String   @default("{}") // JSON
+  payload     String    @default("{}") // JSON
   statusCode  Int?
   response    String?
-  status      String   @default("pending") // pending | success | failed | retry
-  attempts    Int      @default(0)
+  status      String    @default("pending") // pending | success | failed | retry
+  attempts    Int       @default(0)
   deliveredAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
-  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
 
   @@index([webhookId])
   @@index([status])
@@ -435,23 +516,23 @@ model WebhookDelivery {
 // ============================================================================
 
 model Notification {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String?
-  channel     String   // email | sms | whatsapp | push | webhook | in_app
+  channel     String // email | sms | whatsapp | push | webhook | in_app
   title       String
   body        String
-  payload     String   @default("{}") // JSON
-  status      String   @default("pending") // pending | sent | delivered | failed | read
-  priority    String   @default("normal") // low | normal | high | critical
-  recipient   String?  // email, phone, device token, webhook URL
-  senderId    String?  // who triggered
-  attempts    Int      @default(0)
-  maxAttempts Int      @default(3)
+  payload     String    @default("{}") // JSON
+  status      String    @default("pending") // pending | sent | delivered | failed | read
+  priority    String    @default("normal") // low | normal | high | critical
+  recipient   String? // email, phone, device token, webhook URL
+  senderId    String? // who triggered
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
   error       String?
   sentAt      DateTime?
   deliveredAt DateTime?
   readAt      DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([userId])
   @@index([channel])
@@ -465,19 +546,19 @@ model Notification {
 // ============================================================================
 
 model AlertRule {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  metric      String   // quota_usage | scrape_failures | source_degraded | companies_added | dedup_rate
-  condition   String   // gt | lt | gte | lte | eq | contains
-  threshold   Float
-  channels    String   @default("[\"in_app\"]") // JSON array of channels
-  isActive    Boolean  @default(true)
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  metric          String // quota_usage | scrape_failures | source_degraded | companies_added | dedup_rate
+  condition       String // gt | lt | gte | lte | eq | contains
+  threshold       Float
+  channels        String    @default("[\"in_app\"]") // JSON array of channels
+  isActive        Boolean   @default(true)
   lastTriggeredAt DateTime?
-  triggerCount Int     @default(0)
-  cooldownMin Int      @default(30) // min entre 2 déclenchements
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  triggerCount    Int       @default(0)
+  cooldownMin     Int       @default(30) // min entre 2 déclenchements
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([isActive])
   @@index([metric])
@@ -488,42 +569,42 @@ model AlertRule {
 // ============================================================================
 
 model ScheduledReport {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   description String?
-  type        String   // daily | weekly | monthly | custom
-  schedule    String   // cron expression or simple: "daily:08:00", "weekly:mon:08:00"
-  channels    String   @default("[\"email\"]") // JSON array
-  recipients  String   @default("[]") // JSON array of emails/phones
-  filters     String   @default("{}") // JSON : sectors, cities, etc.
-  format      String   @default("pdf") // pdf | xlsx | csv | json
-  isActive    Boolean  @default(true)
+  type        String // daily | weekly | monthly | custom
+  schedule    String // cron expression or simple: "daily:08:00", "weekly:mon:08:00"
+  channels    String    @default("[\"email\"]") // JSON array
+  recipients  String    @default("[]") // JSON array of emails/phones
+  filters     String    @default("{}") // JSON : sectors, cities, etc.
+  format      String    @default("pdf") // pdf | xlsx | csv | json
+  isActive    Boolean   @default(true)
   lastRunAt   DateTime?
   nextRunAt   DateTime?
-  runCount    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  runCount    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  executions  ReportExecution[]
+  executions ReportExecution[]
 
   @@index([isActive])
   @@index([nextRunAt])
 }
 
 model ReportExecution {
-  id          String   @id @default(cuid())
-  reportId    String
-  status      String   @default("pending") // pending | processing | completed | failed
-  format      String
+  id            String    @id @default(cuid())
+  reportId      String
+  status        String    @default("pending") // pending | processing | completed | failed
+  format        String
   fileSizeBytes Int?
-  filename    String?
-  dataUrl     String?  // base64 for small files
-  error       String?
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime @default(now())
+  filename      String?
+  dataUrl       String? // base64 for small files
+  error         String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
 
-  report      ScheduledReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  report ScheduledReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@index([reportId])
   @@index([status])
@@ -545,8 +626,8 @@ model ReportExecution {
 model ScrapeJobRecord {
   id                 String    @id @default(cuid())
   jobId              String    @unique // in-memory job ID (scrape-xxxx)
-  organizationId     String?   // null = global/OWNER-only (mirrors SearchQuery.organizationId)
-  userId             String?   // null = no authenticated user (shouldn't happen in practice)
+  organizationId     String? // null = global/OWNER-only (mirrors SearchQuery.organizationId)
+  userId             String? // null = no authenticated user (shouldn't happen in practice)
   keyword            String
   city               String?
   commune            String?
@@ -557,7 +638,7 @@ model ScrapeJobRecord {
   processedCount     Int       @default(0)
   duplicatesDetected Int       @default(0)
   errors             String    @default("[]") // JSON array of error strings
-  duration           Int?      // milliseconds (set on completion/failure)
+  duration           Int? // milliseconds (set on completion/failure)
   startedAt          DateTime  @default(now())
   completedAt        DateTime?
   createdAt          DateTime  @default(now())
@@ -568,3 +649,8 @@ model ScrapeJobRecord {
   @@index([userId])
   @@index([createdAt])
 }
+
+// RLS: enable row-level security on this table in production
+// — organization_id is NULLABLE here (global/OWNER-only jobs); allow NULL rows:
+// CREATE POLICY tenant_isolation ON "ScrapeJobRecord"
+//   USING (organization_id IS NULL OR organization_id = current_setting('app.current_org_id')::text);

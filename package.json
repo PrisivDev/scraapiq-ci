@@ -10,7 +10,9 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:seed:prod": "bun run scripts/seed-prod.ts",
     "build:prod": "NODE_OPTIONS=\"--max-old-space-size=3584\" npx next build",
     "ensure": "bash scripts/ensure-server.sh"
   },

@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // output: "standalone" retiré — le build standalone perd des modules Prisma
-  // qui font crasher le serveur silencieusement. On utilise next start standard.
+  // Standalone build: requis pour le déploiement Docker (Task 47-a).
+  // Produit .next/standalone/ + .next/static/ qui peuvent être copiés dans une image minimale.
+  // Les modules Prisma critiques sont copiés explicitement dans le Dockerfile (Stage 3).
+  output: "standalone",
   // En production, on NE masque PAS les erreurs TypeScript.
   // Le build doit échouer si une erreur de type est détectée.
   typescript: {
