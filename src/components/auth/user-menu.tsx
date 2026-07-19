@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { OrganizationDetailsDialog } from "@/components/dashboard/organization-details-dialog"
+import { ProfileDialog } from "@/components/auth/profile-dialog"
 
 interface CurrentUser {
   id: string
@@ -54,6 +55,7 @@ export function UserMenu() {
   const [loading, setLoading] = React.useState(true)
   const [loggingOut, setLoggingOut] = React.useState(false)
   const [orgDetailsOpen, setOrgDetailsOpen] = React.useState(false)
+  const [profileOpen, setProfileOpen] = React.useState(false)
 
   React.useEffect(() => {
     let active = true
@@ -175,7 +177,13 @@ export function UserMenu() {
             Permissions
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            setProfileOpen(true)
+          }}
+          className="cursor-pointer"
+        >
           <UserIcon className="h-4 w-4 mr-2" />
           Mon profil
         </DropdownMenuItem>
@@ -191,6 +199,28 @@ export function UserMenu() {
       </DropdownMenuContent>
     </DropdownMenu>
       <OrganizationDetailsDialog open={orgDetailsOpen} onOpenChange={setOrgDetailsOpen} />
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        onSaved={() => {
+          // Force un refresh du user menu pour afficher les nouvelles infos
+          setLoading(true)
+          fetch("/api/me", { credentials: "include" })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+              if (d?.user) {
+                setUser({
+                  id: d.user.id,
+                  email: d.user.email,
+                  name: d.user.name,
+                  avatarUrl: d.user.avatarUrl,
+                  role: d.user.role,
+                })
+              }
+            })
+            .finally(() => setLoading(false))
+        }}
+      />
     </>
   )
 }
