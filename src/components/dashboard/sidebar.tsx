@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { canAccess, type UserRole } from "@/lib/rbac-nav"
+import { useSidebarCounts } from "./use-sidebar-counts"
 
 export type NavKey =
   | "dashboard"
@@ -69,19 +70,19 @@ const navItems: {
   section: string
 }[] = [
   { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard, section: "Pilotage" },
-  { key: "assistant", label: "Assistant IA", icon: Sparkles, badge: "Nouveau", section: "Pilotage" },
+  { key: "assistant", label: "Assistant IA", icon: Sparkles, section: "Pilotage" },
   { key: "search", label: "Recherche multicritère", icon: Search, section: "Pilotage" },
   { key: "companies", label: "Entreprises", icon: Building2, section: "Données" },
   { key: "map", label: "Cartographie", icon: Map, section: "Données" },
   { key: "sources", label: "Sources de données", icon: Database, section: "Données" },
-  { key: "jobs", label: "Jobs de scraping", icon: Activity, badge: "12", section: "Opérations" },
-  { key: "scraper", label: "Moteur Google Maps", icon: Cpu, badge: "Nouveau", section: "Opérations" },
+  { key: "jobs", label: "Jobs de scraping", icon: Activity, section: "Opérations" },
+  { key: "scraper", label: "Moteur Google Maps", icon: Cpu, section: "Opérations" },
   { key: "exports", label: "Exports", icon: Download, section: "Opérations" },
   { key: "api", label: "API REST", icon: Code, badge: "v1", section: "Administration" },
-  { key: "notifications", label: "Notifications", icon: Bell, badge: "Multi-canal", section: "Administration" },
+  { key: "notifications", label: "Notifications", icon: Bell, section: "Administration" },
   { key: "team", label: "Équipe & tenants", icon: Users, section: "Administration" },
   { key: "backoffice", label: "Back Office", icon: Shield, section: "Administration" },
-  { key: "queue", label: "Architecture distribuée", icon: Server, badge: "Live", section: "Administration" },
+  { key: "queue", label: "Architecture distribuée", icon: Server, section: "Administration" },
   { key: "security", label: "Sécurité", icon: ShieldCheck, section: "Administration" },
   { key: "pwa", label: "PWA", icon: Smartphone, badge: "Offline", section: "Administration" },
   { key: "bi", label: "Business Intelligence", icon: BarChart3, section: "Pilotage" },
@@ -93,10 +94,28 @@ const navItems: {
 
 export function Sidebar({ active, onSelect, mobile = false, userRole = "VIEWER" }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const counts = useSidebarCounts()
 
   // Filtre les items selon le rôle de l'utilisateur
   const visibleItems = navItems.filter((item) => canAccess(userRole, item.key))
   const sections = Array.from(new Set(visibleItems.map((i) => i.section)))
+
+  // Renvoie le badge dynamique pour un item donné (compteur réel)
+  const getDynamicBadge = (key: NavKey): string | null => {
+    if (counts.loading) return null
+    switch (key) {
+      case "companies":
+        return counts.companies > 0 ? counts.companies.toLocaleString("fr-FR") : null
+      case "jobs":
+        return counts.jobs > 0 ? counts.jobs.toLocaleString("fr-FR") : null
+      case "notifications":
+        return counts.notifications > 0 ? counts.notifications.toLocaleString("fr-FR") : null
+      case "agents":
+        return counts.agents > 0 ? `${counts.agents}` : null
+      default:
+        return null
+    }
+  }
 
   return (
     <aside
@@ -144,6 +163,11 @@ export function Sidebar({ active, onSelect, mobile = false, userRole = "VIEWER" 
               .map((item) => {
                 const Icon = item.icon
                 const isActive = active === item.key
+                // Badge statique (descriptif : v1, Offline, 10 agents, DB)
+                // ou badge dynamique (compteur réel : companies, jobs, notifications, agents)
+                const dynamicBadge = getDynamicBadge(item.key)
+                const badge = dynamicBadge ?? item.badge
+                const isDynamic = dynamicBadge !== null
                 return (
                   <button
                     key={item.key}
@@ -158,16 +182,18 @@ export function Sidebar({ active, onSelect, mobile = false, userRole = "VIEWER" 
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" />
                     {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
-                    {!collapsed && item.badge && (
+                    {!collapsed && badge && (
                       <Badge
                         variant={isActive ? "secondary" : "default"}
-                        className={
-                          item.badge === "Nouveau"
-                            ? "bg-accent text-accent-foreground text-[10px] px-1.5"
-                            : "text-[10px] px-1.5"
-                        }
+                        className={cn(
+                          "text-[10px] px-1.5",
+                          // Badge dynamique (compteur) = accent mis en avant si > 0
+                          isDynamic && !isActive && "bg-primary/10 text-primary",
+                          // Notifications non lues = rouge
+                          item.key === "notifications" && isDynamic && !isActive && "bg-destructive/10 text-destructive"
+                        )}
                       >
-                        {item.badge}
+                        {badge}
                       </Badge>
                     )}
                   </button>
@@ -185,7 +211,7 @@ export function Sidebar({ active, onSelect, mobile = false, userRole = "VIEWER" 
             <span className="text-xs font-semibold">Moteur IA actif</span>
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Dédup & enrichissement LLM opérationnels. 8 421 doublons fusionnés ce mois.
+            Dédup & enrichissement LLM opérationnels.
           </p>
         </div>
       )}
