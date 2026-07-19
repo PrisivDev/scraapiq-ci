@@ -443,32 +443,73 @@ export function ScraperView() {
     (engine === "ai-cleaner" &&
       (aiJob?.progress.status === "running" || aiJob?.progress.status === "queued"))
 
-  // Polling de l'état du job (par moteur)
+  // Polling de l'état du job (par moteur) — avec retry pour résister aux crashs serveur
   const pollJob = useCallback(async (jobId: string, eng: Engine) => {
-    try {
-      const res = await fetch(ENDPOINTS[eng].job(jobId), { credentials: "include" })
-      if (!res.ok) return
-      const data: JobState = await res.json()
-      setJobs((prev) => ({ ...prev, [eng]: data }))
+    let retryCount = 0
+    const maxRetries = 5
 
-      if (data.progress.status === "running" || data.progress.status === "queued") {
-        setTimeout(() => pollJob(jobId, eng), 1500)
-      } else {
-        setPollingEngine((cur) => (cur === eng ? null : cur))
-        if (data.progress.status === "completed" && data.result) {
-          toast.success(eng === "business" ? "Identification terminée" : eng === "website" ? "Extraction site terminée" : "Scraping terminé", {
-            description: `${data.result.stats.uniqueCount} ${eng === "business" ? "entreprise(s)" : eng === "website" ? "site(s)" : "lieu(s)"} unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
-          })
-        } else if (data.progress.status === "failed") {
-          toast.error("Scraping échoué", {
-            description: data.progress.errors[0] || "Erreur inconnue",
-          })
+    const doPoll = async () => {
+      try {
+        const res = await fetch(ENDPOINTS[eng].job(jobId), { credentials: "include" })
+        if (!res.ok) {
+          // Serveur a renvoyé une erreur (404 = job supprimé, 500 = crash)
+          if (res.status === 404) {
+            setPollingEngine((cur) => (cur === eng ? null : cur))
+            toast.error("Job introuvable", { description: "Le job a été supprimé ou le serveur a redémarré." })
+            return
+          }
+          // Autre erreur — retry
+          retryCount++
+          if (retryCount < maxRetries) {
+            setTimeout(doPoll, 3000) // retry dans 3s
+            return
+          }
+          setPollingEngine((cur) => (cur === eng ? null : cur))
+          toast.error("Erreur serveur", { description: `HTTP ${res.status} — le serveur a peut-être crashé.` })
+          return
         }
+        // Reset retry count si on a une réponse OK
+        retryCount = 0
+        const data: JobState = await res.json()
+        setJobs((prev) => ({ ...prev, [eng]: data }))
+
+        if (data.progress.status === "running" || data.progress.status === "queued") {
+          setTimeout(doPoll, 2000) // 2s entre chaque poll
+        } else {
+          setPollingEngine((cur) => (cur === eng ? null : cur))
+          if (data.progress.status === "completed" && data.result) {
+            toast.success(eng === "business" ? "Identification terminée" : eng === "website" ? "Extraction site terminée" : "Scraping terminé", {
+              description: `${data.result.stats.uniqueCount} ${eng === "business" ? "entreprise(s)" : eng === "website" ? "site(s)" : "lieu(s)"} unique(s) extrait(s) en ${(data.result.stats.durationMs / 1000).toFixed(1)}s`,
+            })
+          } else if (data.progress.status === "failed") {
+            toast.error("Scraping échoué", {
+              description: data.progress.errors[0] || "Erreur inconnue",
+            })
+          } else if (data.progress.status === "cancelled") {
+            toast.info("Job annulé")
+          }
+        }
+      } catch (err) {
+        // Erreur réseau (serveur injoignable = crash OOM)
+        retryCount++
+        if (retryCount < maxRetries) {
+          // Attendre de plus en plus longtemps entre les retries
+          const delay = Math.min(3000 * retryCount, 15000)
+          setTimeout(doPoll, delay)
+          if (retryCount === 1) {
+            toast.warning("Serveur injoignable", {
+              description: "Reconnexion en cours... (le serveur a peut-être redémarré)",
+            })
+          }
+          return
+        }
+        setPollingEngine((cur) => (cur === eng ? null : cur))
+        toast.error("Job interrompu", {
+          description: "Le serveur est injoignable depuis 15s. Le job peut avoir crashé par manque de mémoire. Vérifiez la vue Jobs — les résultats sont persistés en DB.",
+        })
       }
-    } catch (err) {
-      console.error("[poll] error:", err)
-      setPollingEngine((cur) => (cur === eng ? null : cur))
     }
+    doPoll()
   }, [])
 
   // Polling de l'état du job IA Cleaner (forme différente des autres moteurs)

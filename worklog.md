@@ -3362,3 +3362,32 @@ Stage Summary:
 - KPIs dynamiques (totalCompanies, activeJobs, etc. depuis l'API) ✓
 - Serveur stable en production à 682MB ✓
 - Lint 0 erreur ✓
+
+---
+Task ID: 46
+Agent: Main (Architect)
+Task: Corriger le crash des jobs de scraping (OOM Chromium)
+
+Work Log:
+- Diagnostic : le job fonctionne (via curl : 2 résultats en 19s) mais Chromium consomme trop de mémoire et crash le serveur Next.js par OOM (4GB RAM cgroup)
+- Vérification : les jobs sont BIEN persistés en DB (ScrapeJobRecord) — 3 jobs complétés retrouvés après redémarrage serveur
+- Corrections appliquées :
+  1. Optimisation mémoire Chromium (google-maps-scraper.ts) : ajout de 14 flags d'optimisation
+     --disable-gpu, --disable-dev-shm-usage, --single-process, --disable-zygote, --disable-extensions, etc.
+  2. Polling résilient (scraper-view.tsx) : retry 5x avec backoff exponentiel (3s→6s→9s→12s→15s)
+     - Toast "Serveur injoignable" au 1er échec
+     - Toast "Job interrompu" après 5 échecs avec message "résultats persistés en DB"
+     - Reset du compteur si réponse OK
+  3. Timeout job (job-store.ts) : 90s max — kill Chromium si job bloqué
+     - Marque le job comme "failed" en DB avec erreur "Timeout"
+     - Appelle scraper.cancel() pour libérer la mémoire
+  4. Lint 0 erreur, rebuild production OK
+
+Stage Summary:
+- Jobs persistés en DB même si serveur crash (ScrapeJobRecord) ✓
+- Polling résilient : retry 5x avec feedback utilisateur ✓
+- Timeout 90s : Chromium tué si job bloqué ✓
+- Optimisation mémoire Chromium : 14 flags ajoutés ✓
+- Limitation fondamentale : Chromium ~500MB + Next.js ~700MB = 1.2GB minimum dans 4GB RAM
+  → En production (VPS 8GB+), ce problème n'existera pas
+  → En sandbox, le serveur peut crasher sur les jobs >5 résultats

@@ -302,7 +302,7 @@ export class GoogleMapsScraper {
   // MÉTHODES PRIVÉES
   // ============================================================================
 
-  /** Initialise le navigateur avec options stealth */
+  /** Initialise le navigateur avec options stealth + faible mémoire */
   private async initBrowser(proxy?: { server: string; username?: string; password?: string }): Promise<void> {
     const launchOptions: Parameters<typeof chromium.launch>[0] = {
       headless: this.config.headless,
@@ -316,6 +316,24 @@ export class GoogleMapsScraper {
         "--ignore-certifcate-errors",
         "--ignore-certifcate-errors-spki-list",
         `--lang=${this.config.locale}`,
+        // Optimisations mémoire pour environnement contraint (4GB RAM)
+        "--disable-gpu",                    // pas de GPU headless
+        "--disable-dev-shm-usage",          // évite /dev/shm trop petit
+        "--disable-extensions",             // pas d'extensions
+        "--disable-components",             // pas de composants
+        "--disable-background-networking",  // pas de réseau en arrière-plan
+        "--disable-default-apps",           // pas d'applications par défaut
+        "--disable-translate",              // pas de traduction
+        "--disable-sync",                   // pas de sync
+        "--disable-services",               // pas de services
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-ipc-flooding-protection",
+        "--no-first-run",                   // pas de first run
+        "--no-default-browser-check",       // pas de check browser par défaut
+        "--single-process",                 // un seul process (moins de mémoire)
+        "--disable-zygote",                 // pas de process zygote
       ],
     }
 

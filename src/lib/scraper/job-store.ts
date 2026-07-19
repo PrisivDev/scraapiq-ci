@@ -264,9 +264,29 @@ export async function startScrapeJob(jobId: string, query: SearchQuery): Promise
   jobs.set(jobId, state)
 
   // ----- 4. Lance le scraping de façon asynchrone (non-bloquant) -----
+  // Timeout global : 90s max. Si le job dépasse, on le kill et marque failed.
+  // Cela évite qu'un Chromium bloqué consomme la mémoire indéfiniment.
+  const JOB_TIMEOUT_MS = 90000
+  const timeoutHandle = setTimeout(() => {
+    if (state.progress.status === "running" || state.progress.status === "queued") {
+      console.warn(`[job-store] Job ${jobId} timed out after ${JOB_TIMEOUT_MS}ms — killing`)
+      state.progress.status = "failed"
+      state.progress.errors.push(`Timeout: job dépassé après ${JOB_TIMEOUT_MS / 1000}s`)
+      try {
+        scraper.cancel()
+      } catch {}
+      void updateJobRecord(jobId, {
+        status: "failed",
+        errors: serializeErrors(state.progress.errors),
+        completedAt: new Date(),
+      })
+    }
+  }, JOB_TIMEOUT_MS)
+
   scraper
     .scrape(jobId, query)
     .then((result) => {
+      clearTimeout(timeoutHandle)
       state.result = result
       if (result.status === "failed") {
         state.progress.status = "failed"
@@ -281,9 +301,6 @@ export async function startScrapeJob(jobId: string, query: SearchQuery): Promise
         state.progress.status = "completed"
         state.progress.phase = "done"
         state.progress.progress = 100
-        // L'event "complete" a déjà mis à jour la DB, mais on re-confirme avec
-        // les données finales du result (au cas où l'event n'aurait pas fini
-        // d'être traité).
         void updateJobRecord(jobId, {
           status: "completed",
           progress: 100,
@@ -297,6 +314,7 @@ export async function startScrapeJob(jobId: string, query: SearchQuery): Promise
       }
     })
     .catch((err) => {
+      clearTimeout(timeoutHandle)
       state.progress.status = "failed"
       state.progress.errors.push(err.message)
       void updateJobRecord(jobId, {
