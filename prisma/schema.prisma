@@ -1,9 +1,7 @@
 // ScrapIQ CI — Schéma Auth Enterprise
 // Multi-tenant · JWT · OAuth Google/Microsoft · 2FA TOTP · RBAC · Sessions · Blacklist JWT
 //
-// Database: PostgreSQL 16 + pgvector (production) — see prisma/migrations/.
-// In dev the same schema runs against SQLite via `file:./dev.db` (pgvector
-// Unsupported("vector") columns are silently omitted by SQLite).
+// Database: PostgreSQL 16 + pgvector (production)
 //
 // RLS (Row-Level Security):
 //   Every table carrying `organizationId` SHOULD have row-level security enabled
@@ -18,13 +16,14 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider   = "postgresql"
   url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
   
   // pgvector — enables AI embedding similarity search (CompanyEmbedding).
   // The extension MUST be installed on the Postgres cluster first:
   //   CREATE EXTENSION IF NOT EXISTS vector;
-  
+  extensions = [vector]
 }
 
 // ============================================================================
