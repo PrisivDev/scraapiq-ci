@@ -86,12 +86,20 @@ interface JobDetail extends JobListItem {
   }>
 }
 
-const statusMeta: Record<JobListItem["status"], { label: string; icon: React.ElementType; className: string; color: string }> = {
+const statusMeta: Record<string, { label: string; icon: React.ElementType; className: string; color: string }> = {
   running: { label: "En cours", icon: Loader2, className: "bg-primary/10 text-primary border-primary/20", color: "text-primary" },
   completed: { label: "Terminé", icon: CheckCircle2, className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", color: "text-emerald-600" },
   queued: { label: "En file", icon: Pause, className: "bg-muted text-muted-foreground border-border", color: "text-muted-foreground" },
   failed: { label: "Échec", icon: XCircle, className: "bg-destructive/10 text-destructive border-destructive/20", color: "text-destructive" },
   cancelled: { label: "Annulé", icon: XCircle, className: "bg-muted text-muted-foreground border-border", color: "text-muted-foreground" },
+}
+
+// Fallback pour les statuts inconnus (null, vide, etc.)
+const defaultStatusMeta = { label: "Inconnu", icon: XCircle, className: "bg-muted text-muted-foreground border-border", color: "text-muted-foreground" }
+
+function getStatusMeta(status: string | undefined | null) {
+  if (!status) return defaultStatusMeta
+  return statusMeta[status] || defaultStatusMeta
 }
 
 const phaseLabels: Record<string, string> = {
@@ -297,7 +305,7 @@ export function JobsView() {
             </Card>
           ) : (
             filtered.map((job) => {
-              const meta = statusMeta[job.status]
+              const meta = getStatusMeta(job.status)
               const Icon = meta.icon
               return (
                 <Card
@@ -351,7 +359,7 @@ export function JobsView() {
                 <div className="min-w-0">
                   <CardTitle className="text-base flex items-center gap-2">
                     {(() => {
-                      const meta = statusMeta[detail.progress.status]
+                      const meta = getStatusMeta(detail.progress.status)
                       const Icon = meta.icon
                       return <Icon className={cn("h-4 w-4", meta.color, detail.progress.status === "running" && "animate-spin")} />
                     })()}
@@ -385,7 +393,7 @@ export function JobsView() {
             <CardContent className="space-y-4">
               {/* Stats */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <StatBox label="Statut" value={statusMeta[detail.progress.status].label} />
+                <StatBox label="Statut" value={getStatusMeta(detail.progress.status).label} />
                 <StatBox label="Progression" value={`${detail.progress.progress}%`} />
                 <StatBox label="Résultats" value={String(detail.progress.resultsCount)} />
                 <StatBox label="Traités" value={String(detail.progress.processedCount)} />
