@@ -106,6 +106,20 @@ function LazyHeader(props: any) {
   return <Comp {...props} />
 }
 
+function LazyNewJobDialog(props: any) {
+  const Comp = useLazyComponent(componentLoaders.newJobDialog)
+  if (!Comp) return null
+  // eslint-disable-next-line react-hooks/static-components
+  return <Comp {...props} />
+}
+
+function LazyCompanyDetailDialog(props: any) {
+  const Comp = useLazyComponent(componentLoaders.companyDialog)
+  if (!Comp) return null
+  // eslint-disable-next-line react-hooks/static-components
+  return <Comp {...props} />
+}
+
 function LazyView({ navKey, props }: { navKey: NavKey; props?: Record<string, unknown> }) {
   const [state, setState] = useState<{ View: ComponentType<any> | null; key: NavKey }>({ View: null, key: navKey })
   useEffect(() => {
@@ -207,6 +221,14 @@ export default function Home() {
 
         <Footer />
       </div>
+
+      {/* Dialogs */}
+      <LazyNewJobDialog open={newJobOpen} onOpenChange={setNewJobOpen} />
+      <LazyCompanyDetailDialog
+        company={selectedCompany}
+        open={detailOpen}
+        onOpenChange={(o: boolean) => setDetailOpen(o)}
+      />
     </div>
   )
 }
