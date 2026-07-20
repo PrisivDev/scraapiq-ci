@@ -18,13 +18,13 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider   = "postgresql"
   url        = env("DATABASE_URL")
-  
+  directUrl  = env("DIRECT_URL") // for migrations / prisma migrate deploy
   // pgvector — enables AI embedding similarity search (CompanyEmbedding).
   // The extension MUST be installed on the Postgres cluster first:
   //   CREATE EXTENSION IF NOT EXISTS vector;
-  
+  extensions = [vector]
 }
 
 // ============================================================================

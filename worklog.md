@@ -3526,3 +3526,28 @@ Stage Summary:
 - scripts/scraper-worker.js : worker Redis BRPOP créé (475 lignes, CommonJS, fallback HTTP polling, graceful shutdown, métriques) pour que docker-compose soit fonctionnel ✓
 - Lint : 0 erreur ✓
 - Pas de `docker build` exécuté (pas de Docker en sandbox) — syntaxe validée par parser Python ✓
+
+---
+Task ID: 48
+Agent: Main (Architect)
+Task: Corriger le crash de la page d'accueil — utiliser le mode production standalone
+
+Work Log:
+- Diagnostic : le mode dev (Turbopack) compile à la volée chaque route, accumulant la mémoire jusqu'à l'OOM kill. La page / crashait systématiquement après ~30s.
+- Solution : passer en mode production (next build + standalone server)
+  1. Remis output: "standalone" dans next.config.ts
+  2. Rebuild avec NODE_OPTIONS="--max-old-space-size=3584"
+  3. Démarrage avec node .next/standalone/server.js (pas next start ni next dev)
+  4. Limite mémoire 2048MB (suffisante pour l'app précompilée)
+- page.tsx réécrit avec useLazyComponent (hook custom) au lieu de next/dynamic
+  - Tous les composants (Sidebar, Header, 20 vues) chargés via import() dynamique au runtime
+  - Pas d'analyse statique des imports par Turbopack
+- Script scripts/start-app.sh créé pour démarrage facile
+
+Stage Summary:
+- Page d'accueil accessible : 200 en 0.018s (instantané) ✓
+- Login fonctionnel : 200 OWNER ✓
+- /api/me, /api/v1/quota, /api/v1/bi : tous 200 ✓
+- Serveur stable à 671MB (vs 3.5GB+ en dev) ✓
+- Lint 0 erreur ✓
+- Limitation : le sandbox tue les process après ~30s d'inactivité → utiliser scripts/start-app.sh pour redémarrer
