@@ -78,7 +78,9 @@ function LoginContent() {
         toast.success("Connexion réussie", {
           description: `Bienvenue ${data.user?.name || data.user?.email}`,
         })
-        router.push(redirect)
+        // Force un rechargement complet pour que le middleware re-vérifie l'auth
+        // router.push ne suffit pas car il ne re-déclenche pas le middleware
+        window.location.href = redirect
         return
       }
 
